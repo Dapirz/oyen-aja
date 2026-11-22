@@ -47,6 +47,7 @@ Identitas sendiri (branch pertama): nama app, ikon, folder data, mutex, kelas wi
 Nanti (belum dikerjakan):
 - Clipboard history: jumlah item dan lama simpan bisa diatur.
 - Screentime.
+- Hemat CPU saat musik jalan: island tertutup menggambar ulang equalizer dan lirik setiap refresh layar (144x/detik di layar 144 Hz), sekitar 12,7% dari satu core. Batasi animasinya ke 60 fps atau lebih rendah. Ukur sebelum dan sesudah dengan QueryProcessCycleTime. Saat diam CPU hanya 0,3% (baseline 22 Nov 2026).
 - Island menyingkir saat didekati mouse (supaya tab browser tidak tertutup), dan baru terbuka kalau mouse didorong mentok ke tepi atas layar. Seperti di Poni.
 - Downloads (yt-dlp).
 - Meeting notes versi sendiri.
