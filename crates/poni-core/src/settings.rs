@@ -101,6 +101,13 @@ pub struct Settings {
     /// nearest whole share of its rate (60 on a 144 Hz display is every
     /// second refresh, 72 fps). Lower costs less CPU. 15..=240 when not 0.
     pub music_fps: u32,
+    /// The Smoke theme's closed music island shows how far the song has
+    /// played along its bottom.
+    pub music_progress: bool,
+    /// The sung line on the closed island: its size (DIPs, 11..=18; 13 is
+    /// the body text's) and whether it's bold (semibold) or regular.
+    pub lyrics_size: u32,
+    pub lyrics_bold: bool,
     pub lyrics: bool,
     /// Romanized "pronunciation" line under Japanese, Korean and Chinese lyrics.
     pub lyrics_pronunciation: bool,
@@ -215,6 +222,9 @@ impl Default for Settings {
             lock_position: false,
             show_media_activity: true,
             music_fps: 60,
+            music_progress: true,
+            lyrics_size: 13,
+            lyrics_bold: true,
             lyrics: true,
             lyrics_pronunciation: true,
             lyrics_offset_ms: 0,
@@ -282,6 +292,7 @@ impl Settings {
         self.step_aside = false;
         self.hover_delay_ms = self.hover_delay_ms.min(2000);
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
+        self.lyrics_size = self.lyrics_size.clamp(11, 18);
         if self.music_fps != 0 {
             self.music_fps = self.music_fps.clamp(15, 240);
         }
@@ -405,6 +416,15 @@ mod tests {
         assert_eq!(s.sanitized().music_fps, 60);
         let fps = |v: u32| Settings { music_fps: v, ..Default::default() }.sanitized().music_fps;
         assert_eq!((fps(0), fps(30), fps(5), fps(1000)), (0, 30, 15, 240));
+    }
+
+    #[test]
+    fn lyric_style_and_progress_default_to_how_they_were() {
+        let s: Settings = serde_json::from_str(r#"{"lyrics":true}"#).unwrap();
+        let s = s.sanitized();
+        assert_eq!((s.music_progress, s.lyrics_size, s.lyrics_bold), (true, 13, true));
+        let big = Settings { lyrics_size: 40, ..Default::default() }.sanitized();
+        assert_eq!(big.lyrics_size, 18);
     }
 
     #[test]

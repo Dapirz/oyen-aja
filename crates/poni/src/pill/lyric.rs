@@ -148,8 +148,9 @@ fn followed(st: &AppState) -> Option<&Lyrics> {
 }
 
 /// How [`draw`] sets the line (its colour aside), for sizing the pill to it.
-pub fn style() -> TextStyle {
-    TextStyle::body().weight(Weight::Semibold)
+/// The size and weight come from Settings (Music and lyrics > Lyrics).
+pub fn style(s: &poni_core::settings::Settings) -> TextStyle {
+    TextStyle::new(s.lyrics_size as f32).weight(if s.lyrics_bold { Weight::Semibold } else { Weight::Regular })
 }
 
 /// How [`draw`] sets a reading (its colour aside): the Music page's, at the
@@ -431,7 +432,8 @@ impl State {
             return None;
         };
         let shown = self.show(now, on_screen, i, text, reading_sig(st, i), || reading_at(st, i));
-        let line_w = ui.c.measure(&shown.text, &style(), 10_000.0).0;
+        let line_style = style(&st.settings);
+        let line_w = ui.c.measure(&shown.text, &line_style, 10_000.0).0;
         let reading_w = shown.reading.as_ref().map_or(0.0, |r| ui.c.measure(r, &reading_style(), 10_000.0).0);
         let w = line_w.max(reading_w);
         if area.w < MIN_W {
@@ -444,7 +446,7 @@ impl State {
         let k = if st.power.saver { 1.0 } else { ((now - shown.since) / FADE_S) as f32 };
         if k >= 1.0 {
             shown.leaving = None;
-            words(ui.c, &shown.text, shown.reading.as_deref(), area);
+            words(ui.c, &line_style, &shown.text, shown.reading.as_deref(), area);
             return Some(w);
         }
         // Moving lines glide between pixels; at rest they sit on whole pixels.
@@ -453,9 +455,9 @@ impl State {
         let ((come_a, come_dy), (gone_a, gone_dy)) = fade(k);
         if let Some((old, old_reading, w)) = shown.leaving.as_ref().filter(|_| gone_a > 0.0) {
             let r = Rect::from_center(area.center(), *w, area.h).offset(0.0, gone_dy);
-            ui.c.with_alpha(gone_a, |c| words(c, old, old_reading.as_deref(), r));
+            ui.c.with_alpha(gone_a, |c| words(c, &line_style, old, old_reading.as_deref(), r));
         }
-        ui.c.with_alpha(come_a, |c| words(c, &shown.text, shown.reading.as_deref(), area.offset(0.0, come_dy)));
+        ui.c.with_alpha(come_a, |c| words(c, &line_style, &shown.text, shown.reading.as_deref(), area.offset(0.0, come_dy)));
         ui.c.set_text_snap(snap);
         Some(w)
     }
@@ -473,9 +475,9 @@ fn rows(area: Rect, reading: bool) -> (Rect, Option<Rect>) {
 }
 
 /// A line centred in `area`, with its reading under it when it has one.
-fn words(c: &mut Canvas, text: &str, reading: Option<&str>, area: Rect) {
+fn words(c: &mut Canvas, style: &TextStyle, text: &str, reading: Option<&str>, area: Rect) {
     let (line, under) = rows(area, reading.is_some());
-    c.text(text, line, &style().center().color(palette::TEXT));
+    c.text(text, line, &style.center().color(palette::TEXT));
     if let (Some(reading), Some(under)) = (reading, under) {
         c.text(reading, under, &reading_style().center().color(palette::TEXT.mul_alpha(READING_ALPHA)));
     }
