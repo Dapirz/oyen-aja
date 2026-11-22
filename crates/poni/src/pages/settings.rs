@@ -2,11 +2,9 @@
 //! settings. Its last row, Advanced settings, opens the Settings window
 //! (`settings_window`) with every setting, and the island closes as the
 //! window opens, so the two never overlap. The window draws this page's
-//! account row, switch, picker and Check now.
+//! switch, picker and Check now.
 //!
-//! The Oyenza account comes first: the Oyenza app's icon, then signing in
-//! (the code itself shows on the Oyenza page), who is signed in, and
-//! Disconnect. Under a line, what the tray menu also changes: the theme and
+//! What the tray menu also changes comes first: the theme and
 //! the idle look as pickers, four switches, and Hide or Stay on top in
 //! full-screen apps; this copy's version; and which of the island's own pages
 //! (Music, Today, Shelf, Tasks, Focus) have a tab.
@@ -19,36 +17,35 @@
 //! the island closes or Settings does.
 
 use crate::activities::{text_with_dim, text_with_dim_width};
-use crate::commands::{Command, OyenzaCmd};
+use crate::commands::Command;
 use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
-use crate::pages::PageKind;
 use crate::pill::status;
-use crate::state::{AppState, OyenzaLink, Said};
-use crate::ui::{wid, wid_n, PillStyle, Ui, PILL_GAP, PILL_REGULAR, PILL_SMALL};
+use crate::state::{AppState, Said};
+use crate::ui::{wid, wid_n, PillStyle, Ui, PILL_SMALL};
 use crate::version::VERSION;
 use poni_core::geom::{palette, Color, Point, Rect};
-use poni_core::oyenza;
 use poni_core::phonedrop::fmt_bytes;
 use poni_core::settings::{IdleStyle, Theme};
 use poni_core::update::Release;
 
-/// Account row, a line, the pickers under their labels (or a row each on a
-/// narrow island), then the switches and choices (three rows), the tabs,
-/// and under a line Advanced settings. Shorter than the System page (256),
+/// The pickers under their labels (or a row each on a narrow island), then
+/// the switches and choices (three rows), the tabs, and under a line
+/// Advanced settings. Shorter than the System page (256),
 /// so the window keeps its size: a new version's Update goes in the
 /// version's row, not a row of its own.
 const TABS_Y: f32 = SWITCHES_Y + ROWS as f32 * ROW_H;
 const ADVANCED_Y: f32 = TABS_Y + ROW_H;
 const HEIGHT: f32 = ADVANCED_Y + ROW_H;
 const ACCOUNT_H: f32 = 44.0;
-/// The Oyenza app's icon, and the text column right of it.
+/// The Update sheet's icon, and the text column right of it.
 const ICON: f32 = 36.0;
 const TEXT_X: f32 = 48.0;
+/// The Update sheet's line under its head.
 const RULE_Y: f32 = 54.0;
-const LABELS_Y: f32 = 62.0;
-const PICKERS_Y: f32 = 80.0;
-const SWITCHES_Y: f32 = 114.0;
+const LABELS_Y: f32 = 2.0;
+const PICKERS_Y: f32 = 20.0;
+const SWITCHES_Y: f32 = 54.0;
 const ROW_H: f32 = 28.0;
 const COL_GAP: f32 = 24.0;
 /// A row's hover wash reaches this far past its text and switch.
@@ -63,7 +60,7 @@ const SEG_PAD_MIN: f32 = 7.5;
 /// Where they still don't fit (a narrow island), each takes a row, its
 /// label on the left, in the room the labels-above layout uses, so the page
 /// keeps its height.
-const STACK_Y: [f32; 2] = [58.0, 86.0];
+const STACK_Y: [f32; 2] = [0.0, 28.0];
 const STACK_GAP: f32 = 16.0;
 /// The full-screen choice's picker, inside its row.
 const ROW_PICKER_H: f32 = 24.0;
@@ -76,8 +73,6 @@ const CHECK_H: f32 = 22.0;
 const ADVANCED_ICON: f32 = 15.0;
 const SWITCH_H: f32 = 18.0;
 const KNOB_INSET: f32 = 2.0;
-/// Oyenza's colour, as on the Oyenza page.
-const OYENZA: Color = palette::ORANGE;
 /// The tabs row's chips, like the Record page's inputs.
 const CHIP_H: f32 = 24.0;
 const CHIP_PAD: f32 = 8.0;
@@ -151,20 +146,11 @@ pub fn height(st: &AppState) -> f32 {
     }
 }
 
-/// While a sign-in code waits, its time left counts down each second.
-pub fn next_wake(st: &AppState) -> Option<f64> {
-    matches!(st.oyenza.link, OyenzaLink::Connecting { .. }).then(|| st.now.floor() + 1.0)
-}
-
 pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     if let Some(rel) = st.update.offer.clone().filter(|_| st.update.sheet) {
         draw_sheet(ui, st, area, &rel);
         return;
     }
-    draw_account(ui, st, Rect::new(area.x, area.y, area.w, ACCOUNT_H));
-    let px = 1.0 / ui.c.scale().max(0.5);
-    ui.c.fill_rect(Rect::new(area.x, area.y + RULE_Y, area.w, px), Color::white(0.10));
-
     let col_w = ((area.w - COL_GAP) / 2.0).max(0.0);
     let cols = [area.x, area.x + col_w + COL_GAP];
     let label_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_FAINT);
@@ -562,65 +548,6 @@ fn flip(st: &mut AppState, sw: Switch, on: Option<bool>) {
         }
     }
     st.cmd(Command::SaveSettings);
-}
-
-// ---------------------------------------------------------------- account
-
-pub(crate) fn draw_account(ui: &mut Ui, st: &mut AppState, r: Rect) {
-    let cy = r.center().y;
-    crate::oyen::app_icon(ui.c, Point::new(r.x + ICON / 2.0, cy), ICON);
-    match st.oyenza.link.clone() {
-        OyenzaLink::Off => {
-            let label = "Sign in with Oyenza";
-            let w = ui.pill_width(label, false, false);
-            let b = Rect::new(r.right() - w, cy - PILL_REGULAR / 2.0, w, PILL_REGULAR);
-            if ui.pill(wid("settings.sign-in"), b, label, None, PillStyle::Primary(OYENZA)).clicked {
-                st.cmd(Command::Oyenza(OyenzaCmd::SignIn));
-            }
-            account_text(ui, r, b.x, "Oyenza", "Sign in to see money in and bills due here.");
-        }
-        OyenzaLink::Connecting { code, until, .. } => {
-            let cancel_w = ui.pill_width("Cancel", false, true);
-            let cancel = Rect::new(r.right() - cancel_w, cy - PILL_SMALL / 2.0, cancel_w, PILL_SMALL);
-            if ui.pill(wid("settings.cancel"), cancel, "Cancel", None, PillStyle::Utility).clicked {
-                st.cmd(Command::Oyenza(OyenzaCmd::Cancel));
-            }
-            let show_w = ui.pill_width("Show code", false, true);
-            let show = Rect::new(cancel.x - PILL_GAP - show_w, cancel.y, show_w, PILL_SMALL);
-            if ui.pill(wid("settings.show-code"), show, "Show code", None, PillStyle::Primary(OYENZA)).clicked {
-                st.cmd(Command::SetPage(PageKind::Oyenza));
-            }
-            let line = format!("Code {code} · works for {}", oyenza::code_time_left(until - st.now));
-            account_text(ui, r, show.x, "Signing in to Oyenza", &line);
-        }
-        OyenzaLink::Connected { account } => {
-            let dis_w = ui.pill_width("Disconnect", false, true);
-            let dis = Rect::new(r.right() - dis_w, cy - PILL_SMALL / 2.0, dis_w, PILL_SMALL);
-            if ui.pill(wid("settings.disconnect"), dis, "Disconnect", None, PillStyle::Utility).clicked {
-                st.cmd(Command::Oyenza(OyenzaCmd::Disconnect));
-            }
-            // Sums and senders straight away on the island (off: they wait for Show).
-            let label = "Show amounts";
-            let lw = ui.c.measure(label, &TextStyle::body(), 300.0).0.ceil();
-            let row = Rect::new(dis.x - 2.0 * ROW_BLEED - lw - 10.0 - SWITCH_W, cy - ROW_H / 2.0, lw + 10.0 + SWITCH_W, ROW_H);
-            let on = st.settings.oyenza_show_amounts;
-            if switch_row(ui, wid("settings.amounts"), row, label, Some(on), st.accent) {
-                st.settings.oyenza_show_amounts = !on;
-                st.cmd(Command::SaveSettings);
-            }
-            account_text(ui, r, row.x - ROW_BLEED, "Oyenza", &format!("Signed in as {account}"));
-        }
-    }
-}
-
-/// The account's name over one dim line, between Oyen and `right` (where
-/// the row's buttons start).
-fn account_text(ui: &mut Ui, r: Rect, right: f32, title: &str, line: &str) {
-    let x = r.x + TEXT_X;
-    let w = (right - 16.0 - x).max(0.0);
-    let cy = r.center().y;
-    ui.c.text(title, Rect::new(x, cy - 19.0, w, 20.0), &TextStyle::headline());
-    ui.c.text(line, Rect::new(x, cy + 1.0, w, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
 }
 
 // ---------------------------------------------------------------- widgets

@@ -500,10 +500,4 @@ impl<'a, 'g> Ui<'a, 'g> {
         }
     }
 
-    pub fn blur(&mut self) {
-        if self.input.focused.is_some() {
-            self.input.focused = None;
-            self.wants_focus = Some(false);
-        }
-    }
 }

@@ -76,9 +76,6 @@ pub struct Addon {
     /// The release that holds this version of the files.
     pub tag: &'static str,
     pub files: &'static [AddonFile],
-    /// Part of Oyenza Studio Pro: it works only for an Oyenza account the
-    /// server says has Pro (`GET /island/pro`; `AppState::pro`).
-    pub pro: bool,
 }
 
 impl Addon {
@@ -128,7 +125,6 @@ pub const PRAYER_TIMES: Addon = Addon {
         AddonFile { name: "adzan.m4a", size: 878_695, sha256: "6b8097fa7dfa43bd61ce65894396518ea65dd9d940e56b251ffc4ae5e78c7420", url: None },
         AddonFile { name: "NOTICE.txt", size: 971, sha256: "166776256a3a8cb67e1ea42cd9b0f5ae17ddeca5bf7f35b72a0cd001a942ac2c", url: None },
     ],
-    pro: false,
 };
 
 /// The Japanese readings add-on's dictionary file (`romanize::JaDict`).
@@ -152,7 +148,6 @@ pub const JAPANESE_READINGS: Addon = Addon {
         AddonFile { name: JA_READINGS_FILE, size: 3_790_036, sha256: "4950e5e42a2a48ad50396304c6bfbb8f9a97b33947e147007943361d65d856c8", url: None },
         AddonFile { name: "NOTICE.txt", size: 4_786, sha256: "fb8cd0420c2a8b04404c17a1a2ada30e0e1bbd73e54ef548bb60ede42198e079", url: None },
     ],
-    pro: false,
 };
 
 /// Script reader: the Script page, a teleprompter under the webcam. Its
@@ -165,7 +160,6 @@ pub const SCRIPT_READER: Addon = Addon {
     mac_blurb: Some("A teleprompter under your webcam."),
     tag: "",
     files: &[],
-    pro: false,
 };
 
 /// Downloader: the Downloads page, which saves the video or sound of a link
@@ -204,7 +198,6 @@ pub const DOWNLOADER_WINDOWS: Addon = Addon {
         AddonFile { name: "ffmpeg.exe", size: 2_298_880, sha256: "8a42638bc2c9bed20670a3e89ccb7117345a941e245d8151aa60066cac0b3993", url: None },
         AddonFile { name: "NOTICE.txt", size: 32_624, sha256: "01fb0f44904d1f4789a5bc048fc1b2c29d1a36c25d91469632af03d2402331a0", url: None },
     ],
-    pro: true,
 };
 
 /// The Downloader on a Mac: yt-dlp's own Mac build (one file for Apple
@@ -349,12 +342,6 @@ mod tests {
         assert_eq!(Status::Ready.line(&SCRIPT_READER, false), "On");
         assert_eq!(Status::Off.line(&SCRIPT_READER, true), "A teleprompter under your webcam.");
         assert_eq!(Addon::find("script"), Some(&SCRIPT_READER));
-    }
-
-    #[test]
-    fn pro_is_the_downloader() {
-        let pro: Vec<&str> = ALL.iter().filter(|a| a.pro).map(|a| a.id).collect();
-        assert_eq!(pro, vec!["downloader"]);
     }
 
     #[test]
@@ -518,7 +505,6 @@ mod tests {
                 AddonFile { name: "tool.exe", size: 2_151_363, sha256: "2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77", url: None },
                 AddonFile { name: "NOTICE.txt", size: 0, sha256: "", url: None },
             ],
-            pro: false,
         };
         let tool = SOON.files[0];
         assert!(tool.pinned() && !SOON.files[1].pinned() && !SOON.pinned());
@@ -586,7 +572,6 @@ mod tests {
             mac_blurb: None,
             tag: "addon-big-1",
             files: &[AddonFile { name: "big.exe", size: 30_100_000, sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d", url: None }],
-            pro: false,
         };
         assert_eq!(fmt_bytes(BIG.size()), "30 MB", "its size on the page while it's off");
         assert_eq!(Status::Downloading { done: 12_345_678, total: BIG.size() }.line(&BIG, false), "Downloading · 12 MB of 30 MB");

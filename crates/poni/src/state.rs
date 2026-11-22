@@ -11,7 +11,6 @@ use poni_core::addons::Status as AddonStatus;
 use poni_core::datetime::LocalDateTime;
 use poni_core::geom::{palette, Color};
 use poni_core::lrc::Lyrics;
-use poni_core::oyenza::{Activity, Bill, DayPick, Saved, Seen};
 use poni_core::phonedrop::QrMatrix;
 use poni_core::pomodoro::Pomodoro;
 use poni_core::prayer::{Place, PlaceList, PrayerMoment, Site, World};
@@ -98,18 +97,6 @@ pub struct PowerState {
     pub charging: bool,
     pub on_ac: bool,
     pub saver: bool,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct SysStats {
-    pub valid: bool,
-    /// 0..=1
-    pub cpu: f32,
-    pub mem_used: u64,
-    pub mem_total: u64,
-    pub disk_free: u64,
-    pub disk_total: u64,
-    pub uptime_s: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -199,6 +186,13 @@ pub struct Notice {
     /// The subtitle Show puts in place of `subtitle` ([`InlineAction::ShowAmount`]).
     pub reveal: Option<String>,
 }
+
+/// How long a notice with a sum or a message stays (seconds), and how much
+/// longer once Show reveals it.
+pub const NOTICE_S: f64 = 8.0;
+pub const SHOWN_S: f64 = 6.0;
+/// A notice held back by a full-screen app still shows within this time.
+pub const HELD_MAX_S: f64 = 30.0 * 60.0;
 
 impl Notice {
     /// No time limit (a new version's): it stays until clicked or put away,
@@ -320,14 +314,6 @@ pub struct PageUiState {
     pub task_input: String,
     pub task_scroll: f32,
     pub shelf_scroll: f32,
-    /// The Today page's list: how far it's scrolled (DIPs), the date clicked
-    /// in its grid (days since 1970-01-01), and when it was last drawn (mono
-    /// time; a page drawn again after a while starts at today).
-    pub today_scroll: f32,
-    pub today_pick: Option<i64>,
-    /// The next draw scrolls the list to `today_pick` (or back to today).
-    pub today_jump: bool,
-    pub today_drawn: f64,
     /// Smoothly animated lyric scroll position (line index as float).
     pub lyric_pos: f32,
     pub lyric_track: String,
@@ -337,10 +323,6 @@ pub struct PageUiState {
     pub peek_until: f64,
     /// Header tab under the pointer and since when (for hover labels).
     pub tab_hover: Option<(usize, f64)>,
-    /// Oyen in the Oyenza tab: his last move of his own and when it started
-    /// (`oyen::tab`). None while the island is closed: the next opening is
-    /// his arrival.
-    pub oyen_tab: Option<(crate::oyen::TabMove, f64)>,
     /// The page the Settings button was pressed on (pressing it again goes back).
     pub before_settings: Option<PageKind>,
     /// Start with Windows, as last read off the UI thread (None until Settings first opens).
@@ -353,83 +335,7 @@ pub struct PageUiState {
     pub peek: poni_core::peek::Peek,
     /// The Downloads page: its link field, mode and scroll.
     pub downloads: crate::pages::downloads::DownloadsUi,
-    /// The Pro add-on whose "what it does" page shows on the Add-ons page.
-    pub addon_about: Option<&'static str>,
 }
-
-/// Oyenza sign-in, as the island sees it.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub enum OyenzaLink {
-    #[default]
-    Off,
-    /// A code on screen, waiting for approval in oyenza.app, until mono time `until`.
-    Connecting { code: String, url: String, until: f64 },
-    Connected { account: String },
-}
-
-/// Where the Today page's day stands (`OyenzaState::agenda`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum AgendaState {
-    /// Not asked yet since signing in or opening.
-    #[default]
-    Waiting,
-    /// `agenda` holds the latest answer.
-    Ready,
-    /// The last ask failed; `agenda` may still hold an older answer.
-    Failed,
-    /// The server has no day for Today (from before it, or switched off there).
-    Unavailable,
-}
-
-/// What the Oyenza tab and its notices show (`pages::oyenza`), and the Today
-/// page's day (`pages::today`). Oyen's moods never read any of it: money
-/// never makes him happier or a bill sadder.
-#[derive(Clone, Debug, Default)]
-pub struct OyenzaState {
-    pub link: OyenzaLink,
-    /// The last 7 days of transactions (asked while the page is open).
-    pub activity: Option<Activity>,
-    /// When each row was first seen, so what lands while you look glows.
-    pub seen: Seen,
-    /// The day the page shows (Today when it opens).
-    pub day: DayPick,
-    /// How far that day's list is scrolled (DIPs).
-    pub scroll: f32,
-    pub bills: Vec<Bill>,
-    /// The server's today for `bills` (YYYY-MM-DD).
-    pub bills_today: String,
-    /// Unix time of Oyenza's last answer ("Updated 13:49").
-    pub updated_unix: Option<i64>,
-    /// The spend being typed.
-    pub input: String,
-    /// A note is on its way to the server.
-    pub saving: bool,
-    /// What was just saved, with Undo until mono time `.1`.
-    pub saved: Option<(Vec<Saved>, f64)>,
-    /// Why the last note wasn't saved (until the text changes).
-    pub error: Option<String>,
-    /// A short line ("Taken back") until mono time `.1`.
-    pub flash: Option<(String, f64)>,
-    /// "Show amounts" in the tab, until the island closes.
-    pub reveal: bool,
-    /// A notice that came while a full-screen app hid the island, and when.
-    pub held: Option<(Notice, f64)>,
-    /// Arrivals already shown as a notice (`oyenza::unseen`), so none repeats.
-    pub shown: Vec<String>,
-    /// Pinned before a sign-in code pinned the island open.
-    pub pinned_before: Option<bool>,
-    /// The Today page's day (`poni_core::agenda`), kept in memory only, and
-    /// the unix time it came.
-    pub agenda: Option<poni_core::agenda::Answer>,
-    pub agenda_unix: Option<i64>,
-    pub agenda_state: AgendaState,
-    /// Signing in started from the Today page: back to it once connected.
-    pub from_today: bool,
-    /// Whether the account has Studio Pro, as the server last said (None:
-    /// not asked yet). Signing out forgets it with the rest.
-    pub pro: Option<bool>,
-}
-
 
 /// Where finding the PC's place stands.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -514,7 +420,6 @@ pub struct AppState {
     pub power: PowerState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
-    pub stats: SysStats,
     pub shelf_thumbs: HashMap<String, Option<Image>>,
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
@@ -537,7 +442,10 @@ pub struct AppState {
     pub paired: Vec<PairedPhone>,
     /// Whether the meeting server answers (None = not asked yet: no pairs).
     pub pair_server: Option<bool>,
-    pub oyenza: OyenzaState,
+    /// A notice that came while a full-screen app hid the island, and when
+    /// (mono seconds): it shows once the island is back, if no older than
+    /// [`HELD_MAX_S`].
+    pub held: Option<(Notice, f64)>,
     /// Where each add-on stands, by id (every one in `poni_core::addons::ALL`).
     pub addons: BTreeMap<&'static str, AddonStatus>,
     /// New versions (`crate::updates`): what Settings, the menu and the
@@ -606,7 +514,6 @@ impl AppState {
             power: PowerState::default(),
             hud: None,
             notice: None,
-            stats: SysStats::default(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,
@@ -618,7 +525,7 @@ impl AppState {
             phone: None,
             paired: Vec::new(),
             pair_server: None,
-            oyenza: OyenzaState::default(),
+            held: None,
             addons: BTreeMap::new(),
             update: UpdateView::default(),
             prayer: PrayerState::default(),
@@ -665,7 +572,7 @@ impl AppState {
     /// The Downloader add-on is on, with its tools in place, for an account
     /// with Studio Pro: the Downloads tab shows.
     pub fn downloader_on(&self) -> bool {
-        self.downloader_offered && self.studio_pro() == Some(true) && self.addon(poni_core::addons::DOWNLOADER.id) == AddonStatus::Ready
+        self.downloader_offered && self.addon(poni_core::addons::DOWNLOADER.id) == AddonStatus::Ready
     }
 
     /// Notifications is on: its tab shows, and new notifications from the
@@ -680,14 +587,6 @@ impl AppState {
     /// Shelf, Tasks, Focus or Notifications).
     pub fn tab_hidden(&self, p: PageKind) -> bool {
         p.hideable() && self.settings.hidden_tabs.iter().any(|k| k == p.key())
-    }
-
-    /// The signed-in account has Studio Pro, as the server last said.
-    pub fn studio_pro(&self) -> Option<bool> {
-        match self.oyenza.link {
-            OyenzaLink::Connected { .. } => self.oyenza.pro,
-            _ => Some(false),
-        }
     }
 
     /// Prayer times is on and its places are read: the tab and reminders run.
@@ -718,14 +617,13 @@ impl AppState {
     }
 
     /// Show `n` now or, while a full-screen app hides the island (`hidden`), keep
-    /// it for when the island is back, the way money notices wait
-    /// (`OyenzaState::held`, shown then if no older than `HELD_MAX_S`). One
-    /// notice waits at a time, and a money or bill notice already waiting stays.
+    /// it for when the island is back (`held`, shown then if no older than
+    /// `HELD_MAX_S`). One notice waits at a time, and one already waiting stays.
     pub fn show_or_hold(&mut self, n: Notice, hidden: bool) {
         if !hidden {
             self.notice = Some(n);
-        } else if self.oyenza.held.as_ref().is_none_or(|(_, at)| self.now - at > poni_core::oyenza::HELD_MAX_S) {
-            self.oyenza.held = Some((n, self.now));
+        } else if self.held.as_ref().is_none_or(|(_, at)| self.now - at > HELD_MAX_S) {
+            self.held = Some((n, self.now));
         }
     }
 
@@ -836,17 +734,17 @@ mod tests {
             inline: None,
             reveal: None,
         };
-        let held = |st: &AppState| st.oyenza.held.as_ref().map(|(n, at)| (n.title.clone(), *at));
+        let held = |st: &AppState| st.held.as_ref().map(|(n, at)| (n.title.clone(), *at));
         // Hidden: it waits for the island instead of expiring unseen.
         st.show_or_hold(notice("goal"), true);
         assert!(st.notice.is_none());
         assert_eq!(held(&st), Some(("goal".into(), 100.0)));
-        // A money notice already waiting stays...
-        st.oyenza.held = Some((notice("money"), 100.0));
+        // One already waiting stays...
+        st.held = Some((notice("first"), 100.0));
         st.show_or_hold(notice("goal"), true);
-        assert_eq!(held(&st), Some(("money".into(), 100.0)));
+        assert_eq!(held(&st), Some(("first".into(), 100.0)));
         // ...unless it's too old to show any more.
-        st.now = 100.0 + poni_core::oyenza::HELD_MAX_S + 1.0;
+        st.now = 100.0 + HELD_MAX_S + 1.0;
         st.show_or_hold(notice("goal"), true);
         assert_eq!(held(&st).map(|h| h.0), Some("goal".into()));
         // The island on screen: it shows at once.

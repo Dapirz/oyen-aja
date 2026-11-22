@@ -46,28 +46,6 @@ pub enum PairCmd {
     Remove(String),
 }
 
-/// Requests for the Oyenza worker (`services::oyenza`).
-#[derive(Clone, Debug, PartialEq)]
-pub enum OyenzaCmd {
-    /// Ask for a sign-in code to show.
-    SignIn,
-    /// Stop waiting for the code's approval.
-    Cancel,
-    /// Sign this PC out (and tell the server).
-    Disconnect,
-    /// Save a spend typed in the island.
-    Note(String),
-    /// Take back a spend just saved (its id).
-    Undo(String),
-    /// The Oyenza tab opened: today's money and the bills, now.
-    Refresh,
-    /// Today's Try again: the day, now (unless just asked for).
-    RefreshDay,
-    /// A Pro add-on's page, or Add-ons, opened: whether the account has
-    /// Studio Pro, now (unless just asked).
-    CheckPro,
-}
-
 /// Requests for Notifications (`services::notifications`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NotifyCmd {
@@ -119,13 +97,10 @@ pub enum Command {
     /// Settings' Check now: read the update file now, as the menu's Check
     /// for updates… does (`AppState::update.said` takes the answer).
     CheckForUpdates,
-    /// Start/stop the 1 Hz system-stats sampler.
-    WantStats(bool),
     /// Start with Windows on or off (the Settings page's switch).
     SetAutostart(bool),
     Phone(PhoneCmd),
     Pair(PairCmd),
-    Oyenza(OyenzaCmd),
     /// Get one of Prayer times' online city files ("ed", "near/55_-5"; the
     /// answer: `AppEvent::Cities`).
     GetCities(String),

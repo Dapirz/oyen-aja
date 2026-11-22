@@ -8,7 +8,6 @@
 //! phone), so the tests can drive them over real sockets.
 
 pub mod addons;
-pub mod agenda;
 pub mod applemusic;
 pub mod datetime;
 pub mod downloads;
@@ -24,7 +23,6 @@ pub mod mediaremote;
 pub mod notifications;
 pub mod nowplaying;
 pub mod oyen;
-pub mod oyenza;
 pub mod pairdrop;
 pub mod peek;
 pub mod phonedrop;

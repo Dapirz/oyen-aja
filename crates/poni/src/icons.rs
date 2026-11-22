@@ -30,10 +30,6 @@ pub enum Icon {
     Close,
     Clipboard,
     Calendar,
-    Clock,
-    Cpu,
-    Memory,
-    Disk,
     Battery,
     Bolt,
     Bluetooth,
@@ -51,19 +47,9 @@ pub enum Icon {
     Sliders,
     Open,
     Phone,
-    /// Oyenza: show a hidden sum.
+    /// Show a hidden message (a notice's Show).
     Eye,
-    /// Oyenza: money that arrived.
-    MoneyIn,
-    /// Oyenza: money that went out.
-    MoneyOut,
-    /// Oyenza: money moved between the person's own wallets.
-    Transfer,
-    /// Oyenza: a credit card bill.
-    Card,
-    /// Oyenza: the tab.
-    Wallet,
-    /// Oyenza: signed out.
+    /// A broken link: an update check that couldn't connect.
     Unlink,
     /// The header's Settings button.
     Gear,
@@ -85,9 +71,6 @@ pub enum Icon {
     Bell,
     /// Another app's message in a notice: a speech bubble.
     Message,
-    /// The Oyenza mark (Oyen's head): Settings' Oyenza section. Not the
-    /// Oyenza tab, which is `Wallet`.
-    Oyenza,
 }
 
 pub struct Part {
@@ -172,22 +155,6 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M8.5 3v4"),
             s("M15.5 3v4"),
         ],
-        Clock => p![s(CIRCLE_9), s("M12 7.5V12l3 2")],
-        Cpu => p![
-            s("M7.5 6h9A1.5 1.5 0 0 1 18 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 16.5v-9A1.5 1.5 0 0 1 7.5 6z"),
-            s("M10 10h4v4h-4z"),
-            s("M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"),
-        ],
-        Memory => p![
-            s("M4 7.5h16a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"),
-            s("M7 11v2M10.5 11v2M14 11v2M17.5 11v2"),
-            s("M6 16.5v2M18 16.5v2"),
-        ],
-        Disk => p![
-            s("M4 14l2.5-8A1.5 1.5 0 0 1 8 5h8a1.5 1.5 0 0 1 1.5 1l2.5 8"),
-            s("M4 14h16v4a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"),
-            s("M16.5 16.8h.01"),
-        ],
         Battery => p![s("M4.5 7h12A1.5 1.5 0 0 1 18 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-12A1.5 1.5 0 0 1 3 15.5v-7A1.5 1.5 0 0 1 4.5 7z"), s("M21 10.5v3")],
         Bolt => p![f("M13.4 2.5L5 13.6h6.2l-1.3 7.9L19 10.4h-6.3z")],
         Bluetooth => p![s("M7 7.5l10 9L12 21V3l5 4.5-10 9")],
@@ -218,19 +185,6 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Open => p![s("M14 4h6v6"), s("M20 4l-9 9"), s("M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10")],
         Phone => p![s("M9 2.5h6A2.5 2.5 0 0 1 17.5 5v14a2.5 2.5 0 0 1-2.5 2.5H9A2.5 2.5 0 0 1 6.5 19V5A2.5 2.5 0 0 1 9 2.5z"), s("M11 18.5h2")],
         Eye => p![s("M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"), s("M9.2 12a2.8 2.8 0 1 0 5.6 0a2.8 2.8 0 1 0-5.6 0")],
-        MoneyIn => p![s("M12 4v10.5"), s("M7.5 10.5L12 15l4.5-4.5"), s("M5 19.5h14")],
-        MoneyOut => p![s("M12 20V9.5"), s("M7.5 13.5L12 9l4.5 4.5"), s("M5 4.5h14")],
-        Transfer => p![s("M5 9h12.5"), s("M14.5 6l3 3-3 3"), s("M19 15H6.5"), s("M9.5 12l-3 3 3 3")],
-        Card => p![
-            s("M4.5 6.5h15A1.5 1.5 0 0 1 21 8v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8a1.5 1.5 0 0 1 1.5-1.5z"),
-            s("M3 10h18"),
-            s("M6.5 14h4"),
-        ],
-        Wallet => p![
-            s("M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18z"),
-            s("M4 7.5l10.5-3v3"),
-            s("M15.5 13.5h2"),
-        ],
         Unlink => p![
             s("M9.5 14.5l-1.7 1.7a3 3 0 0 1-4.2-4.2l2.2-2.2a3 3 0 0 1 4.2 0"),
             s("M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.2 2.2a3 3 0 0 1-4.2 0"),
@@ -261,21 +215,8 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Download => p![s("M12 4v10.5"), s("M7.5 10L12 14.5 16.5 10"), s("M4.5 16v2.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V16")],
         Bell => p![s("M6 11a6 6 0 0 1 12 0v4.2l1.6 2.3H4.4L6 15.2z"), s("M10 20.3a2.2 2.2 0 0 0 4 0")],
         Message => p![s("M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z")],
-        Oyenza => p![f(OYENZA)],
     }
 }
-
-// OYENZA is the Oyenza mark (`poni_core::oyen::mark`) with its small cut's
-// eyes; a test below keeps it the same as the mark.
-const OYENZA: &str = "M16.8 3.1q.5-.6 1.3-.4.8.2 1 .9L21 10.8q0 .1 0 .2.8 1.4.8 3.1 0 4.4-1.9 5.8\
-    Q18 21.3 12 21.3q-6 0-7.9-1.4-1.9-1.4-1.9-5.8 0-1.7.8-3.1 0-.1 0-.2l.9-3.3q.1-.2.3-.4L7.9 4.8q.5-.3.8.1\
-    l1.5 1.8q.1 0 .1.1 0 0 .1 0 .1.1.1.1 0 0 .1 0 .1 0 .1 0 .6-.1 1.3-.1.7 0 1.3.1 0 0 .1 0 .1 0 .1 0 0 0 .1-.1\
-    q.1 0 .1 0 0-.1.1-.1ZM8.3 4.7q0 .1.1.1 0 0 .1 0 0 .1 0 .1.1.1.1.1l.7 1.6q0 .1 0 .1 0 0 0 .1.1.1.1.1\
-    q0 0 0 .1 0 0 0 .1 0 0-.1 0 0 .1 0 .1 0 0 0 .1 0 .1 0 .1 0 .1-.1.1 0 .1 0 .1-.1 0-.1.1 0 .1-.1.1-.1.1-.1.1\
-    q0 0-.1 0 0 0 0 .1 0 0-.1 0-.1 0-.1 0-.1 0-.1.1 0 0-.1 0-.1 0-.1 0 0 0-.1 0 0 0-.1 0l-3-.6Q5 7.5 5 7.4\
-    q0 0-.1 0 0-.1-.1-.1 0 0 0-.1 0-.1 0-.1 0 0-.1-.1 0 0 .1 0 0-.1 0-.1 0 0 0-.1 0-.1.1-.1 0-.1.1-.1L7.9 4.8\
-    q0 0 .1-.1 0 0 .1 0 0 0 .1 0 0 0 .1 0ZM7.08 15.22a1.51 1.51 0 1 0 3.02 0a1.51 1.51 0 1 0-3.02 0ZM13.9 15.22\
-    a1.51 1.51 0 1 0 3.02 0a1.51 1.51 0 1 0-3.02 0Z";
 
 #[cfg(test)]
 mod tests {
@@ -284,14 +225,13 @@ mod tests {
     const ALL: &[Icon] = &[
         Icon::Play, Icon::Pause, Icon::Next, Icon::Prev, Icon::Music, Icon::Lyrics, Icon::Timer, Icon::Coffee,
         Icon::Tray, Icon::ListChecks, Icon::Check, Icon::CheckCircle, Icon::Circle, Icon::Plus, Icon::Minus,
-        Icon::Close, Icon::Clipboard, Icon::Calendar, Icon::Clock, Icon::Cpu, Icon::Memory, Icon::Disk,
+        Icon::Close, Icon::Clipboard, Icon::Calendar,
         Icon::Battery, Icon::Bolt, Icon::Bluetooth, Icon::Headphones, Icon::Volume, Icon::VolumeLow, Icon::VolumeMute,
         Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File, Icon::Trash, Icon::Undo, Icon::Reset,
-        Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye, Icon::MoneyIn, Icon::MoneyOut, Icon::Transfer, Icon::Card, Icon::Wallet,
+        Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye,
         Icon::Unlink, Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script, Icon::Download,
         Icon::AppWindow, Icon::Bell, Icon::Message,
-        Icon::Oyenza,
     ];
 
     #[test]
@@ -315,40 +255,4 @@ mod tests {
         }
     }
 
-    /// OYENZA is `mark::HEAD` and `FOLD` scaled by 3/16 about the mark's centre
-    /// (x 0, y -11.04, where the Mac menu bar centres it) onto the grid's, with
-    /// the small cut's eyes as circles. If the mark changes, make it again so.
-    #[test]
-    fn oyenza_is_the_oyenza_mark() {
-        use poni_core::oyen::mark;
-        use poni_core::svgpath::{parse, Seg};
-        // Each figure's end points' bounds, on the grid.
-        let figures = |d: &str, on_grid: bool| -> Vec<[f32; 4]> {
-            let mut out: Vec<[f32; 4]> = Vec::new();
-            for seg in parse(d).unwrap() {
-                let (x, y) = match seg {
-                    Seg::MoveTo(x, y) => {
-                        out.push([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
-                        (x, y)
-                    }
-                    Seg::LineTo(x, y) | Seg::QuadTo(_, _, x, y) | Seg::CubicTo(_, _, _, _, x, y) | Seg::ArcTo(_, _, _, _, _, x, y) => (x, y),
-                    Seg::Close => continue,
-                };
-                let (x, y) = if on_grid { (x, y) } else { (12.0 + x * 0.1875, 12.0 + (y + 11.04) * 0.1875) };
-                let b = out.last_mut().unwrap();
-                *b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
-            }
-            out
-        };
-        let ours = figures(OYENZA, true);
-        let theirs: Vec<[f32; 4]> = [mark::HEAD, mark::FOLD, mark::EYES_SMALL].into_iter().flat_map(|d| figures(d, false)).collect();
-        assert_eq!(ours.len(), theirs.len());
-        for (n, (a, b)) in ours.iter().zip(&theirs).enumerate() {
-            // The eyes are circles here, whose end points sit on their middle line.
-            let mid = |b: &[f32; 4]| if n >= 2 { [(b[1] + b[3]) / 2.0; 2] } else { [b[1], b[3]] };
-            for (u, v) in [(a[0], b[0]), (a[2], b[2]), (mid(a)[0], mid(b)[0]), (mid(a)[1], mid(b)[1])] {
-                assert!((u - v).abs() < 0.06, "figure {n}: {u} where the mark has {v}");
-            }
-        }
-    }
 }

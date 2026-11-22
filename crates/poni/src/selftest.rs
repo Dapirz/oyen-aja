@@ -57,8 +57,8 @@ use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::png;
 use crate::state::{
-    AgendaState, AppState, CityFile, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
-    OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
+    AppState, CityFile, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction,
+    PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, VolumeState,
 };
 use crate::ui::wid;
 use poni_core::addons::{Status as AddonStatus, DOWNLOADER, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
@@ -66,7 +66,6 @@ use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::lrc::{parse_lrc, Lyrics};
-use poni_core::oyenza::{Activity, Bill, Day, DayPick, Saved, Seen, Txn, WalletRef};
 use poni_core::phonedrop::QrMatrix;
 use poni_core::prayer::{PlaceList, World};
 use poni_core::pomodoro::{Phase as PomoPhase, RunState};
@@ -217,8 +216,6 @@ const LYRICS_ZH: &str = "\
 
 const NOTES_TXT: &str = "Weekend trip\n\n- ferry leaves at 9:40\n- pack the blue jacket\n- ask about the lighthouse tour\n";
 
-const GIB: u64 = 1024 * 1024 * 1024;
-
 /// The phone-drop link in the screenshots. Made up: no server answers it.
 const PHONE_URL: &str = "HTTP://192.168.1.20:53530/K7Q2M9XWZ4R8T6YB3NPV5HJC2D/";
 
@@ -261,159 +258,6 @@ fn fake_phone(scene: Scene, now: f64) -> Option<PhoneDrop> {
             ..ready
         }),
         Scene::ShelfPairedPhones => Some(PhoneDrop { view: PhoneView::Paired, ..ready }),
-        _ => None,
-    }
-}
-
-fn fake_stats() -> SysStats {
-    SysStats {
-        valid: true,
-        cpu: 0.23,
-        mem_used: GIB * 96 / 10,
-        mem_total: GIB * 16,
-        disk_free: GIB * 212,
-        disk_total: GIB * 476,
-        uptime_s: 3 * 86_400 + 4 * 3600 + 12 * 60,
-    }
-}
-
-/// Oyenza, signed in as an example account (all made up): a week of
-/// transactions with today's newest just landed (it glows), and bills due
-/// tomorrow and later.
-fn fake_oyenza(st: &AppState, scene: Scene, now: f64) -> OyenzaState {
-    let iso = |t: i64| {
-        let (y, m, d) = poni_core::datetime::civil_from_days(t.div_euclid(86_400));
-        let s = t.rem_euclid(86_400);
-        format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", s / 3600, s % 3600 / 60, s % 60)
-    };
-    // Today's rows a few minutes to hours ago, or, early in the day, spread over the time since midnight
-    // (`share` of it), so their times stay apart and in order; earlier days at set times.
-    let since_midnight = st.local.hour as i64 * 3600 + st.local.minute as i64 * 60 + st.local.second as i64;
-    let midnight = st.unix - since_midnight;
-    let ago = |minutes: i64, share: f64| iso(st.unix - (minutes * 60).min((since_midnight as f64 * share) as i64));
-    let on = |days_ago: i64, h: i64, m: i64| iso(midnight - days_ago * 86_400 + h * 3600 + m * 60);
-    let txn = |id: &str, kind: &str, title: &str, text: &str, wallet: (&str, &str), at: String, auto: bool| Txn {
-        id: id.into(),
-        kind: kind.into(),
-        title: title.into(),
-        amount: 1.0,
-        text: text.into(),
-        category: None,
-        wallet: Some(WalletRef { name: wallet.0.into(), color: wallet.1.into() }),
-        to_wallet: None,
-        at,
-        auto,
-    };
-    let (bca, gopay, ovo, cash) = (("BCA", "#0060AF"), ("GoPay", "#00AED6"), ("OVO", "#4C3494"), ("Cash", "#8E8E93"));
-    let day = |n: i64| st.local.add_days(n).day_key();
-    let mut transfer = txn("t1", "transfer", "", "Rp 500.000", bca, ago(545, 0.9), false);
-    transfer.to_wallet = Some(WalletRef { name: gopay.0.into(), color: gopay.1.into() });
-    let today = Day {
-        date: day(0),
-        count: 5,
-        in_sum: 1_250_000.0,
-        out: 152_000.0,
-        in_text: "Rp 1.250.000".into(),
-        out_text: "Rp 152.000".into(),
-        rows: vec![
-            txn("t5", "income", "Gaji Oktober", "Rp 1.250.000", bca, ago(2, 0.04), true),
-            txn("t4", "expense", "Kopi susu", "Rp 25.000", gopay, ago(33, 0.25), false),
-            txn("t3", "expense", "Grab ke rumah", "Rp 38.000", ovo, ago(128, 0.5), false),
-            txn("t2", "expense", "Tokopedia · Kabel USB-C", "Rp 89.000", bca, ago(427, 0.75), true),
-            transfer,
-        ],
-    };
-    let yesterday = Day {
-        date: day(-1),
-        count: 4,
-        in_sum: 200_000.0,
-        out: 395_000.0,
-        in_text: "Rp 200.000".into(),
-        out_text: "Rp 395.000".into(),
-        rows: vec![
-            txn("y4", "expense", "Makan siang", "Rp 40.000", gopay, on(1, 12, 40), false),
-            txn("y3", "expense", "Listrik PLN", "Rp 350.000", bca, on(1, 10, 2), true),
-            txn("y2", "income", "Uang masuk", "Rp 200.000", gopay, on(1, 9, 15), true),
-            txn("y1", "expense", "Parkir", "Rp 5.000", cash, on(1, 8, 10), false),
-        ],
-    };
-    let thursday = Day {
-        date: day(-2),
-        count: 2,
-        in_sum: 0.0,
-        out: 172_000.0,
-        in_text: "Rp 0".into(),
-        out_text: "Rp 172.000".into(),
-        rows: vec![txn("w2", "expense", "Bensin", "Rp 150.000", bca, on(2, 18, 20), false), txn("w1", "expense", "Kopi", "Rp 22.000", gopay, on(2, 8, 45), false)],
-    };
-    let empty = |n: i64| Day { date: day(-n), count: 0, in_sum: 0.0, out: 0.0, in_text: "Rp 0".into(), out_text: "Rp 0".into(), rows: Vec::new() };
-    let days = vec![today.clone(), yesterday, thursday, empty(3), empty(4), empty(5), empty(6)];
-    // Everything was on the page a while ago except today's newest, which just landed.
-    let mut seen = Seen::default();
-    let mut before = days.clone();
-    before[0].rows.remove(0);
-    seen.note(&before, now - 120.0);
-    seen.note(&days, now - 12.0);
-    let link = match scene {
-        Scene::OyenzaSignIn | Scene::SettingsSigningIn => OyenzaLink::Connecting {
-            code: "KPJX-TMNQ".into(),
-            url: "https://oyenza.app/connect?code=KPJX-TMNQ".into(),
-            // Pinned on every step, so the countdown reads 9:41 in the screenshot.
-            until: now + 581.0,
-        },
-        _ => OyenzaLink::Connected { account: "a•••@example.com".into() },
-    };
-    let bill = |kind: &str, name: &str, due: String, text: Option<&str>| Bill { kind: kind.into(), name: name.into(), due, amount: text.map(|_| 1.0), text: text.map(Into::into) };
-    OyenzaState {
-        link,
-        activity: Some(Activity { cursor: "42".into(), today: day(0), days }),
-        seen,
-        day: match scene {
-            Scene::OyenzaYesterday => DayPick::Past(1),
-            Scene::OyenzaTomorrow => DayPick::Tomorrow,
-            _ => DayPick::Today,
-        },
-        bills: vec![
-            // Today's page lists a bill due today; the Oyenza tab's scenes keep it tomorrow.
-            bill("subscription", "Spotify", day(if scene == Scene::TodayDay { 0 } else { 1 }), Some("Rp 54.990")),
-            bill("card", "Kartu Kredit BCA", day(1), None),
-            bill("subscription", "Netflix", day(5), Some("Rp 54.000")),
-            bill("subscription", "Google One", day(8), Some("Rp 26.900")),
-            bill("card", "Kartu Kredit Mandiri", day(17), None),
-        ],
-        bills_today: st.day_key(),
-        updated_unix: Some(st.unix - 8),
-        saved: (scene == Scene::OyenzaSaved).then(|| {
-            let kopi = Saved { id: "s1".into(), title: "Kopi".into(), amount: 25_000.0, text: "Rp 25.000".into(), category: Some("Makan & Minum".into()), wallet: "GoPay".into() };
-            (vec![kopi], now + 9.5)
-        }),
-        agenda: fake_agenda(st, scene),
-        agenda_unix: Some(st.unix - 120),
-        agenda_state: match scene {
-            Scene::TodayTiles => AgendaState::Unavailable,
-            Scene::TodayDay | Scene::TodayNoApps | Scene::TodayOff | Scene::TodayPicked => AgendaState::Ready,
-            _ => AgendaState::Waiting,
-        },
-        ..OyenzaState::default()
-    }
-}
-
-/// The Today page's days for its scenes, around the clock it runs at
-/// (`agenda::sample`); none switched on for `TodayNoApps`, Google Calendar
-/// off (so no events came) for `TodayOff`.
-fn fake_agenda(st: &AppState, scene: Scene) -> Option<poni_core::agenda::Answer> {
-    use poni_core::agenda::{sample, Answer, Source};
-    let today = st.day_key();
-    let now_min = st.local.hour as i32 * 60 + st.local.minute as i32;
-    match scene {
-        Scene::TodayDay | Scene::TodayPicked => Some(sample(&today, now_min)),
-        Scene::TodayOff => {
-            let mut a = sample(&today, now_min);
-            a.apps.googlecalendar = Source::Off;
-            a.events.clear();
-            Some(a)
-        }
-        Scene::TodayNoApps => Some(Answer::none(&today)),
         _ => None,
     }
 }
@@ -497,14 +341,6 @@ fn seed_downloads(st: &mut AppState, scene: Scene) {
     jobs.starting(youtube);
     jobs.apply(youtube, Line::Solving);
     st.downloads = jobs;
-}
-
-/// Studio Pro, as the server would say: off, unless the scene is a Pro one
-/// (`Scene::pro`, set after this).
-fn seed_pro(st: &mut AppState) {
-    if st.oyenza.link != crate::state::OyenzaLink::Off {
-        st.oyenza.pro = Some(false);
-    }
 }
 
 /// Prayer times for its scenes: on, in Kota Jakarta (Edinburgh, picked by
@@ -621,24 +457,8 @@ enum Scene {
     ShelfPhoneReceive,
     /// Click the first header tab on the Today page; expect the Music page.
     TabClick,
-    /// Oyenza: money arrived, its sum hidden behind Show.
-    OyenzaMoney,
-    /// ...and after Show.
-    OyenzaMoneyShown,
-    /// Oyenza: the day before a subscription renews.
-    OyenzaBill,
-    /// The Oyenza tab signed out: what signing in brings, and Sign in.
-    OyenzaSignedOut,
-    /// The Oyenza tab while a sign-in code waits for approval.
-    OyenzaSignIn,
-    /// The Oyenza tab right after a spend was saved (Undo showing).
-    OyenzaSaved,
-    /// Click the gear in the header on the Oyenza page; expect Settings.
+    /// Click the gear in the header on the page before; expect Settings.
     GearClick,
-    /// Settings while a sign-in code waits for approval.
-    SettingsSigningIn,
-    /// Settings signed in to Oyenza.
-    SettingsSignedIn,
     /// Settings with Stay on top chosen for full-screen apps.
     SettingsStayOnTop,
     /// Phone drop showing a pairing QR code (paired phones).
@@ -667,12 +487,6 @@ enum Scene {
     PrayerPickerWorld,
     /// Prayer times in Edinburgh, picked by hand (a city abroad, its method beside its name).
     PrayerWorld,
-    /// The Oyenza page on yesterday (a dot on Today: something new there).
-    OyenzaYesterday,
-    /// The Oyenza page on tomorrow's bills.
-    OyenzaTomorrow,
-    /// Oyenza: a card charge read from the bank's email, its sum hidden.
-    OyenzaMoneyOut,
     /// Music: a Japanese song whose kanji went unread, offering Japanese readings.
     JaOffer,
     /// Music: ...and Japanese readings coming in.
@@ -708,18 +522,6 @@ enum Scene {
     UpdateSheet,
     /// The Update sheet once Windows has the Setup: Install now, or on next start.
     UpdateReady,
-    /// Today signed in, Google Calendar and Gmail switched on: the meeting on
-    /// now with Join, then the rest of the day (an event, a flight, bills due).
-    TodayDay,
-    /// Today signed in with no app switched on for it in oyenza.app.
-    TodayNoApps,
-    /// Today signed in to a server without the day: the stat tiles, as before.
-    TodayTiles,
-    /// Today with Google Calendar switched off for Studio (Gmail on): its
-    /// logo dimmed, Turn on, and Gmail's flights and the bills.
-    TodayOff,
-    /// Today with a date ten days on clicked in the grid: the list starts there.
-    TodayPicked,
     /// The Downloads page before anything was downloaded (`Page(Downloads)`
     /// shows one downloading, one waiting, one done and one failed).
     DownloadsEmpty,
@@ -746,12 +548,6 @@ enum Scene {
     /// Settings in the Store copy: Notifications' chip beside the island's
     /// own pages, on as everyone's starts, and its bell in the header's row.
     SettingsTabsStore,
-    /// The Add-ons page signed out where the Downloader is offered, its
-    /// tools in place from before: the Downloader and Notifications stay
-    /// off, each saying "Sign in with your Oyenza account".
-    AddonsPro,
-    /// What a Pro add-on does, the page its row opens without Pro.
-    AddonsAbout,
     /// Prayer times in Jakarta following Muhammadiyah: Majelis Tarjih's
     /// times, the KHGT date, "Muhammadiyah" beside the place.
     PrayerMuhammadiyah,
@@ -845,7 +641,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 88] = [
+const SCENES: [Scene; 69] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -865,18 +661,9 @@ const SCENES: [Scene; 88] = [
     Scene::ShelfEmpty,
     Scene::Page(PageKind::Tasks),
     // In the Clipboard page's place (it left the app), so the numbers stay.
-    Scene::OyenzaSignedOut,
     Scene::Page(PageKind::Today),
     Scene::TabClick,
-    Scene::OyenzaMoney,
-    Scene::OyenzaMoneyShown,
-    Scene::OyenzaBill,
-    Scene::Page(PageKind::Oyenza),
-    Scene::OyenzaSignIn,
-    Scene::OyenzaSaved,
     Scene::GearClick,
-    Scene::SettingsSigningIn,
-    Scene::SettingsSignedIn,
     Scene::SettingsStayOnTop,
     // Appended so the numbers of the screenshots above stay the same. They
     // show an empty shelf: items shown again after ShelfEmpty would fade in.
@@ -897,9 +684,6 @@ const SCENES: [Scene; 88] = [
     Scene::PrayerNotice,
     Scene::PrayerPickerWorld,
     Scene::PrayerWorld,
-    Scene::OyenzaYesterday,
-    Scene::OyenzaTomorrow,
-    Scene::OyenzaMoneyOut,
     Scene::JaOffer,
     Scene::JaGetting,
     // Appended so the numbers above stay. Every theme runs them; the Pill
@@ -926,11 +710,6 @@ const SCENES: [Scene; 88] = [
     Scene::UpdateReady,
     // The Today page signed in: the day, no app switched on, and a server
     // without the day (signed out, `Page(Today)` above shows the sign-in card).
-    Scene::TodayDay,
-    Scene::TodayNoApps,
-    Scene::TodayTiles,
-    Scene::TodayOff,
-    Scene::TodayPicked,
     // The Downloader: the Downloads page with a download running, one
     // waiting, one done and one failed, then empty; the Add-ons page with
     // its row; and the closed island while it downloads.
@@ -953,11 +732,9 @@ const SCENES: [Scene; 88] = [
     Scene::SettingsTabs,
     Scene::SettingsTabsStore,
     // The Add-ons page signed out, without Pro: no Downloader row.
-    Scene::AddonsPro,
     // The island dragged along the top edge, closed, then open at the edge.
     Scene::IslandDrag,
     Scene::IslandOpenAtEdge,
-    Scene::AddonsAbout,
     // Prayer times following Muhammadiyah (its times and the KHGT date), and
     // the place picker before anything is typed: the Kemenag / Muhammadiyah row.
     Scene::PrayerMuhammadiyah,
@@ -982,16 +759,8 @@ impl Scene {
             Scene::ShelfPhoneAsk => "page-shelf-phone-ask".into(),
             Scene::ShelfPhoneReceive => "page-shelf-phone-receive".into(),
             Scene::TabClick => "tab-click-media".into(),
-            Scene::OyenzaMoney => "oyenza-money".into(),
-            Scene::OyenzaMoneyShown => "oyenza-money-shown".into(),
-            Scene::OyenzaBill => "oyenza-bill".into(),
-            Scene::OyenzaSignedOut => "page-oyenza-signed-out".into(),
-            Scene::OyenzaSignIn => "page-oyenza-signin".into(),
-            Scene::OyenzaSaved => "page-oyenza-saved".into(),
             // Reached by clicking the gear: the signed-out Settings page.
             Scene::GearClick => "page-settings".into(),
-            Scene::SettingsSigningIn => "page-settings-signing-in".into(),
-            Scene::SettingsSignedIn => "page-settings-signed-in".into(),
             Scene::SettingsStayOnTop => "page-settings-stay-on-top".into(),
             Scene::SettingsTabs => "page-settings-tabs".into(),
             Scene::SettingsTabsStore => "page-settings-tabs-store".into(),
@@ -1008,9 +777,6 @@ impl Scene {
             Scene::PrayerNotice => "prayer-notice".into(),
             Scene::PrayerPickerWorld => "page-prayer-picker-world".into(),
             Scene::PrayerWorld => "page-prayer-world".into(),
-            Scene::OyenzaYesterday => "page-oyenza-yesterday".into(),
-            Scene::OyenzaTomorrow => "page-oyenza-tomorrow".into(),
-            Scene::OyenzaMoneyOut => "oyenza-money-out".into(),
             Scene::JaOffer => "page-media-ja-offer".into(),
             Scene::JaGetting => "page-media-ja-getting".into(),
             Scene::IdleStatus => "idle-status".into(),
@@ -1027,11 +793,6 @@ impl Scene {
             Scene::SettingsUpdate => "page-settings-update".into(),
             Scene::UpdateSheet => "page-update-sheet".into(),
             Scene::UpdateReady => "page-update-ready".into(),
-            Scene::TodayDay => "page-today-day".into(),
-            Scene::TodayNoApps => "page-today-no-apps".into(),
-            Scene::TodayTiles => "page-today-tiles".into(),
-            Scene::TodayOff => "page-today-off".into(),
-            Scene::TodayPicked => "page-today-picked".into(),
             Scene::DownloadsEmpty => "page-downloads-empty".into(),
             Scene::AddonsDownloader => "page-addons-downloader".into(),
             Scene::DownloadActivity => "download-activity".into(),
@@ -1041,8 +802,6 @@ impl Scene {
             Scene::NotifyAsk => "page-notifications-ask".into(),
             Scene::NotifyNoPackage => "page-notifications-download".into(),
             // "page-ai", "page-ai-troubles", ...: the page's own names.
-            Scene::AddonsPro => "page-addons-pro".into(),
-            Scene::AddonsAbout => "page-addons-about".into(),
             Scene::PrayerMuhammadiyah => "page-prayer-muhammadiyah".into(),
             Scene::PrayerPickerFollow => "page-prayer-picker-follow".into(),
             Scene::IslandDrag => "island-dragged".into(),
@@ -1055,10 +814,7 @@ impl Scene {
             Scene::Page(p) => Some(p),
             Scene::ShelfDrop | Scene::ShelfEmpty | Scene::ShelfPhone | Scene::ShelfPhoneAsk | Scene::ShelfPhoneReceive => Some(PageKind::Shelf),
             Scene::TabClick => Some(PageKind::ALL[0]),
-            Scene::OyenzaSignedOut | Scene::OyenzaSignIn | Scene::OyenzaSaved | Scene::OyenzaYesterday | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
             Scene::GearClick
-            | Scene::SettingsSigningIn
-            | Scene::SettingsSignedIn
             | Scene::SettingsStayOnTop
             | Scene::SettingsTabs
             | Scene::SettingsTabsStore
@@ -1071,8 +827,7 @@ impl Scene {
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
             Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld | Scene::PrayerMuhammadiyah | Scene::PrayerPickerFollow => Some(PageKind::Prayer),
             Scene::ScriptReading => Some(PageKind::Script),
-            Scene::TodayDay | Scene::TodayNoApps | Scene::TodayTiles | Scene::TodayOff | Scene::TodayPicked => Some(PageKind::Today),
-            Scene::AddonsDownloader | Scene::AddonsPro | Scene::AddonsAbout => Some(PageKind::Addons),
+            Scene::AddonsDownloader => Some(PageKind::Addons),
             Scene::DownloadsEmpty => Some(PageKind::Downloads),
             Scene::NotifyAsk | Scene::NotifyNoPackage => Some(PageKind::Notifications),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
@@ -1083,43 +838,7 @@ impl Scene {
     /// The Downloader is offered (Windows outside the Store build), in its
     /// own scenes only: the other Add-ons pictures keep their rows.
     fn downloader(self) -> bool {
-        matches!(self, Scene::Page(PageKind::Downloads) | Scene::DownloadsEmpty | Scene::AddonsDownloader | Scene::DownloadActivity | Scene::AddonsPro)
-    }
-
-    /// Signed in to an account with Studio Pro: the Downloader's own scenes
-    /// and the AI tab's, which only Pro shows.
-    fn pro(self) -> bool {
-        matches!(
-            self,
-            Scene::Page(PageKind::Downloads)
-                | Scene::DownloadsEmpty
-                | Scene::AddonsDownloader
-                | Scene::DownloadActivity
-        )
-    }
-
-    /// Scenes that show something from Oyenza (every other one is signed out,
-    /// so their screenshots stay what they were before Oyenza).
-    fn oyenza(self) -> bool {
-        matches!(
-            self,
-            Scene::OyenzaMoney
-                | Scene::OyenzaMoneyShown
-                | Scene::OyenzaBill
-                | Scene::OyenzaSignIn
-                | Scene::OyenzaSaved
-                | Scene::OyenzaYesterday
-                | Scene::OyenzaTomorrow
-                | Scene::OyenzaMoneyOut
-                | Scene::Page(PageKind::Oyenza)
-                | Scene::SettingsSigningIn
-                | Scene::SettingsSignedIn
-                | Scene::TodayDay
-                | Scene::TodayNoApps
-                | Scene::TodayTiles
-                | Scene::TodayOff
-                | Scene::TodayPicked
-        )
+        matches!(self, Scene::Page(PageKind::Downloads) | Scene::DownloadsEmpty | Scene::AddonsDownloader | Scene::DownloadActivity)
     }
 
     fn expanded(self) -> bool {
@@ -1745,7 +1464,6 @@ impl SelfTest {
         st.pinned = false;
         st.volume = VolumeState { level: 0.64, muted: false, known: true };
         st.power = fake_power(false);
-        st.stats = fake_stats();
         self.use_24h = st.settings.use_24h;
 
         // Album art + lyrics.
@@ -1956,7 +1674,7 @@ impl SelfTest {
                 let steps = steps + 1;
                 let waited = now - since;
                 let timed_out = waited > self.settle_limit(app);
-                // No picture mid-blink: the eyes, and Oyen in the Oyenza tab.
+                // No picture mid-blink: the eyes, and Oyen beside the pin in his theme.
                 let blinking = (scene == Scene::IdleEyes && mid_blink()) || (scene.expanded() && crate::oyen::mid_rest_move(clock::mono(), 0.3));
                 let ready = steps >= MIN_STEPS && stable >= STABLE_STEPS && !blinking;
                 if ready || timed_out {
@@ -2470,7 +2188,6 @@ impl SelfTest {
         if scene == Scene::LowBatteryHud {
             st.power.percent = LOW_BATTERY;
         }
-        st.stats = fake_stats();
         st.volume = VolumeState { level: 0.64, muted: false, known: true };
         st.pinned = false;
         st.drag_hover = scene == Scene::ShelfDrop;
@@ -2545,20 +2262,6 @@ impl SelfTest {
         st.notice = match scene {
             Scene::UpdateNotice => Some(crate::updates::new_version_notice(&fake_release(), st.accent, until)),
             Scene::UpdatedNotice => Some(crate::updates::updated_notice(Some(fake_release().headline), until)),
-            Scene::OyenzaMoney | Scene::OyenzaMoneyShown => {
-                let hidden = scene == Scene::OyenzaMoney;
-                Some(Notice {
-                    icon: Icon::MoneyIn,
-                    color: palette::GREEN,
-                    title: "Money in · BCA".into(),
-                    title_dim: String::new(),
-                    subtitle: if hidden { "Amount and sender hidden".into() } else { "Rp 1.250.000 · Gaji Oktober".into() },
-                    until,
-                    action: Some(NoticeAction::OpenPage(PageKind::Oyenza)),
-                    inline: Some(InlineAction::ShowAmount),
-                    reveal: hidden.then(|| "Rp 1.250.000 · Gaji Oktober".into()),
-                })
-            }
             Scene::PairedNotice => Some(Notice {
                 icon: Icon::Phone,
                 color: palette::GREEN,
@@ -2570,40 +2273,12 @@ impl SelfTest {
                 inline: None,
                 reveal: None,
             }),
-            Scene::OyenzaMoneyOut => Some(Notice {
-                icon: Icon::MoneyOut,
-                color: palette::BLUE,
-                title: "Money out · BCA".into(),
-                title_dim: String::new(),
-                subtitle: "Amount and payee hidden".into(),
-                until,
-                action: Some(NoticeAction::OpenPage(PageKind::Oyenza)),
-                inline: Some(InlineAction::ShowAmount),
-                reveal: Some("Rp 89.000 · Tokopedia".into()),
-            }),
             Scene::MessageNotice | Scene::MessageHidden => {
                 let choices = NotificationSettings { text: scene == Scene::MessageNotice, ..Default::default() };
                 crate::pages::notifications::message_notice(&sample_message(), &choices, st.accent, now).map(|n| Notice { until, ..n })
             }
-            Scene::OyenzaBill => Some(Notice {
-                icon: Icon::Calendar,
-                color: palette::ORANGE,
-                title: "Spotify renews tomorrow".into(),
-                title_dim: String::new(),
-                subtitle: "Amount hidden".into(),
-                until,
-                action: Some(NoticeAction::OpenPage(PageKind::Oyenza)),
-                inline: Some(InlineAction::ShowAmount),
-                reveal: Some("Rp 54.990".into()),
-            }),
             _ => None,
         };
-        st.oyenza = if scene.oyenza() { fake_oyenza(st, scene, now) } else { OyenzaState::default() };
-        // Today's list starts at today, or at the date clicked ten days on.
-        st.ui.today_pick = (scene == Scene::TodayPicked).then(|| poni_core::agenda::day_num(&st.day_key()).unwrap_or(0) + 10);
-        st.ui.today_jump = st.ui.today_pick.is_some();
-        st.ui.today_scroll = 0.0;
-        st.ui.today_drawn = now;
         // Add-ons: what the page shows (settings stay as they are, so the worker downloads nothing).
         let addon = match scene {
             Scene::AddonsDownloading => AddonStatus::Downloading { done: 1_300_000, total: PRAYER_TIMES.size() },
@@ -2629,21 +2304,13 @@ impl SelfTest {
         clock::hold_local(None);
         // The Downloader: offered in its own scenes, and on there (its tools
         // in place, so the tab shows) except on the Add-ons page, whose row
-        // shows it off; signed out (`AddonsPro`) its row says what it is.
+        // shows it off.
         // Its setting stays as it is, as for Prayer times above.
         st.downloader_offered = scene.downloader();
         let tab = scene.downloader() && scene != Scene::AddonsDownloader;
         st.addons.insert(DOWNLOADER.id, if tab { AddonStatus::Ready } else { AddonStatus::Off });
         seed_downloads(st, scene);
         seed_notifications(st, scene);
-        seed_pro(st);
-        st.ui.addon_about = (scene == Scene::AddonsAbout).then_some(poni_core::addons::DOWNLOADER.id);
-        if scene.pro() {
-            st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
-            st.oyenza.pro = Some(true);
-        }
-        // Oyen in the Oyenza tab long since arrived: at rest in every picture.
-        st.ui.oyen_tab = Some((crate::oyen::TabMove::Arrive, f64::NEG_INFINITY));
         if scene.media_playing() {
             st.lyrics.wants_ja_readings = self.lyrics.wants_ja_readings || matches!(scene, Scene::JaOffer | Scene::JaGetting);
         }
@@ -3141,10 +2808,9 @@ impl SelfTest {
             checks.push(check("script-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {said}, Windows build {build:?}{note}")));
         }
         if scene.downloader() {
-            // The Downloads tab shows once the Downloader is on, not while
-            // it's off, nor without Pro with its tools in place.
+            // The Downloads tab shows once the Downloader is on, not while it's off.
             let shown = pages::tabs(&app.st).contains(&PageKind::Downloads);
-            let want = !matches!(scene, Scene::AddonsDownloader | Scene::AddonsPro);
+            let want = scene != Scene::AddonsDownloader;
             checks.push(check("downloads-tab", shown == want, format!("Downloads tab shown: {shown}, want {want}")));
         }
 

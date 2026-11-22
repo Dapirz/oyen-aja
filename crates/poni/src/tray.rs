@@ -1,7 +1,6 @@
 //! Notification-area icon and its menu (also shown on right-click of the island).
 
 use crate::events::WM_APP_TRAY;
-use crate::state::OyenzaLink;
 use crate::updates::UpdateLine;
 use poni_core::settings::{IdleStyle, Settings, Theme};
 use windows::core::{Result, PCWSTR};
@@ -76,11 +75,6 @@ pub enum MenuCmd {
     AppleMusicToken,
     AppleMusicHelp,
     AppleMusicForget,
-    OyenzaSignIn,
-    OyenzaCancel,
-    OyenzaDisconnect,
-    OyenzaOpen,
-    ToggleOyenzaAmounts,
     /// "Update to Hihu Island 0.2.5…" (`crate::updates`).
     Update,
     /// "Check for updates…": read the update file now (`crate::updates`).
@@ -90,8 +84,6 @@ pub enum MenuCmd {
 
 pub enum MenuItem {
     Item { label: String, cmd: MenuCmd, checked: bool },
-    /// A greyed line that only says something ("Connected as …").
-    Info { label: String },
     Sub { label: String, items: Vec<MenuItem> },
     Separator,
 }
@@ -114,7 +106,7 @@ fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
 
 /// `update`: a later version the update file offers, or Check for updates…
 /// (`crate::updates::menu_line`).
-pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, update: UpdateLine) -> Vec<MenuItem> {
+pub fn menu_items(s: &Settings, pinned: bool, update: UpdateLine) -> Vec<MenuItem> {
     // The look the theme draws is the one checked: outside Pill, Status shows the clock.
     let shown = crate::pill::status::shown(s.theme, s.idle_style);
     let style = |st: IdleStyle| item(idle_label(st, s.theme), MenuCmd::ToggleIdleStyle(st), shown == st);
@@ -135,7 +127,6 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, update: Updat
         item("Synced lyrics", MenuCmd::ToggleLyrics, s.lyrics),
         item("Lyrics pronunciation (romaji, pinyin, Korean)", MenuCmd::TogglePronunciation, s.lyrics_pronunciation),
         apple_music_menu(),
-        oyenza_menu(s, oyenza),
         item("Sounds", MenuCmd::ToggleSounds, s.sounds),
         MenuItem::Sub {
             label: "In full-screen apps".into(),
@@ -189,23 +180,6 @@ fn apple_music_menu() -> MenuItem {
     MenuItem::Sub { label: if on { "Apple Music lyrics: on".into() } else { "Apple Music lyrics".into() }, items }
 }
 
-/// Oyenza, optional: sign in with a code from oyenza.app, then what the
-/// island may show, and signing out.
-fn oyenza_menu(s: &Settings, link: &OyenzaLink) -> MenuItem {
-    let items = match link {
-        OyenzaLink::Off => vec![item("Sign in to Oyenza…", MenuCmd::OyenzaSignIn, false)],
-        OyenzaLink::Connecting { .. } => vec![item("Cancel sign-in", MenuCmd::OyenzaCancel, false)],
-        OyenzaLink::Connected { account } => vec![
-            MenuItem::Info { label: format!("Connected as {account}") },
-            item("Show amounts on the island", MenuCmd::ToggleOyenzaAmounts, s.oyenza_show_amounts),
-            item("Open oyenza.app", MenuCmd::OyenzaOpen, false),
-            MenuItem::Separator,
-            item("Disconnect", MenuCmd::OyenzaDisconnect, false),
-        ],
-    };
-    MenuItem::Sub { label: "Oyenza".into(), items }
-}
-
 fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {
     for it in items {
         unsafe {
@@ -216,10 +190,6 @@ fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {
                     let w: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
                     let flags = MF_STRING | if *checked { MF_CHECKED } else { MF_UNCHECKED };
                     let _ = AppendMenuW(menu, flags, id, PCWSTR(w.as_ptr()));
-                }
-                MenuItem::Info { label } => {
-                    let w: Vec<u16> = label.encode_utf16().chain(Some(0)).collect();
-                    let _ = AppendMenuW(menu, MF_STRING | MF_GRAYED | MF_DISABLED, 0, PCWSTR(w.as_ptr()));
                 }
                 MenuItem::Sub { label, items } => {
                     if let Ok(sub) = CreatePopupMenu() {
@@ -253,7 +223,7 @@ pub fn show_menu(owner: HWND, pt: POINT, items: &[MenuItem]) -> Option<MenuCmd> 
         let cmd = if idx == 0 { None } else { cmds.get(idx - 1).copied() };
         let launches = matches!(
             cmd,
-            Some(MenuCmd::ShowSettings | MenuCmd::OpenSettings | MenuCmd::OpenDataFolder | MenuCmd::About | MenuCmd::LyricsCredit | MenuCmd::AppleMusicHelp | MenuCmd::OyenzaOpen)
+            Some(MenuCmd::ShowSettings | MenuCmd::OpenSettings | MenuCmd::OpenDataFolder | MenuCmd::About | MenuCmd::LyricsCredit | MenuCmd::AppleMusicHelp)
         );
         if !launches && !prev.is_invalid() && prev != owner && IsWindow(prev).as_bool() && GetForegroundWindow() == owner {
             let _ = SetForegroundWindow(prev);
@@ -267,7 +237,7 @@ mod tests {
     use super::*;
 
     fn fullscreen_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
+        let items = menu_items(s, false, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")) else {
             panic!("no full-screen submenu");
         };
@@ -282,7 +252,7 @@ mod tests {
 
     #[test]
     fn the_menu_says_which_version_this_is() {
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false, UpdateLine::None);
         let labels: Vec<(String, MenuCmd)> = items
             .into_iter()
             .filter_map(|i| match i {
@@ -301,7 +271,7 @@ mod tests {
     #[test]
     fn a_new_version_comes_first_until_it_is_installed() {
         let s = Settings::default();
-        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, update).into_iter().next() {
+        let first = |update: UpdateLine| match menu_items(&s, false, update).into_iter().next() {
             Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
             _ => None,
         };
@@ -313,7 +283,7 @@ mod tests {
     #[test]
     fn check_for_updates_sits_under_the_version_line() {
         let cmds = |update: UpdateLine| -> Vec<MenuCmd> {
-            menu_items(&Settings::default(), false, &OyenzaLink::Off, update)
+            menu_items(&Settings::default(), false, update)
                 .into_iter()
                 .filter_map(|i| match i {
                     MenuItem::Item { cmd, .. } => Some(cmd),
@@ -332,7 +302,7 @@ mod tests {
     #[test]
     fn the_way_back_to_the_centre_shows_once_the_island_moved() {
         let cmds = |s: &Settings| -> Vec<MenuCmd> {
-            menu_items(s, false, &OyenzaLink::Off, UpdateLine::None)
+            menu_items(s, false, UpdateLine::None)
                 .into_iter()
                 .filter_map(|i| match i {
                     MenuItem::Item { cmd, .. } => Some(cmd),
@@ -347,7 +317,7 @@ mod tests {
     }
 
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
+        let items = menu_items(s, false, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Idle look")) else {
             panic!("no idle look submenu");
         };
@@ -399,7 +369,7 @@ mod tests {
     }
 
     fn theme_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
+        let items = menu_items(s, false, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Theme")) else {
             panic!("no theme submenu");
         };
@@ -429,7 +399,7 @@ mod tests {
     #[test]
     fn start_with_windows_follows_the_full_screen_submenu() {
         // Over maximized windows (Step aside) is gone: nothing sits between them.
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false, UpdateLine::None);
         let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")).expect("full-screen submenu");
         assert!(matches!(items.get(fs + 1), Some(MenuItem::Item { cmd: MenuCmd::ToggleAutostart, .. })));
     }

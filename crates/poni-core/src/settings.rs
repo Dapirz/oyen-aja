@@ -98,7 +98,7 @@ pub struct Settings {
     pub hud_power: bool,
     pub hud_bluetooth: bool,
     pub sounds: bool,
-    /// Page shown first when expanding ("media", "today", "shelf", "tasks", "focus", "oyenza").
+    /// Page shown first when expanding ("media", "today", "shelf", "tasks", "focus").
     pub start_page: String,
     /// Remember the last page instead of `start_page`.
     pub remember_page: bool,
@@ -108,9 +108,6 @@ pub struct Settings {
     /// newer Studio's choices survive a save.
     pub hidden_tabs: Vec<String>,
     pub pomodoro: PomodoroConfig,
-    /// Oyenza (once signed in): show sums and senders on the island straight
-    /// away. Off: they wait for a click on Show, so a shared screen shows none.
-    pub oyenza_show_amounts: bool,
     /// Add-ons switched on, by id (`poni_core::addons`). Ids this version
     /// doesn't know are kept, so a newer Poni's choices survive a save.
     pub addons: BTreeMap<String, bool>,
@@ -215,7 +212,6 @@ impl Default for Settings {
             remember_page: true,
             hidden_tabs: Vec::new(),
             pomodoro: PomodoroConfig::default(),
-            oyenza_show_amounts: false,
             addons: BTreeMap::new(),
             prayer: PrayerSettings::default(),
             notifications: crate::notifications::NotificationSettings::default(),
