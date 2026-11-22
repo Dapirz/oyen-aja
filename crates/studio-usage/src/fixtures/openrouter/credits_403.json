@@ -1,7 +1,0 @@
-{
-  "error": {
-    "code": 403,
-    "message": "Only management keys can perform this operation"
-  },
-  "user_id": null
-}

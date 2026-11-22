@@ -53,7 +53,6 @@ use crate::clock;
 use crate::gfx::{Image, ImageData};
 use crate::icons::Icon;
 use crate::island::Geom;
-use crate::pages::usage::Picture as AiPicture;
 use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::png;
@@ -816,20 +815,6 @@ fn seed_downloads(st: &mut AppState, scene: Scene) {
     st.downloads = jobs;
 }
 
-/// The AI tab's scenes on made-up readings, every glide at its end
-/// (`pages::usage::picture`); every other scene: nothing read yet and the
-/// notices off, as on a first start (nothing reads it there, and no key
-/// typed in one scene stays for the next).
-fn seed_ai(st: &mut AppState, scene: Scene, now: f64) {
-    if let Scene::Ai(p) = scene {
-        pages::usage::picture(st, p, now);
-    } else {
-        st.usage = crate::state::UsageState::default();
-        st.settings.usage = poni_core::settings::UsageSettings::default();
-        st.ui.usage = pages::usage::UsageUi::default();
-    }
-}
-
 /// Studio Pro, as the server would say: off, unless the scene is a Pro one
 /// (`Scene::pro`, set after this).
 fn seed_pro(st: &mut AppState) {
@@ -1106,13 +1091,6 @@ enum Scene {
     /// The Notifications page when Windows says this copy has no package (the
     /// download offers no Notifications, so only a broken Store copy says it).
     NotifyNoPackage,
-    /// The AI tab on made-up readings, as the page's picture shows it
-    /// (`pages::usage::picture`): its plans, troubles, nothing found, ...
-    Ai(AiPicture),
-    /// The AI tab's heads-up notice: Claude Code close to its 5-hour limit.
-    AiNotice,
-    /// ...and Codex out of it, Oyenza Inference connected: its nudge.
-    AiNoticeOut,
     /// Settings with Today and Tasks taken off the tab row: their chips
     /// struck through, the header's row without them.
     SettingsTabs,
@@ -1156,21 +1134,6 @@ fn fake_release() -> poni_core::update::Release {
         mac: None,
         version,
     }
-}
-
-/// The AI tab's notice in its scenes, worded by the real alerts from two
-/// readings of a 5-hour limit that resets in 2 h 20 min, on the app's clock:
-/// Claude Code from 70 to 90 %, or Codex from 70 % to all used with Oyenza
-/// Inference connected.
-fn ai_alert(st: &AppState, out: bool) -> Option<studio_usage::alerts::Alert> {
-    use studio_usage::{alerts, ProviderId, Snapshot, Source, Window, WindowKind};
-    let id = if out { ProviderId::Codex } else { ProviderId::Claude };
-    let read = |used| Snapshot {
-        windows: vec![Window::new(WindowKind::Session, "5-hour", used).resets(Some(st.unix + 2 * 3600 + 20 * 60)).length(Some(18_000))],
-        ..Snapshot::new(id, st.unix, Source::Online)
-    };
-    let cfg = alerts::AlertCfg { inference: out, ..st.usage_alert_cfg() };
-    alerts::changes(Some(&read(0.7)), &read(if out { 1.0 } else { 0.9 }), st.unix, &cfg).into_iter().next()
 }
 
 /// How far the self-test drags the island to the right (DIPs).
@@ -1233,7 +1196,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 117] = [
+const SCENES: [Scene; 107] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1360,21 +1323,6 @@ const SCENES: [Scene; 117] = [
     Scene::Page(PageKind::Notifications),
     Scene::NotifyAsk,
     Scene::NotifyNoPackage,
-    // The AI tab, with Studio Pro after Focus, in every picture the page has
-    // (`AiPicture::ALL`): plans, troubles, nothing found, the first look,
-    // Oyenza Inference connecting and connected, the Services list and a
-    // key being typed there.
-    Scene::Ai(AiPicture::Plans),
-    Scene::Ai(AiPicture::Troubles),
-    Scene::Ai(AiPicture::Empty),
-    Scene::Ai(AiPicture::Looking),
-    Scene::Ai(AiPicture::Connect),
-    Scene::Ai(AiPicture::Inference),
-    Scene::Ai(AiPicture::Services),
-    Scene::Ai(AiPicture::Key),
-    // Its heads-up notices on the closed island.
-    Scene::AiNotice,
-    Scene::AiNoticeOut,
     // Settings' tabs row with two of the island's pages off the row, then in
     // the Store copy, with Notifications' chip.
     Scene::SettingsTabs,
@@ -1485,9 +1433,6 @@ impl Scene {
             Scene::NotifyAsk => "page-notifications-ask".into(),
             Scene::NotifyNoPackage => "page-notifications-download".into(),
             // "page-ai", "page-ai-troubles", ...: the page's own names.
-            Scene::Ai(p) => p.name().into(),
-            Scene::AiNotice => "ai-notice".into(),
-            Scene::AiNoticeOut => "ai-notice-out".into(),
             Scene::AddonsPro => "page-addons-pro".into(),
             Scene::AddonsAbout => "page-addons-about".into(),
             Scene::PrayerMuhammadiyah => "page-prayer-muhammadiyah".into(),
@@ -1533,7 +1478,6 @@ impl Scene {
             Scene::AddonsRecorder | Scene::AddonsDownloader | Scene::AddonsPro | Scene::AddonsAbout => Some(PageKind::Addons),
             Scene::DownloadsEmpty => Some(PageKind::Downloads),
             Scene::NotifyAsk | Scene::NotifyNoPackage => Some(PageKind::Notifications),
-            Scene::Ai(_) => Some(PageKind::Ai),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
             _ => None,
         }
@@ -1554,7 +1498,6 @@ impl Scene {
                 | Scene::DownloadsEmpty
                 | Scene::AddonsDownloader
                 | Scene::DownloadActivity
-                | Scene::Ai(_)
         )
     }
 
@@ -2219,11 +2162,6 @@ impl SelfTest {
         // readings); before the scene clock starts, as it takes a moment.
         let (ok, detail) = system_readings(crate::services::sysmon::probe());
         self.checks.push(check("system-readings", ok, detail));
-        // Every picture the AI page has is a scene (the Mac renders take
-        // them all from the same list), so a new one can't go unseen here.
-        let missing: Vec<&str> = AiPicture::ALL.into_iter().filter(|p| !SCENES.contains(&Scene::Ai(*p))).map(AiPicture::name).collect();
-        let detail = if missing.is_empty() { format!("all {} of the AI page's pictures", AiPicture::ALL.len()) } else { format!("no scene for {}", missing.join(", ")) };
-        self.checks.push(check("ai-pictures", missing.is_empty(), detail));
         // Show over games: count Poni's own frames through the whole run.
         let required = std::env::var("PONI_SELFTEST_FRAMES").is_ok_and(|v| v.trim().eq_ignore_ascii_case("required"));
         match crate::services::frames::Frames::start_selftest(std::process::id()) {
@@ -2550,11 +2488,6 @@ impl SelfTest {
                 // then General and Appearance light.
                 let mut list: Vec<_> = crate::settings_window::sections(&app.st).into_iter().map(|s| (s, false)).collect();
                 list.extend([(crate::settings_window::Section::General, true), (crate::settings_window::Section::Appearance, true)]);
-                // AI usage takes Studio Pro: its section as an account with Pro has it.
-                let ai = crate::settings_window::Section::Ai;
-                if !list.contains(&(ai, false)) {
-                    list.push((ai, false));
-                }
                 // Prayer times has a section only while its add-on is on: as it is then.
                 let prayer = crate::settings_window::Section::Prayer;
                 if !list.contains(&(prayer, false)) {
@@ -2562,18 +2495,12 @@ impl SelfTest {
                 }
                 match list.get(k) {
                     Some(&(section, light)) => {
-                        let was = (app.st.oyenza.link.clone(), app.st.oyenza.pro);
-                        if section == ai {
-                            app.st.oyenza.link = OyenzaLink::Connected { account: "a\u{2022}\u{2022}\u{2022}@example.com".into() };
-                            app.st.oyenza.pro = Some(true);
-                        }
                         let prayer_was = (app.st.addons.get(PRAYER_TIMES.id).cloned(), app.st.prayer.places.clone());
                         if section == prayer {
                             app.st.addons.insert(PRAYER_TIMES.id, AddonStatus::Ready);
                             app.st.prayer.places.get_or_insert_with(|| std::sync::Arc::new(PlaceList::parse(SAMPLE_PLACES).expect("sample places")));
                         }
                         let (w, h, px) = app.selftest_settings_shot(section, light);
-                        (app.st.oyenza.link, app.st.oyenza.pro) = was;
                         if section == prayer {
                             match prayer_was.0 {
                                 Some(a) => app.st.addons.insert(PRAYER_TIMES.id, a),
@@ -3116,7 +3043,6 @@ impl SelfTest {
                 inline: Some(InlineAction::ShowAmount),
                 reveal: Some("Rp 54.990".into()),
             }),
-            Scene::AiNotice | Scene::AiNoticeOut => ai_alert(st, scene == Scene::AiNoticeOut).map(|a| crate::state::usage_notice(&a, st.accent, until)),
             _ => None,
         };
         st.oyenza = if scene.oyenza() { fake_oyenza(st, scene, now) } else { OyenzaState::default() };
@@ -3164,7 +3090,7 @@ impl SelfTest {
         seed_downloads(st, scene);
         seed_notifications(st, scene);
         seed_pro(st);
-        st.ui.addon_about = (scene == Scene::AddonsAbout).then_some(poni_core::addons::AI_USAGE.id);
+        st.ui.addon_about = (scene == Scene::AddonsAbout).then_some(poni_core::addons::DOWNLOADER.id);
         if scene.pro() {
             st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
             st.oyenza.pro = Some(true);
@@ -3204,7 +3130,6 @@ impl SelfTest {
         for (path, rgb) in SAMPLE_ICONS {
             st.app_icons.entry(path.to_string()).or_insert_with(|| Some(sample_icon(rgb)));
         }
-        seed_ai(st, scene, now);
         if let Some(p) = scene.page() {
             st.page = p;
         }

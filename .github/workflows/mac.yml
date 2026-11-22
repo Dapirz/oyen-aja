@@ -46,7 +46,7 @@ jobs:
           cargo build -p poni --release --target x86_64-apple-darwin
 
       - name: Unit tests (core)
-        run: cargo test -p poni-core -p studio-usage -p studio-diorama --release
+        run: cargo test -p poni-core -p studio-diorama --release
 
       # The Downloader add-on for real (services/downloader_live.rs): yt-dlp,
       # our QuickJS-ng and our FFmpeg exactly as poni_core::addons pins them

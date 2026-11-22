@@ -3,7 +3,7 @@
 
 use crate::activities::{self, Mode};
 use crate::clock;
-use crate::commands::{Command, MediaCmd, NotifyCmd, OyenzaCmd, PairCmd, PhoneCmd, UsageCmd};
+use crate::commands::{Command, MediaCmd, NotifyCmd, OyenzaCmd, PairCmd, PhoneCmd};
 use crate::events::{AppEvent, AppleMusicStatus, EventSink, OyenzaEvent, SendHwnd, WM_APP_APPBAR, WM_APP_EVENT, WM_APP_FRAME, WM_APP_TRAY};
 use crate::gfx::{px_rect, px_union, scale_about, union_rect, Canvas, Gfx, HitMask};
 use crate::icons::Icon;
@@ -443,8 +443,6 @@ pub struct App {
     oyenza_watch: bool,
     /// The Today page is on screen: the worker asks for the day (`services::oyenza`).
     today_watch: bool,
-    /// What the AI tab's worker was last told (`set_usage_watch`).
-    usage_watch: services::usage::Watch,
     /// Show over games: the game's frames, counted while the readout shows.
     frames: Option<services::frames::Frames>,
     /// The process whose frames count (the full-screen app).
@@ -679,7 +677,6 @@ impl App {
             sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
             today_watch: false,
-            usage_watch: services::usage::Watch::default(),
             frames: None,
             game_pid: None,
             game_peek_until: 0.0,
@@ -1434,7 +1431,6 @@ impl App {
                 self.on_event(AppEvent::Power(p));
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
-                self.set_usage_watch();
                 self.update_due();
                 self.request_frame();
                 Some(LRESULT(1))
@@ -1447,7 +1443,6 @@ impl App {
                 }
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
-                self.set_usage_watch();
                 self.update_due();
                 self.request_frame();
                 Some(LRESULT(0))
@@ -1857,64 +1852,6 @@ impl App {
         self.st.notify(Icon::Lyrics, color, title, subtitle, 6.0, None);
     }
 
-    // ------------------------------------------------------------ AI usage
-
-    /// The AI tab's worker reads while the tab is on screen, or every few
-    /// minutes for the person who switched on its heads-up notices; both rest
-    /// while nobody is at the PC, the notices also on battery saver. Its
-    /// thread starts the first time either wants it (`Services::usage_watch`).
-    fn set_usage_watch(&mut self) {
-        // The self-test's scenes show made-up readings: nothing is read.
-        let here = !self.locked && !self.display_off && self.selftest.is_none();
-        let w = services::usage::Watch {
-            open: here && self.mode == Mode::Expanded(PageKind::Ai),
-            notices: here && self.st.settings.usage.notices && self.st.ai_usage_on() && !self.st.power.saver,
-            near_pct: self.st.settings.usage.near_pct,
-            use_24h: self.st.settings.use_24h,
-            hidden: services::usage::picked(&self.st.settings.usage.hidden),
-            added: services::usage::picked(&self.st.settings.usage.added),
-        };
-        // Already told: nothing to do, every frame.
-        if w == self.usage_watch {
-            return;
-        }
-        self.usage_watch = w;
-        if let Some(s) = self.services.as_ref() {
-            s.usage_watch(w);
-        }
-    }
-
-    /// Hide and Show change the AI tab's settings; the rest is its worker's.
-    fn usage_cmd(&mut self, c: UsageCmd) {
-        match c {
-            UsageCmd::Hide(id) | UsageCmd::Show(id) => {
-                let u = &mut self.st.settings.usage;
-                u.hidden.retain(|k| k != id.key());
-                u.added.retain(|k| k != id.key());
-                let list = if matches!(c, UsageCmd::Show(_)) { &mut u.added } else { &mut u.hidden };
-                list.push(id.key().into());
-                let before = self.saved_settings.clone();
-                self.settings_changed(&before);
-                self.save_settings();
-            }
-            c => {
-                if let Some(s) = self.services.as_ref() {
-                    s.usage_cmd(c);
-                }
-            }
-        }
-    }
-
-    /// What the AI tab's worker found goes into `st.usage`. Its heads-up
-    /// notices wait their turn for the island (`tick` puts them up one at a
-    /// time once it is free); the frame `on_event` asks for looks at once.
-    fn on_usage(&mut self, ev: services::usage::UsageEvent) {
-        match ev {
-            services::usage::UsageEvent::Alerts(alerts) => self.st.hold_usage_alerts(alerts),
-            ev => self.st.usage.apply(ev),
-        }
-    }
-
     // ------------------------------------------------------------ Oyenza
 
     /// How the Oyenza worker should pace itself: in use (unlocked, display
@@ -2076,7 +2013,7 @@ impl App {
         }
     }
 
-    /// Signed in (at start, or just now) with AI usage or the Downloader on:
+    /// Signed in (at start, or just now) with the Downloader on:
     /// whether the account has Studio Pro, now, so their tabs don't wait for
     /// the Add-ons page to open (`pages::addons::pro_wanted`).
     fn ask_pro(&self) {
@@ -2253,10 +2190,6 @@ impl App {
             }
             self.peek_game(if self.st.settings.game_peek { "peeks picked" } else { "picked to stay" });
         }
-        // The AI tab's heads-up notices: its worker reads every few minutes only while they're on.
-        if before.usage.notices != self.st.settings.usage.notices {
-            self.set_usage_watch();
-        }
         // The display the island hangs on, or its width when open (the
         // Settings window has both).
         if before.monitor != self.st.settings.monitor {
@@ -2378,7 +2311,7 @@ impl App {
         // What the Settings window shows that a service reports.
         let shown = matches!(
             ev,
-            AppEvent::Autostart(_) | AppEvent::Update(_) | AppEvent::Oyenza(_) | AppEvent::Addon { .. } | AppEvent::Usage(_) | AppEvent::Located(_) | AppEvent::Notify(_)
+            AppEvent::Autostart(_) | AppEvent::Update(_) | AppEvent::Oyenza(_) | AppEvent::Addon { .. } | AppEvent::Located(_) | AppEvent::Notify(_)
         );
         if let Some(w) = self.settings_win.as_mut().filter(|_| shown) {
             w.view.dirty = true;
@@ -2626,7 +2559,6 @@ impl App {
             AppEvent::Located(found) => self.on_located(found),
             AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
             AppEvent::Notify(ev) => self.on_notify(ev),
-            AppEvent::Usage(ev) => self.on_usage(ev),
             AppEvent::AdzanEnded => self.adzan_ended(),
             AppEvent::Download { id, line } => self.download_line(id, line),
             AppEvent::DownloadEnded { id, ok } => self.download_ended(id, ok),
@@ -2690,7 +2622,7 @@ impl App {
                 self.oyenza(OyenzaCmd::Refresh);
             } else if self.st.page == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-            } else if matches!(self.st.page, PageKind::Addons | PageKind::Ai) {
+            } else if self.st.page == PageKind::Addons {
                 self.oyenza(OyenzaCmd::CheckPro);
             }
         }
@@ -3448,25 +3380,17 @@ impl App {
         if self.updater.as_mut().is_some_and(|u| u.announce(&mut self.st, free)) {
             self.request_frame();
         }
-        // The AI tab's heads-up notices wait the same way, one at a time.
-        // Over a game whose readout only peeks they wait for the game to
-        // leave, as held money notices do, not for a peek.
-        let peeks = self.st.game.active && self.st.settings.game_peek;
-        if self.st.show_usage_notice(free && !peeks, self.expanded && self.st.page == PageKind::Ai) {
-            self.request_frame();
-        }
         if let Some(ended) = self.st.pomodoro.tick(now) {
             pages::focus::on_phase_ended(&mut self.st, ended);
         }
         self.prayer_tick();
         self.script_tick();
-        // Prayer times, System, AI usage or Downloader switched off: its tab is gone.
+        // Prayer times, System or Downloader switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
             PageKind::System => !self.st.system_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
-            PageKind::Ai => !self.st.ai_usage_on(),
             _ => false,
         };
         if gone {
@@ -3569,7 +3493,6 @@ impl App {
         self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
         self.set_oyenza_watch(self.mode == Mode::Expanded(PageKind::Oyenza));
         self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
-        self.set_usage_watch();
         // The Pill theme floats the island below the top edge.
         self.island.set_floating(pill::on(self.st.settings.theme).then_some(pill::TOP_GAP));
         self.island.step(dt, now);
@@ -4329,7 +4252,7 @@ impl App {
                 self.oyenza(OyenzaCmd::Refresh);
             } else if p == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-            } else if matches!(p, PageKind::Addons | PageKind::Ai) {
+            } else if p == PageKind::Addons {
                 self.oyenza(OyenzaCmd::CheckPro);
             }
         }
@@ -4444,7 +4367,6 @@ impl App {
                 Command::Phone(c) => self.phone_cmd(c),
                 Command::Pair(c) => self.pair_cmd(c),
                 Command::Oyenza(c) => self.oyenza(c),
-                Command::Usage(c) => self.usage_cmd(c),
                 // The self-test's pictures use the files it seeds (none from the website).
                 Command::GetCities(file) => {
                     if self.selftest.is_none() {

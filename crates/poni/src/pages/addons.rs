@@ -90,11 +90,11 @@ fn locked(st: &AppState, a: &Addon) -> bool {
     a.pro && st.studio_pro() != Some(true) && !status(st, a).is_on()
 }
 
-/// AI usage or the Downloader is switched on: the island asks the server
-/// about Pro as soon as it's signed in (at start, or just connected), so
-/// their tabs don't wait for this page to open.
+/// The Downloader is switched on: the island asks the server about Pro as
+/// soon as it's signed in (at start, or just connected), so its tab doesn't
+/// wait for this page to open.
 pub fn pro_wanted(st: &AppState) -> bool {
-    st.settings.ai_usage_on(true) || (st.downloader_offered && st.settings.addon_on(addons::DOWNLOADER.id))
+    st.downloader_offered && st.settings.addon_on(addons::DOWNLOADER.id)
 }
 
 fn row_h(n: usize) -> f32 {
@@ -102,13 +102,11 @@ fn row_h(n: usize) -> f32 {
 }
 
 /// Where `a` stands: Screen recorder follows the recorder's install
-/// (`Settings::recorder_on`); AI usage comes with Pro until switched off
-/// (`Settings::ai_usage_on`); the Downloader is off without Pro, even
+/// (`Settings::recorder_on`); the Downloader is off without Pro, even
 /// switched on before; the others, their own switch and download.
 fn status(st: &AppState, a: &Addon) -> Status {
-    if a.id == addons::SCREEN_RECORDER.id || a.id == addons::AI_USAGE.id {
-        let on = if a.id == addons::AI_USAGE.id { st.ai_usage_on() } else { st.record_on() };
-        if on {
+    if a.id == addons::SCREEN_RECORDER.id {
+        if st.record_on() {
             Status::Ready
         } else {
             Status::Off
@@ -130,7 +128,6 @@ fn icon(a: &Addon) -> Icon {
         "notifications" => Icon::Bell,
         "recorder" => Icon::Recorder,
         "downloader" => Icon::Download,
-        "ai" => Icon::Ai,
         _ => Icon::Addons,
     }
 }
@@ -138,7 +135,6 @@ fn icon(a: &Addon) -> Icon {
 /// What a Pro add-on does, on the page its row opens.
 fn about(a: &Addon) -> &'static str {
     match a.id {
-        "ai" => "Each AI service on this computer gets a card: your plan, each limit with when it resets, and what's left. Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot and more. Sign-ins stay here, and nothing about your usage goes to Oyenza.",
         "downloader" => "Paste a link, pick Video or Sound, and watch it come in to Downloads and the Shelf. Only what you have the right to keep.",
         _ => a.blurb,
     }
@@ -302,14 +298,15 @@ mod tests {
         st.oyenza.pro = Some(true);
         assert_eq!(rows(&st).len(), without + 2);
         assert!(height(&st) <= MAX_H, "the window never grows for this page");
+        // Six rows at most now: each has room for its two lines; past seven
+        // they'd be a line each, with the badges kept apart.
         let h = row_h(rows(&st).len());
-        assert!(h < TWO_LINES, "that many rows are a line each");
-        assert!(BADGE_ONE_LINE.min(h - 2.0) + 2.0 <= h, "{h} DIPs: the badges keep apart");
+        assert!(h >= TWO_LINES || BADGE_ONE_LINE.min(h - 2.0) + 2.0 <= h, "{h} DIPs: the badges keep apart");
     }
 
     #[test]
     fn pro_add_ons_show_for_everyone_and_say_what_they_do_without_pro() {
-        use poni_core::addons::{AI_USAGE, DOWNLOADER, SCRIPT_READER};
+        use poni_core::addons::{DOWNLOADER, SCRIPT_READER};
         let connected = || OyenzaLink::Connected { account: "a\u{2022}\u{2022}\u{2022}@example.com".into() };
         let listed = |st: &AppState, id: &str| rows(st).iter().any(|a| a.id == id);
         let mut st = AppState::new(Settings::default(), Store::default());
@@ -320,23 +317,17 @@ mod tests {
         for (link, pro) in [(OyenzaLink::Off, None), (connected(), None), (connected(), Some(false))] {
             st.oyenza.link = link;
             st.oyenza.pro = pro;
-            for a in [&AI_USAGE, &DOWNLOADER] {
+            for a in [&DOWNLOADER] {
                 assert!(listed(&st, a.id), "{} listed without Pro ({pro:?})", a.id);
                 assert_eq!(status(&st, a), Status::Off, "{} stays off", a.id);
                 assert!(locked(&st, a), "{}: its row opens what it does ({pro:?})", a.id);
                 assert_ne!(about(a), a.blurb, "{} says more than its row", a.id);
             }
-            assert!(!st.ai_usage_on());
         }
-        // With Pro they switch: AI usage is on already, until switched off.
+        // With Pro it switches on.
         st.oyenza.link = connected();
         st.oyenza.pro = Some(true);
         assert_eq!(status(&st, &DOWNLOADER), Status::Ready);
-        assert_eq!(status(&st, &AI_USAGE), Status::Ready);
-        assert!(st.ai_usage_on() && !locked(&st, &AI_USAGE));
-        st.settings.set_addon(AI_USAGE.id, false);
-        assert_eq!(status(&st, &AI_USAGE), Status::Off);
-        assert!(!st.ai_usage_on() && !locked(&st, &AI_USAGE));
         // Not where it isn't offered (the Store build), Pro or not.
         st.downloader_offered = false;
         assert!(!listed(&st, DOWNLOADER.id));
@@ -350,10 +341,8 @@ mod tests {
 
     #[test]
     fn the_island_asks_about_pro_at_sign_in_for_what_needs_it() {
-        use poni_core::addons::{AI_USAGE, DOWNLOADER};
+        use poni_core::addons::DOWNLOADER;
         let mut st = AppState::new(Settings::default(), Store::default());
-        assert!(pro_wanted(&st), "AI usage's tab waits on it");
-        st.settings.set_addon(AI_USAGE.id, false);
         assert!(!pro_wanted(&st), "nothing to ask about at sign-in");
         st.downloader_offered = true;
         st.settings.set_addon(DOWNLOADER.id, true);

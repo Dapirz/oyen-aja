@@ -179,9 +179,6 @@ pub enum AppEvent {
     /// Notifications: what Windows allows, and new notifications
     /// (`services::notifications`).
     Notify(crate::services::notifications::NotifyEvent),
-    /// The AI tab's readings, typed keys, inference.oyenza.com's link and
-    /// heads-up notices (`services::usage`).
-    Usage(crate::services::usage::UsageEvent),
     /// The adzan finished playing, or couldn't play on.
     AdzanEnded,
     /// Start with Windows is on (true) or off, read for the Settings page.

@@ -154,13 +154,12 @@ pub enum Section {
     Addons,
     Focus,
     Prayer,
-    Ai,
     Oyenza,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 12] = [
+    pub const ALL: [Section; 11] = [
         Section::General,
         Section::Appearance,
         Section::Island,
@@ -170,7 +169,6 @@ impl Section {
         Section::Addons,
         Section::Focus,
         Section::Prayer,
-        Section::Ai,
         Section::Oyenza,
         Section::About,
     ];
@@ -186,7 +184,6 @@ impl Section {
             Section::Addons => "Add-ons",
             Section::Focus => "Focus",
             Section::Prayer => "Prayer times",
-            Section::Ai => "AI usage",
             Section::Oyenza => "Oyenza account",
             Section::About => "About",
         }
@@ -204,7 +201,6 @@ impl Section {
             Section::Addons => "addons",
             Section::Focus => "focus",
             Section::Prayer => "prayer",
-            Section::Ai => "ai",
             Section::Oyenza => "oyenza",
             Section::About => "about",
         }
@@ -221,7 +217,6 @@ impl Section {
             Section::Addons => Icon::Addons,
             Section::Focus => Icon::Timer,
             Section::Prayer => Icon::Moon,
-            Section::Ai => Icon::Ai,
             Section::Oyenza => Icon::Oyenza,
             Section::About => Icon::Gear,
         }
@@ -239,18 +234,15 @@ impl Section {
             Section::Addons => Color::hex(0x0A84FF),
             Section::Focus => palette::ORANGE,
             Section::Prayer => Color::hex(0x30B0A0),
-            Section::Ai => palette::PURPLE,
             Section::Oyenza => palette::ORANGE,
             Section::About => Color::hex(0x8E8E93),
         }
     }
 
-    /// Prayer times has a section only while its add-on is on, AI usage
-    /// only with Studio Pro.
+    /// Prayer times has a section only while its add-on is on.
     pub fn shown(self, st: &AppState) -> bool {
         match self {
             Section::Prayer => st.prayer_on(),
-            Section::Ai => st.ai_usage_on(),
             _ => true,
         }
     }
@@ -299,8 +291,6 @@ pub enum Key {
     PrayerPause,
     PrayerFollow,
     PrayerCalendar,
-    AiNotices,
-    AiNear,
     SettingsFile,
     DataFolder,
     ReleaseNotes,
@@ -565,14 +555,6 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 Block::Note("Pick a place by hand on the island's Prayer page."),
             ]
         }
-        Section::Ai => {
-            let u = &s.usage;
-            let mut rows = vec![switch(Key::AiNotices, "Heads-up notices", Some("When a plan's limit gets close, runs out or comes back"), u.notices)];
-            if u.notices {
-                rows.push(item(Key::AiNear, "Close to the limit at", None, Ctl::Stepper(format!("{} %", st.usage_near_pct()))));
-            }
-            vec![Block::Group(None, rows), Block::Note("Services, keys and the Oyenza Inference connect are on the AI tab.")]
-        }
         Section::Oyenza => vec![Block::Account],
         Section::About => vec![
             Block::Version,
@@ -701,8 +683,6 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             Act::Pick(i) if i < FOLLOWS.len() => s.prayer.follow = FOLLOWS[i].0,
             _ => return,
         },
-        Key::AiNotices => s.usage.notices = !s.usage.notices,
-        Key::AiNear => s.usage.near_pct = (s.usage.near_pct as i32 + step * 5).clamp(50, 95) as u8,
         Key::SettingsFile => {
             st.cmd(Command::OpenPath(crate::paths::settings_path().to_string_lossy().into_owned()));
             return;
@@ -1765,11 +1745,10 @@ mod tests {
             apply(&mut st, Key::Width, Act::Step(1));
             apply(&mut st, Key::FocusMin, Act::Step(1));
             apply(&mut st, Key::LongEvery, Act::Step(1));
-            apply(&mut st, Key::AiNear, Act::Step(1));
             apply(&mut st, Key::LyricsOffset, Act::Step(1));
         }
         let s = &st.settings;
-        assert_eq!((s.expanded_width, s.pomodoro.focus_min, s.pomodoro.long_every, s.usage.near_pct, s.lyrics_offset_ms), (900.0, 180, 12, 95, -5000));
+        assert_eq!((s.expanded_width, s.pomodoro.focus_min, s.pomodoro.long_every, s.lyrics_offset_ms), (900.0, 180, 12, -5000));
         for _ in 0..100 {
             apply(&mut st, Key::Width, Act::Step(-1));
             apply(&mut st, Key::FocusMin, Act::Step(-1));
@@ -1844,7 +1823,7 @@ mod tests {
     fn the_sidebar_has_room_for_every_section_at_full_height() {
         // Every section but About is a row from the top, About sits 12 DIPs
         // above the card's bottom (`draw_sidebar`), with Prayer times
-        // and AI usage shown. The Mac's window buttons take
+        // shown. The Mac's window buttons take
         // `TITLEBAR` (28) of its 600.
         let rows = (Section::ALL.len() - 1) as f32;
         let last = NAV_Y + rows * (NAV_H + NAV_GAP) - NAV_GAP;
