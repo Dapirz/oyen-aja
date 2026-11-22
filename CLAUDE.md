@@ -53,7 +53,7 @@ Fork ini masih memakai server Oyenza: `drop.oyenza.com` (pairing HP), `studio.oy
 Identitas sendiri sudah selesai (`1790ee2`): nama app Hihu Island, ikon, folder data, mutex, kelas window, Run value dan uninstall key baru.
 
 Nanti (belum dikerjakan):
-- Glass berat saat musik jalan (ukuran 22 Nov 2026, layar 144 Hz, Mcycles/s): Glass 30 fps 670, 60 fps 1051, Display rate 1669; Classic 30 fps 166, 60 fps 303; diam 5. Setting Frame rate sudah ada (`5123451`). Cek apakah Glass menyalin layar dan menjalankan shader penuh di setiap frame walau hanya isi island yang berubah. Ukur dengan `tools\measure_cpu.ps1`.
+- Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
 - RAM saat jalan sekitar 85–105 MB working set (Glass lebih tinggi), jauh dari target 15–30 MB. Cari penyebabnya.
 - Clipboard history: jumlah item dan lama simpan bisa diatur.
 - Screentime.
