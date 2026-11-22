@@ -39,6 +39,20 @@ pub fn fit_centre(want: f32, room: f32, body_w: f32, side: f32) -> f32 {
     }
 }
 
+/// One step of the Position row in Settings: a twentieth of the screen.
+pub const STEP: f32 = 0.05;
+
+/// `x` (None: the middle) moved `steps` steps of [`STEP`] to the right (or
+/// left, negative), kept between 5 % and 95 % across. Landing on the middle
+/// is the middle again (None), as a drop near it is.
+pub fn nudge(x: Option<f32>, steps: i32) -> Option<f32> {
+    let at = x.unwrap_or(0.5);
+    // Whole steps from the middle, so the row comes back to it exactly.
+    let k = ((at - 0.5) / STEP).round() as i32 + steps;
+    let k = k.clamp(-9, 9);
+    (k != 0).then(|| 0.5 + k as f32 * STEP)
+}
+
 /// What to remember for an island centred `centre` DIPs across a monitor
 /// `mon_w` DIPs wide: its share of the width (the same spot on any screen
 /// and scale), or nothing near the middle.
@@ -52,6 +66,23 @@ pub fn remember(centre: f32, mon_w: f32) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nudging_steps_a_twentieth_and_comes_back_to_the_middle() {
+        let near = |got: Option<f32>, want: Option<f32>| match (got, want) {
+            (Some(a), Some(b)) => assert!((a - b).abs() < 1e-5, "{a} != {b}"),
+            (a, b) => assert_eq!(a, b),
+        };
+        near(nudge(None, 1), Some(0.55));
+        near(nudge(None, -2), Some(0.4));
+        near(nudge(Some(0.55), -1), None);
+        // A dragged spot lands on the nearest step first.
+        near(nudge(Some(0.3354), 1), Some(0.4));
+        near(nudge(Some(0.3354), 0), Some(0.35));
+        // Never past 5 % from an edge.
+        near(nudge(Some(0.9), 5), Some(0.95));
+        near(nudge(Some(0.1), -5), Some(0.05));
+    }
 
     #[test]
     fn the_window_follows_the_island_until_the_monitors_edge() {

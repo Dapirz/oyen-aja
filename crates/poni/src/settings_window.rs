@@ -261,6 +261,8 @@ pub enum Key {
     CloseDelay,
     Width,
     Display,
+    Position,
+    LockPosition,
     Fullscreen,
     Lyrics,
     Pronunciation,
@@ -401,6 +403,14 @@ fn minutes(m: u32) -> String {
 }
 
 /// The lyrics' shift as people say it.
+/// Where the island sits along the top edge, for the Position row.
+fn position_text(x: Option<f32>) -> String {
+    match x {
+        None => "Centre".into(),
+        Some(x) => format!("{:.0} %", x * 100.0),
+    }
+}
+
 fn offset_text(ms: i32) -> String {
     match ms {
         0 => "On time".into(),
@@ -438,6 +448,8 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             if cfg!(windows) {
                 shows.push(item(Key::Display, "Display", Some("The screen the island hangs on"), Ctl::Choice(names(&DISPLAYS), chosen(&DISPLAYS, s.monitor))));
             }
+            shows.push(item(Key::Position, "Position", Some("Across the top edge; 50 % is the middle"), Ctl::Stepper(position_text(s.island_x))));
+            shows.push(switch(Key::LockPosition, "Lock position", Some("Dragging the island doesn't move it"), s.lock_position));
             shows.push(item(Key::Fullscreen, "In full-screen apps", Some("Games and videos that fill the screen"), Ctl::Choice(names(&FULLSCREEN), chosen(&FULLSCREEN, s.hide_in_fullscreen))));
             vec![
                 Block::Group(
@@ -616,6 +628,9 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             Act::Pick(i) if i < CLOSE.len() => s.collapse_delay_ms = CLOSE[i].0,
             _ => return,
         },
+        Key::Position if step != 0 => s.island_x = poni_core::spot::nudge(s.island_x, step),
+        Key::Position => return,
+        Key::LockPosition => s.lock_position = !s.lock_position,
         Key::Width => s.expanded_width = (s.expanded_width + step as f32 * WIDTH_STEP).clamp(480.0, 900.0),
         Key::Display => match act {
             Act::Pick(i) if i < DISPLAYS.len() => s.monitor = DISPLAYS[i].0,

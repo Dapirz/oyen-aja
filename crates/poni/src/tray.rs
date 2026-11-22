@@ -61,6 +61,8 @@ pub enum MenuCmd {
     TogglePinned,
     /// "Move island to the centre": back from where it was dragged.
     CentreIsland,
+    /// "Lock island position": dragging the closed island doesn't move it.
+    ToggleLockPosition,
     ToggleAutostart,
     /// "Advanced settings…": the Settings window.
     ShowSettings,
@@ -108,6 +110,7 @@ pub fn menu_items(s: &Settings, pinned: bool) -> Vec<MenuItem> {
         item("Advanced settings…", MenuCmd::ShowSettings, false),
         MenuItem::Separator,
         item("Keep island open", MenuCmd::TogglePinned, pinned),
+        item("Lock island position", MenuCmd::ToggleLockPosition, s.lock_position),
         MenuItem::Sub {
             label: "Theme".into(),
             items: vec![theme("Classic", Theme::Classic), theme("Glass", Theme::Glass), theme("Pill", Theme::Pill), theme("Diorama", Theme::Diorama)],

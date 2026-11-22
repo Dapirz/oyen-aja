@@ -782,6 +782,10 @@ impl App {
     /// it comes within `spot::SNAP` of it.
     fn drag_island(&mut self, lp: LPARAM) {
         let Some(g) = self.grab else { return };
+        // Locked in place (Settings, or the menu): the press stays a click.
+        if self.st.settings.lock_position {
+            return;
+        }
         let s = self.gfx.scale();
         let dx = self.screen_x(lp) - g.from_px;
         if !g.moved {
@@ -1780,6 +1784,7 @@ impl App {
             ToggleSounds => s.sounds = !s.sounds,
             TogglePinned => self.st.pinned = !self.st.pinned,
             CentreIsland => s.island_x = None,
+            ToggleLockPosition => s.lock_position = !s.lock_position,
             ShowSettings => self.show_settings(&mut Vec::new()),
             ToggleAutostart => {
                 let on = crate::autostart::is_enabled();

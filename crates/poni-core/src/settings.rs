@@ -87,6 +87,10 @@ pub struct Settings {
     /// centre as a share of the monitor's width (0 the left edge, 1 the
     /// right), kept on screen ([`crate::spot`]). None: the middle.
     pub island_x: Option<f32>,
+    /// Pressing the closed island and moving sideways doesn't drag it: it
+    /// stays where it is (a game's clicks near the top edge moved it). The
+    /// Position row in Settings still moves it.
+    pub lock_position: bool,
     pub show_media_activity: bool,
     /// Frames a second for the closed island while music plays (the
     /// equalizer, the sung line): 0 = every refresh of the display, else the
@@ -204,6 +208,7 @@ impl Default for Settings {
             step_aside: false,
             monitor: MonitorChoice::Primary,
             island_x: None,
+            lock_position: false,
             show_media_activity: true,
             music_fps: 60,
             lyrics: true,
