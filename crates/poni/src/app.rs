@@ -118,7 +118,7 @@ pub fn main_entry() -> i32 {
         std::env::set_var("PONI_HOME", &home);
     }
     crate::plog::init(paths::log_path());
-    pinfo!("Poni {} starting (args: {:?})", env!("CARGO_PKG_VERSION"), &args[1..]);
+    pinfo!("Hihu {} starting (args: {:?})", env!("CARGO_PKG_VERSION"), &args[1..]);
     std::panic::set_hook(Box::new(|info| {
         perror!("panic: {info}");
     }));
@@ -127,7 +127,7 @@ pub fn main_entry() -> i32 {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     // Single instance (the self-test may run next to a normal instance).
-    let mutex_name = if selftest_dir.is_some() { w!("Local\\Poni.Island.SelfTest") } else { w!("Local\\Poni.Island") };
+    let mutex_name = if selftest_dir.is_some() { w!("Local\\Hihu.Island.SelfTest") } else { w!("Local\\Hihu.Island") };
     let _mutex = unsafe { CreateMutexW(None, true, mutex_name) };
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
         pinfo!("another instance is running; exiting");
@@ -142,7 +142,7 @@ pub fn main_entry() -> i32 {
     }
     // Install on next start: the new version's Setup, downloaded and checked
     // earlier, runs now, before any window, and opens the new version.
-    if selftest_dir.is_none() && !crate::autostart::packaged() && crate::updates::pending_install() {
+    if crate::updates::ENABLED && selftest_dir.is_none() && !crate::autostart::packaged() && crate::updates::pending_install() {
         unsafe { OleUninitialize() };
         return 0;
     }
@@ -154,7 +154,7 @@ pub fn main_entry() -> i32 {
         }
     };
     unsafe { OleUninitialize() };
-    pinfo!("Poni exiting with code {code}");
+    pinfo!("Hihu exiting with code {code}");
     code
 }
 
@@ -791,7 +791,7 @@ impl App {
             }
             self.try_add_tray();
             services::power::register_session(self.helper);
-            if !crate::autostart::packaged() {
+            if crate::updates::ENABLED && !crate::autostart::packaged() {
                 self.updater = Some(crate::updates::Updater::start(paths::data_dir().join("update.json"), &mut self.st, crate::updates::unix_now()));
                 self.schedule_update();
                 self.fetch_setup();
@@ -1864,7 +1864,7 @@ impl App {
         };
         if let Err(e) = services::secret::save(&paths::apple_music_token_path(), &token) {
             pwarn!("apple music: cannot save the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't save the token", "Details in poni.log", 5.0, None);
+            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't save the token", "Details in hihu.log", 5.0, None);
             return;
         }
         pinfo!("apple music: token saved");
@@ -1879,7 +1879,7 @@ impl App {
     fn forget_apple_music_token(&mut self) {
         if let Err(e) = services::secret::delete(&paths::apple_music_token_path()) {
             pwarn!("apple music: cannot remove the token ({e})");
-            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't remove the token", "Details in poni.log", 5.0, None);
+            self.st.notify(Icon::Lyrics, palette::ORANGE, "Couldn't remove the token", "Details in hihu.log", 5.0, None);
             return;
         }
         pinfo!("apple music: token removed");
@@ -2435,7 +2435,7 @@ impl App {
                     }
                     Err(e) => {
                         pwarn!("settings.json not reloaded: {e}");
-                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "Settings not reloaded", "settings.json has an error; see poni.log", 5.0, None);
+                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "Settings not reloaded", "settings.json has an error; see hihu.log", 5.0, None);
                     }
                 }
             }

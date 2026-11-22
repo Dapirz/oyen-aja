@@ -1,7 +1,10 @@
-//! Where Poni keeps its files.
+//! Where Hihu keeps its files.
 //!
-//! - Settings + data: `%APPDATA%\Poni\` (roams with the user profile)
-//! - Cache + log:     `%LOCALAPPDATA%\Poni\`
+//! - Settings + data: `%APPDATA%\Hihu\` (roams with the user profile)
+//! - Cache + log:     `%LOCALAPPDATA%\Hihu\`
+//!
+//! Not `Poni` as in Oyenza Studio: Oyenza and Poni (Bos Digital) both use
+//! that name, and Hihu sits beside them.
 //!
 //! `PONI_HOME` overrides both (used by `--selftest` to stay isolated).
 
@@ -19,11 +22,11 @@ fn env_dir(var: &str) -> PathBuf {
 }
 
 pub fn data_dir() -> PathBuf {
-    home_override().unwrap_or_else(|| env_dir("APPDATA").join("Poni"))
+    home_override().unwrap_or_else(|| env_dir("APPDATA").join("Hihu"))
 }
 
 pub fn cache_dir() -> PathBuf {
-    home_override().map(|h| h.join("cache")).unwrap_or_else(|| env_dir("LOCALAPPDATA").join("Poni"))
+    home_override().map(|h| h.join("cache")).unwrap_or_else(|| env_dir("LOCALAPPDATA").join("Hihu"))
 }
 
 pub fn settings_path() -> PathBuf {
@@ -35,7 +38,7 @@ pub fn store_path() -> PathBuf {
 }
 
 pub fn log_path() -> PathBuf {
-    cache_dir().join("poni.log")
+    cache_dir().join("hihu.log")
 }
 
 pub fn lyrics_cache_dir() -> PathBuf {
@@ -53,17 +56,15 @@ pub fn apple_music_web_token_path() -> PathBuf {
     cache_dir().join("apple-music-web.json")
 }
 
-/// Where files sent from a phone land: `Downloads\Oyenza Studio` (wherever the
-/// user moved Downloads to), or `Downloads\Oyen Poni` where an install from
-/// before the rename made it: Shelf items link to the files in it. Under
+/// Where files sent from a phone land: `Downloads\Hihu Island` (wherever the
+/// user moved Downloads to): Shelf items link to the files in it. Under
 /// `PONI_HOME` for the self-test.
 pub fn phone_inbox_dir() -> PathBuf {
     if let Some(h) = home_override() {
         return h.join("phone-drop");
     }
     let downloads = downloads_dir().unwrap_or_else(|| env_dir("USERPROFILE").join("Downloads"));
-    let before_rename = downloads.join("Oyen Poni");
-    if before_rename.is_dir() { before_rename } else { downloads.join("Oyenza Studio") }
+    downloads.join(crate::version::APP_NAME)
 }
 
 /// Where the Downloader saves videos and sound: the user's Downloads folder
@@ -118,14 +119,14 @@ pub fn notes_audio_dir() -> PathBuf {
     cache_dir().join("notes")
 }
 
-/// Where meeting notes are saved, as Markdown: `Documents\Oyenza Studio\Notes`
+/// Where meeting notes are saved, as Markdown: `Documents\Hihu Island\Notes`
 /// (wherever the user moved Documents to). Under `PONI_HOME` for the self-test.
 pub fn notes_dir() -> PathBuf {
     if let Some(h) = home_override() {
         return h.join("notes-saved");
     }
     let docs = known_folder(&windows::Win32::UI::Shell::FOLDERID_Documents).unwrap_or_else(|| env_dir("USERPROFILE").join("Documents"));
-    docs.join("Oyenza Studio").join("Notes")
+    docs.join(crate::version::APP_NAME).join("Notes")
 }
 
 /// Paired phones (their pairing secrets and names), sealed with DPAPI.

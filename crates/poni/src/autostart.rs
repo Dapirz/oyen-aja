@@ -17,7 +17,7 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITH
 use windows::Win32::System::Registry::*;
 
 const RUN_KEY: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-const VALUE: PCWSTR = w!("Poni");
+const VALUE: PCWSTR = w!("Hihu");
 /// The StartupTask TaskId in installer/msix/AppxManifest.xml.
 const TASK_ID: &str = "PoniStartup";
 /// Startup-task calls answer in milliseconds; never let one hang the UI thread.

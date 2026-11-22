@@ -1,4 +1,4 @@
-1 ICON "poni.ico"
+1 ICON "hihu.ico"
 1 24 "poni.manifest"
 
 1 VERSIONINFO
@@ -11,13 +11,13 @@ BEGIN
   BEGIN
     BLOCK "040904B0"
     BEGIN
-      VALUE "CompanyName", "Jatevo Labs\0"
-      VALUE "FileDescription", "Oyenza Studio - a living notch for Windows\0"
+      VALUE "CompanyName", "Dapirz\0"
+      VALUE "FileDescription", "Hihu Island\0"
       VALUE "FileVersion", "0.2.30\0"
       VALUE "InternalName", "poni\0"
-      VALUE "LegalCopyright", "Copyright (C) 2026 Jatevo Labs\0"
+      VALUE "LegalCopyright", "Copyright (C) 2026 Jatevo Labs; fork by Dapirz (MIT)\0"
       VALUE "OriginalFilename", "poni.exe\0"
-      VALUE "ProductName", "Oyenza Studio\0"
+      VALUE "ProductName", "Hihu Island\0"
       VALUE "ProductVersion", "0.2.30\0"
     END
   END
