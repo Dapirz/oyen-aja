@@ -292,25 +292,8 @@ pub const AI_USAGE: Addon = Addon {
     pro: true,
 };
 
-/// IELTS: Oyen's IELTS Speaking coach, the IELTS page (`crate::ielts`):
-/// Oyen asks the questions out loud, listens to the answers through the
-/// microphone and gives a band score, through the Oyenza account. Its code
-/// is in the app, so there is nothing to download. Off, there is no IELTS
-/// tab, and nothing of it runs: no microphone, no player, no calls. Part of
-/// Studio Pro: it switches on only for an account the server says has Pro,
-/// and its tab goes once the server says an account hasn't.
-pub const IELTS: Addon = Addon {
-    id: "ielts",
-    title: "IELTS",
-    blurb: "Practise IELTS Speaking out loud: Oyen asks, listens and gives you a band.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: true,
-};
-
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 8] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &AI_USAGE, &IELTS, &DOWNLOADER];
+pub const ALL: [&Addon; 7] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &AI_USAGE, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -419,9 +402,9 @@ mod tests {
     }
 
     #[test]
-    fn pro_is_ai_usage_ielts_and_the_downloader() {
+    fn pro_is_ai_usage_and_the_downloader() {
         let pro: Vec<&str> = ALL.iter().filter(|a| a.pro).map(|a| a.id).collect();
-        assert_eq!(pro, vec!["ai", "ielts", "downloader"]);
+        assert_eq!(pro, vec!["ai", "downloader"]);
     }
 
     #[test]
@@ -439,7 +422,7 @@ mod tests {
 
     #[test]
     fn built_in_add_ons_are_off_until_switched_on() {
-        for a in [&SYSTEM, &IELTS] {
+        for a in [&SYSTEM] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
             assert_eq!(Addon::find(a.id), Some(a));
             assert_eq!(Status::Ready.line(a, false), "On");
@@ -543,7 +526,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "ai", "ielts", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "ai", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

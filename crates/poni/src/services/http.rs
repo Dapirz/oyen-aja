@@ -149,22 +149,6 @@ impl Client {
         Self::with(http, user_agent)
     }
 
-    /// A client that never answers from Windows' HTTP cache and writes
-    /// nothing to it. The default one serves a second GET of the same URL
-    /// from the cache when the server sent no `Cache-Control` (the IELTS
-    /// ladder after a session: "answered in 1 ms", the server never asked).
-    pub fn uncached(user_agent: &str) -> Result<Self, FetchError> {
-        let http = (|| {
-            let filter = HttpBaseProtocolFilter::new()?;
-            let cache = filter.CacheControl()?;
-            cache.SetReadBehavior(HttpCacheReadBehavior::MostRecent)?;
-            cache.SetWriteBehavior(HttpCacheWriteBehavior::NoCache)?;
-            HttpClient::Create(&filter)
-        })()
-        .map_err(|e| other("could not create an HTTP client", &e))?;
-        Self::with(http, user_agent)
-    }
-
     fn with(http: HttpClient, user_agent: &str) -> Result<Self, FetchError> {
         let headers = http.DefaultRequestHeaders().map_err(|e| other("could not set request headers", &e))?;
         let ua = HSTRING::from(user_agent);

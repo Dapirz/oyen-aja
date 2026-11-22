@@ -1,8 +1,7 @@
 //! Add-ons page, the "+" at the end of the tab row: features only the people
 //! who switch them on get (`poni_core::addons`). Most download then; Script
-//! reader, System and IELTS are already in the app and only show their
-//! pages (System's readings also run only while it is on; IELTS only while
-//! a session runs).
+//! reader and System are already in the app and only show their pages
+//! (System's readings also run only while it is on).
 //!
 //! One row per add-on: its icon, its name, what it does (or where its
 //! download stands, with a bar while it comes in), its size while it is off,
@@ -131,7 +130,6 @@ fn icon(a: &Addon) -> Icon {
         "notifications" => Icon::Bell,
         "recorder" => Icon::Recorder,
         "downloader" => Icon::Download,
-        "ielts" => Icon::Mic,
         "ai" => Icon::Ai,
         _ => Icon::Addons,
     }
@@ -141,7 +139,6 @@ fn icon(a: &Addon) -> Icon {
 fn about(a: &Addon) -> &'static str {
     match a.id {
         "ai" => "Each AI service on this computer gets a card: your plan, each limit with when it resets, and what's left. Codex, Claude Code, Cursor, Gemini CLI, GitHub Copilot and more. Sign-ins stay here, and nothing about your usage goes to Oyenza.",
-        "ielts" => "Oyen asks IELTS Speaking questions out loud, listens to your answers and gives you a band. Your answers go to Oyenza's server to be scored and are deleted once that's done. IELTS® is a trademark of the IELTS partners. Not official IELTS material, not endorsed by them.",
         "downloader" => "Paste a link, pick Video or Sound, and watch it come in to Downloads and the Shelf. Only what you have the right to keep.",
         _ => a.blurb,
     }
@@ -312,7 +309,7 @@ mod tests {
 
     #[test]
     fn pro_add_ons_show_for_everyone_and_say_what_they_do_without_pro() {
-        use poni_core::addons::{AI_USAGE, DOWNLOADER, IELTS, SCRIPT_READER};
+        use poni_core::addons::{AI_USAGE, DOWNLOADER, SCRIPT_READER};
         let connected = || OyenzaLink::Connected { account: "a\u{2022}\u{2022}\u{2022}@example.com".into() };
         let listed = |st: &AppState, id: &str| rows(st).iter().any(|a| a.id == id);
         let mut st = AppState::new(Settings::default(), Store::default());
@@ -323,7 +320,7 @@ mod tests {
         for (link, pro) in [(OyenzaLink::Off, None), (connected(), None), (connected(), Some(false))] {
             st.oyenza.link = link;
             st.oyenza.pro = pro;
-            for a in [&AI_USAGE, &IELTS, &DOWNLOADER] {
+            for a in [&AI_USAGE, &DOWNLOADER] {
                 assert!(listed(&st, a.id), "{} listed without Pro ({pro:?})", a.id);
                 assert_eq!(status(&st, a), Status::Off, "{} stays off", a.id);
                 assert!(locked(&st, a), "{}: its row opens what it does ({pro:?})", a.id);
@@ -336,15 +333,10 @@ mod tests {
         st.oyenza.pro = Some(true);
         assert_eq!(status(&st, &DOWNLOADER), Status::Ready);
         assert_eq!(status(&st, &AI_USAGE), Status::Ready);
-        assert!(st.ai_usage_on() && !locked(&st, &AI_USAGE) && !locked(&st, &IELTS));
+        assert!(st.ai_usage_on() && !locked(&st, &AI_USAGE));
         st.settings.set_addon(AI_USAGE.id, false);
         assert_eq!(status(&st, &AI_USAGE), Status::Off);
         assert!(!st.ai_usage_on() && !locked(&st, &AI_USAGE));
-        // One left on when Pro ended still switches off.
-        st.settings.set_addon(IELTS.id, true);
-        st.addons.insert(IELTS.id, Status::Ready);
-        st.oyenza.pro = Some(false);
-        assert!(!locked(&st, &IELTS));
         // Not where it isn't offered (the Store build), Pro or not.
         st.downloader_offered = false;
         assert!(!listed(&st, DOWNLOADER.id));

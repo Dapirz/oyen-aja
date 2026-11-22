@@ -774,8 +774,6 @@ pub struct AppState {
     pub notify_can: bool,
     /// The AI tab's readings (its choices: `settings.usage`).
     pub usage: UsageState,
-    /// The IELTS page's session with Oyen (the IELTS add-on).
-    pub ielts: poni_core::ielts::Coach,
     /// Side effects requested during the frame.
     pub cmds: Vec<Command>,
 }
@@ -793,16 +791,9 @@ impl AppState {
         self.page == PageKind::Script && self.script.active
     }
 
-    /// An IELTS session under way keeps the open island from closing (a
-    /// question, an answer being recorded or on its way), while that page is
-    /// on screen.
-    pub fn ielts_holds_island(&self) -> bool {
-        self.page == PageKind::Ielts && self.ielts.holds()
-    }
-
     /// Something on the page on screen keeps the open island from closing.
     pub fn page_holds_island(&self) -> bool {
-        self.phone_holds_island() || self.script_holds_island() || self.ielts_holds_island()
+        self.phone_holds_island() || self.script_holds_island()
     }
 
     pub fn new(settings: Settings, store: Store) -> Self {
@@ -854,7 +845,6 @@ impl AppState {
             notify_access: NotifyAccess::Unknown,
             notify_can: false,
             usage: UsageState::default(),
-            ielts: Default::default(),
             cmds: Vec::new(),
         };
         // On ones start by checking their files (the worker reports back);
@@ -863,7 +853,7 @@ impl AppState {
             let on = st.settings.addon_on(a.id);
             st.addons.insert(a.id, if !on { AddonStatus::Off } else if a.downloads() { AddonStatus::Checking } else { AddonStatus::Ready });
         }
-        // Last open on the Script, System or IELTS
+        // Last open on the Script or System
         // page, since switched off, or on a tab since hidden: open on the
         // first tab.
         let off = match st.page {
@@ -872,7 +862,6 @@ impl AppState {
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Record => !st.record_on(),
             PageKind::Notifications => !st.notifications_on(),
-            PageKind::Ielts => !st.ielts_on(),
             PageKind::Ai => !st.ai_usage_on(),
             p => st.tab_hidden(p),
         };
@@ -948,12 +937,6 @@ impl AppState {
     /// Shelf, Tasks, Focus or Notifications).
     pub fn tab_hidden(&self, p: PageKind) -> bool {
         p.hideable() && self.settings.hidden_tabs.iter().any(|k| k == p.key())
-    }
-
-    /// The IELTS add-on is on, and the server hasn't said the account is
-    /// without Studio Pro: the IELTS tab shows (signed out, its sign-in card).
-    pub fn ielts_on(&self) -> bool {
-        self.addon(poni_core::addons::IELTS.id) == AddonStatus::Ready && self.oyenza.pro != Some(false)
     }
 
     /// AI usage is on: the AI tab shows and its readers may run. It takes an

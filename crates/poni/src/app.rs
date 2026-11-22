@@ -384,18 +384,6 @@ pub struct App {
     glass: crate::glass::Glass,
     /// Prayer times' adzan, while it plays.
     adzan: services::adzan::AdzanPlayer,
-    /// The IELTS page's calls, microphone and voice (each only while needed).
-    ielts: services::ielts::Kit,
-    /// Music that played was paused for the IELTS session (it plays again after).
-    ielts_music: bool,
-    /// The IELTS page was on screen at the last tick (the coach is told when it comes and goes).
-    ielts_shown: bool,
-    /// An IELTS session held the island open at the last tick.
-    ielts_held: bool,
-    /// The self-test runs (for the whole run: `selftest` itself is taken out
-    /// while a step runs), and its IELTS turn is under way.
-    in_selftest: bool,
-    ielts_turn: bool,
     /// The glass was still changing on the last frame (turning light or dark).
     glass_moving: bool,
     /// Animation time of the last frame (the vblank it was shown on).
@@ -663,12 +651,6 @@ impl App {
             services: None,
             glass: crate::glass::Glass::new(services::apps_use_light_theme()),
             adzan: Default::default(),
-            ielts: Default::default(),
-            ielts_music: false,
-            ielts_shown: false,
-            ielts_held: false,
-            in_selftest: selftest.is_some(),
-            ielts_turn: false,
             glass_moving: false,
             last_frame_t: 0.0,
             surface: Surface::default(),
@@ -1559,7 +1541,7 @@ impl App {
                 self.close_settings_window();
                 return;
             }
-            // Add-ons lists IELTS by the account's Pro, as its tab does.
+            // Add-ons lists the Pro add-ons by the account's Pro.
             if after != before && after == Section::Addons {
                 self.oyenza(OyenzaCmd::CheckPro);
             }
@@ -2080,8 +2062,6 @@ impl App {
             OyenzaEvent::Disconnected { by_server } => {
                 self.end_sign_in();
                 self.st.oyenza = crate::state::OyenzaState::default();
-                // Signed out: an IELTS session ends, and the ladder was the account's.
-                self.ielts_off();
                 let (title, subtitle) =
                     if by_server { ("Oyenza disconnected", "Sign in again in Settings") } else { ("Disconnected from Oyenza", "Sign in again any time in Settings") };
                 self.st.notify(Icon::Unlink, palette::TEXT_DIM, title, subtitle, 6.0, None);
@@ -2257,11 +2237,6 @@ impl App {
             } else {
                 self.stop_notify();
             }
-        }
-        // IELTS off: a session ends, the microphone and voice stop, the files go.
-        let ielts_id = poni_core::addons::IELTS.id;
-        if before.addon_on(ielts_id) && !self.st.settings.addon_on(ielts_id) {
-            self.ielts_off();
         }
         if before.game_stats != self.st.settings.game_stats {
             if self.st.settings.game_stats && self.st.game.access == FpsAccess::Unknown {
@@ -2655,25 +2630,6 @@ impl App {
             AppEvent::AdzanEnded => self.adzan_ended(),
             AppEvent::Download { id, line } => self.download_line(id, line),
             AppEvent::DownloadEnded { id, ok } => self.download_ended(id, ok),
-            AppEvent::Ielts(reply) => {
-                let fx = self.st.ielts.reply(*reply, now);
-                self.ielts_do(fx);
-            }
-            // A stopped clip's late report doesn't end the one playing now.
-            AppEvent::VoiceEnded if !self.ielts.voice.playing() => {
-                let failed = self.ielts.voice.failed();
-                self.ielts.voice.stop();
-                // A clip that couldn't play shows its words for their reading time.
-                let fx = if failed { self.st.ielts.voice_failed(now) } else { self.st.ielts.voice_ended(now) };
-                self.ielts_do(fx);
-            }
-            AppEvent::VoiceEnded => {}
-            AppEvent::MicFailed(why) => {
-                pwarn!("ielts: the microphone failed ({why})");
-                let issue = self.ielts.mic_failed();
-                let fx = self.st.ielts.mic_failed(issue);
-                self.ielts_do(fx);
-            }
             AppEvent::Log(s) => pinfo!("{s}"),
         }
         if let Some(before) = media_before {
@@ -2734,7 +2690,7 @@ impl App {
                 self.oyenza(OyenzaCmd::Refresh);
             } else if self.st.page == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-            } else if matches!(self.st.page, PageKind::Ielts | PageKind::Addons | PageKind::Ai) {
+            } else if matches!(self.st.page, PageKind::Addons | PageKind::Ai) {
                 self.oyenza(OyenzaCmd::CheckPro);
             }
         }
@@ -3503,15 +3459,13 @@ impl App {
             pages::focus::on_phase_ended(&mut self.st, ended);
         }
         self.prayer_tick();
-        self.ielts_tick();
         self.script_tick();
-        // Prayer times, System, AI usage, IELTS or Downloader switched off: its tab is gone.
+        // Prayer times, System, AI usage or Downloader switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
             PageKind::System => !self.st.system_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
-            PageKind::Ielts => !self.st.ielts_on(),
             PageKind::Ai => !self.st.ai_usage_on(),
             _ => false,
         };
@@ -4341,145 +4295,6 @@ impl App {
         }
     }
 
-    // ------------------------------------------------------------ IELTS
-
-    /// The IELTS page's coach, each frame: told when the page comes and goes
-    /// (a tab switch, the island closing, the PC locked or the display off,
-    /// a full-screen app), ticked for its clock, fed the microphone's level.
-    /// The worker goes once the page is closed and nothing is in flight.
-    fn ielts_tick(&mut self) {
-        if !self.ielts_live() {
-            return;
-        }
-        let now = self.st.now;
-        let signed_in = matches!(self.st.oyenza.link, OyenzaLink::Connected { .. });
-        let shown = self.expanded && self.st.page == PageKind::Ielts && self.st.ielts_on() && signed_in && !self.locked && !self.display_off && !self.fullscreen_hidden;
-        if shown != self.ielts_shown {
-            self.ielts_shown = shown;
-            let fx = self.st.ielts.show(shown, now);
-            self.ielts_do(fx);
-        }
-        if shown {
-            let fx = self.st.ielts.tick(now);
-            self.ielts_do(fx);
-        }
-        if self.ielts.recording() {
-            self.st.ielts.meter = self.ielts.level();
-        }
-        self.ielts.retry_deletes();
-        if !shown {
-            self.ielts.rest();
-        }
-        let held = self.st.ielts_holds_island();
-        if self.ielts_held && !held {
-            self.maybe_schedule_collapse();
-        }
-        self.ielts_held = held;
-    }
-
-    /// The self-test pictures the IELTS page from made-up states: the coach
-    /// runs only in the app, and in the self-test's own one-turn run.
-    fn ielts_live(&self) -> bool {
-        !self.in_selftest || self.ielts_turn
-    }
-
-    /// A press on the IELTS page.
-    fn ielts_cmd(&mut self, c: crate::commands::IeltsCmd) {
-        use crate::commands::IeltsCmd;
-        let now = self.st.now;
-        let fx = match c {
-            IeltsCmd::Start => self.st.ielts.start(self.st.settings.ielts_spice),
-            IeltsCmd::Mic => self.st.ielts.tap(now),
-            IeltsCmd::Skip => self.st.ielts.skip(),
-            IeltsCmd::Quit => self.st.ielts.quit(now),
-            IeltsCmd::Retry => self.st.ielts.retry(now),
-        };
-        if c == IeltsCmd::Start && self.st.ielts.phase == poni_core::ielts::Phase::Starting {
-            // A new session: whatever an earlier one left behind goes first.
-            self.ielts.voice.stop();
-            services::ielts::clear_files();
-        }
-        self.ielts_do(fx);
-    }
-
-    /// Carry out what the coach asked for, in order; what an effect brings
-    /// back from the coach (a clip that won't play, a recording that
-    /// stopped) runs before the rest.
-    fn ielts_do(&mut self, fx: Vec<poni_core::ielts::Effect>) {
-        use poni_core::ielts::Effect;
-        if !self.ielts_live() {
-            // The self-test's made-up states ask for nothing.
-            return;
-        }
-        let mut todo: std::collections::VecDeque<Effect> = fx.into();
-        while let Some(e) = todo.pop_front() {
-            let now = self.st.now;
-            let more = match e {
-                Effect::Call(c) => {
-                    self.ielts.call(c, &self.sink);
-                    Vec::new()
-                }
-                Effect::Play(path) => match self.ielts.voice.play(&path, &self.sink) {
-                    Ok(()) => Vec::new(),
-                    Err(err) => {
-                        pwarn!("ielts: a clip didn't play ({err})");
-                        self.st.ielts.voice_failed(now)
-                    }
-                },
-                Effect::StopVoice => {
-                    self.ielts.voice.stop();
-                    Vec::new()
-                }
-                Effect::Record => match self.ielts.record(&self.sink) {
-                    Ok(()) => Vec::new(),
-                    Err(issue) => self.st.ielts.mic_failed(issue),
-                },
-                Effect::StopRecord => match self.ielts.stop_record() {
-                    Ok((wav, secs)) => self.st.ielts.recorded(wav, secs, now),
-                    Err(issue) => self.st.ielts.mic_failed(issue),
-                },
-                Effect::DropRecord => {
-                    self.ielts.drop_record();
-                    Vec::new()
-                }
-                Effect::Delete(path) => {
-                    self.ielts.delete(path);
-                    Vec::new()
-                }
-                Effect::PauseMusic => {
-                    // Once a session, like the adzan: music played back by hand stays playing.
-                    if !self.ielts_music && self.st.media.as_ref().is_some_and(|m| m.is_playing()) {
-                        self.st.media_cmd(MediaCmd::PlayPause);
-                        self.ielts_music = true;
-                    }
-                    Vec::new()
-                }
-                Effect::ResumeMusic => {
-                    if std::mem::take(&mut self.ielts_music) && self.st.media.as_ref().is_some_and(|m| !m.is_playing()) {
-                        self.st.media_cmd(MediaCmd::PlayPause);
-                    }
-                    Vec::new()
-                }
-            };
-            for m in more.into_iter().rev() {
-                todo.push_front(m);
-            }
-        }
-    }
-
-    /// The add-on switched off, or signed out: the session ends (the server
-    /// is told), nothing of it keeps running, and its files go.
-    fn ielts_off(&mut self) {
-        use poni_core::ielts::{Call, Effect};
-        let now = self.st.now;
-        // Everything Udahan does but read the ladder again.
-        let fx = self.st.ielts.quit(now).into_iter().filter(|e| *e != Effect::Call(Call::Me)).collect();
-        self.ielts_do(fx);
-        self.ielts.close();
-        self.st.ielts = Default::default();
-        self.ielts_shown = false;
-    }
-
     fn adzan_ended(&mut self) {
         self.adzan.stop();
         self.st.prayer.adzan = false;
@@ -4514,7 +4329,7 @@ impl App {
                 self.oyenza(OyenzaCmd::Refresh);
             } else if p == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
-            } else if matches!(p, PageKind::Ielts | PageKind::Addons | PageKind::Ai) {
+            } else if matches!(p, PageKind::Addons | PageKind::Ai) {
                 self.oyenza(OyenzaCmd::CheckPro);
             }
         }
@@ -4630,7 +4445,6 @@ impl App {
                 Command::Pair(c) => self.pair_cmd(c),
                 Command::Oyenza(c) => self.oyenza(c),
                 Command::Usage(c) => self.usage_cmd(c),
-                Command::Ielts(c) => self.ielts_cmd(c),
                 // The self-test's pictures use the files it seeds (none from the website).
                 Command::GetCities(file) => {
                     if self.selftest.is_none() {
@@ -5066,51 +4880,6 @@ impl App {
                 r
             }
         }
-    }
-
-    /// Self-test, the IELTS turn: calls go to `base` with `key`, the
-    /// recording is `stand_in`, and the IELTS page is open, signed in.
-    pub fn selftest_ielts_begin(&mut self, base: String, key: String, stand_in: PathBuf) {
-        // A kit of its own: no worker from before, and calls go to the run's server.
-        self.ielts = Default::default();
-        self.ielts_turn = true;
-        self.ielts.api = Some((base, key));
-        self.ielts.stand_in = Some(stand_in);
-        self.st.ielts = Default::default();
-        self.st.oyenza = Default::default();
-        self.st.oyenza.link = OyenzaLink::Connected { account: "s\u{2022}\u{2022}\u{2022}@example.com".into() };
-        self.st.settings.set_addon(poni_core::addons::IELTS.id, true);
-        self.st.addons.insert(poni_core::addons::IELTS.id, AddonStatus::Ready);
-        self.st.notice = None;
-        self.st.hud = None;
-        self.st.page = PageKind::Ielts;
-        self.ielts_shown = false;
-        self.selftest_set_expanded(true);
-    }
-
-    /// Self-test, the IELTS turn: a press on the page.
-    pub fn selftest_ielts(&mut self, c: crate::commands::IeltsCmd) {
-        self.st.now = clock::mono();
-        self.ielts_cmd(c);
-        self.request_frame();
-    }
-
-    /// Self-test, the IELTS turn: the files its session left (none, once
-    /// every clip and answer was used and deleted).
-    pub fn selftest_ielts_files(&mut self) -> usize {
-        self.ielts.retry_deletes();
-        std::fs::read_dir(paths::ielts_dir()).map(|d| d.count()).unwrap_or(0)
-    }
-
-    /// Self-test, the IELTS turn is over: nothing of it stays.
-    pub fn selftest_ielts_end(&mut self) {
-        self.ielts_off();
-        self.ielts_turn = false;
-        self.ielts = Default::default();
-        self.st.settings.set_addon(poni_core::addons::IELTS.id, false);
-        self.st.addons.insert(poni_core::addons::IELTS.id, AddonStatus::Off);
-        self.st.oyenza = Default::default();
-        self.st.page = PageKind::ALL[0];
     }
 
     /// At rest: outline settled, mode current, no page switch or outgoing fade.

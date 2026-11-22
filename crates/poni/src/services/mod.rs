@@ -16,12 +16,10 @@ pub mod downloader;
 #[cfg(test)]
 mod downloader_live;
 pub mod http;
-pub mod ielts;
 pub mod imaging;
 pub mod location;
 pub mod lyrics;
 pub mod media;
-pub mod mic;
 pub mod oyenza;
 pub mod pairdrop;
 pub mod phonedrop;
@@ -38,7 +36,6 @@ pub mod sysmon;
 pub mod sysstats;
 pub mod update;
 pub mod usage;
-pub mod voice;
 
 use crate::commands::{MediaCmd, OyenzaCmd, UsageCmd};
 use crate::events::EventSink;

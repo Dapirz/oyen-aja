@@ -120,8 +120,8 @@ fn draw_signed_out(ui: &mut Ui, st: &mut AppState, area: Rect) {
     sign_in_card(ui, st, area, title, body, "oyenza.sign-in");
 }
 
-/// The Oyenza app's icon beside what signing in brings, and the button (the
-/// IELTS page's too, with its own words). While a code waits, the button
+/// The Oyenza app's icon beside what signing in brings, and the button.
+/// While a code waits, the button
 /// shows it on this tab.
 pub(crate) fn sign_in_card(ui: &mut Ui, st: &mut AppState, area: Rect, title: &str, body: &str, id: &str) {
     const ICON: f32 = 64.0;
