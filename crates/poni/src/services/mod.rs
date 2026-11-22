@@ -9,7 +9,6 @@ pub mod audio;
 pub mod backdrop;
 pub mod bluetooth;
 pub mod clipboard;
-pub mod frames;
 pub mod fullscreen;
 pub mod cities;
 pub mod downloader;
@@ -24,14 +23,12 @@ pub mod oyenza;
 pub mod pairdrop;
 pub mod phonedrop;
 pub mod power;
-pub mod psu;
 pub mod romanize;
 #[cfg(test)]
 mod romanize_compare;
 pub mod secret;
 pub mod sound;
 pub mod notifications;
-pub mod sysmon;
 pub mod sysstats;
 pub mod update;
 

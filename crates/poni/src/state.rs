@@ -202,7 +202,7 @@ pub struct Notice {
 
 impl Notice {
     /// No time limit (a new version's): it stays until clicked or put away,
-    /// and lets a volume change or a game's readout show over it meanwhile.
+    /// and lets a volume change show over it meanwhile.
     pub fn stays(&self) -> bool {
         self.until.is_infinite()
     }
@@ -355,44 +355,6 @@ pub struct PageUiState {
     pub downloads: crate::pages::downloads::DownloadsUi,
     /// The Pro add-on whose "what it does" page shows on the Add-ons page.
     pub addon_about: Option<&'static str>,
-}
-
-/// Whether Windows lets Oyenza Studio read a game's frames. Its event tracing
-/// is open to admins and to the Performance Log Users group; the one-time
-/// OK adds the account to that group, which counts from the next sign-in.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub enum FpsAccess {
-    /// Not asked yet.
-    #[default]
-    Unknown,
-    /// Being checked.
-    Checking,
-    /// Frames can be read.
-    Ready,
-    /// The one-time OK is needed.
-    NeedsOk,
-    /// Windows' prompt for it is open.
-    Asking,
-    /// The account is in the group; Windows applies it at the next sign-in.
-    SignOut,
-    /// The OK didn't go through (why, in a few words).
-    Failed(String),
-}
-
-/// Show over games: the readout in the island over a full-screen app
-/// (`activities::Activity::Game`) and the System page's Games view.
-#[derive(Clone, Debug, Default)]
-pub struct GameState {
-    /// The readout is on screen: Show over games is on and a full-screen
-    /// app is in front.
-    pub active: bool,
-    /// The full-screen app ("cs2.exe").
-    pub app: Option<String>,
-    /// Its frame rate, while it draws and the frames can be read.
-    pub rate: Option<poni_core::frames::FrameRate>,
-    /// Frames per second over the last minute in front.
-    pub history: poni_core::sysmon::Series,
-    pub access: FpsAccess,
 }
 
 /// Oyenza sign-in, as the island sees it.
@@ -553,10 +515,6 @@ pub struct AppState {
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
     pub stats: SysStats,
-    /// The CPU and GPU readings for the readout over a game (empty otherwise).
-    pub system: poni_core::sysmon::Monitor,
-    /// Show over games.
-    pub game: GameState,
     pub shelf_thumbs: HashMap<String, Option<Image>>,
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
@@ -649,8 +607,6 @@ impl AppState {
             hud: None,
             notice: None,
             stats: SysStats::default(),
-            system: poni_core::sysmon::Monitor::default(),
-            game: GameState::default(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,

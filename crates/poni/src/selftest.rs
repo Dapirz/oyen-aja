@@ -57,7 +57,7 @@ use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::png;
 use crate::state::{
-    AgendaState, AppState, CityFile, FpsAccess, GameState, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
+    AgendaState, AppState, CityFile, Hud, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, OyenzaLink,
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
@@ -72,11 +72,6 @@ use poni_core::prayer::{PlaceList, World};
 use poni_core::pomodoro::{Phase as PomoPhase, RunState};
 use poni_core::settings::{IdleStyle, PrayerFollow, Theme};
 use poni_core::shelf::ShelfItem;
-use poni_core::frames::FrameRate;
-use poni_core::sysmon::{
-    AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading, MemoryReading, Monitor, NetReading, Reading,
-    Series, HISTORY_LEN,
-};
 use poni_core::timeline::Timeline;
 use serde::Serialize;
 use std::cell::Cell;
@@ -268,260 +263,6 @@ fn fake_phone(scene: Scene, now: f64) -> Option<PhoneDrop> {
         Scene::ShelfPairedPhones => Some(PhoneDrop { view: PhoneView::Paired, ..ready }),
         _ => None,
     }
-}
-
-/// Paths of the sample apps (keys for their icons only; never opened) and their tile colours.
-const SAMPLE_ICONS: [(&str, u32); 8] = [
-    ("C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", 0x1A9FD9),
-    ("C:\\Users\\Sample\\AppData\\Roaming\\Spotify\\Spotify.exe", 0x1DB954),
-    ("C:\\Windows\\explorer.exe", 0xF2C14E),
-    ("C:\\Users\\Sample\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe", 0x2F80ED),
-    ("C:\\Windows\\System32\\dwm.exe", 0x00A4EF),
-    ("C:\\Users\\Sample\\AppData\\Local\\Discord\\app-1.0.9200\\Discord.exe", 0x5865F2),
-    ("C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25010.11-0\\MsMpEng.exe", 0x0078D4),
-    ("C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE", 0x2B579A),
-];
-
-fn sample_app(i: usize, name: &str, cpu: f32, memory: u64, io: f64) -> AppUse {
-    let path = SAMPLE_ICONS[i].0;
-    let image = path.rsplit('\\').next().unwrap_or(path).to_lowercase();
-    AppUse { image, name: name.into(), path: Some(path.into()), pid: 1000 + i as u64, cpu, memory, io, processes: 1 }
-}
-
-/// The kernel's own entry: no file, so the page shows Windows' mark.
-fn sample_system(cpu: f32, memory: u64, io: f64) -> AppUse {
-    AppUse { image: "system".into(), name: "System".into(), path: None, pid: 4, cpu, memory, io, processes: 1 }
-}
-
-/// The readings' sample minute for the readout over a game (all made up):
-/// a laptop with a hybrid CPU.
-fn fake_system(_scene: Scene) -> Monitor {
-    let mut m = Monitor::default();
-    const MIB: f64 = 1024.0 * 1024.0;
-    for i in 0..HISTORY_LEN {
-        let t = i as f32;
-        let last = i + 1 == HISTORY_LEN;
-        let spike = if (38..45).contains(&i) { 0.22 * ((t - 38.0) / 6.0 * std::f32::consts::PI).sin() } else { 0.0 };
-        let cpu = if last { 0.23 } else { (0.19 + 0.05 * (t / 4.3).sin() + 0.03 * (t / 1.7 + 1.1).sin() + spike).clamp(0.03, 0.95) };
-        let gpu = if last { 0.31 } else { (0.24 + 0.08 * (t / 5.1 + 0.4).sin() + 0.04 * (t / 2.3).sin() + if (18..30).contains(&i) { 0.3 } else { 0.0 }).clamp(0.02, 0.98) };
-        let burst = |at: usize, len: usize, peak: f64| if (at..at + len).contains(&i) { peak * (((i - at) as f64 + 0.5) / len as f64 * std::f64::consts::PI).sin() } else { 0.0 };
-        let read = if last { 1.2 * MIB } else { 0.15 * MIB + burst(12, 6, 6.5 * MIB) + burst(41, 4, 2.8 * MIB) };
-        let write = if last { 0.33 * MIB } else { 0.05 * MIB + burst(20, 9, 1.9 * MIB) };
-        let down = if last { 1.2 * MIB } else { 0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB) };
-        let up = if last { 0.082 * MIB } else { 0.02 * MIB + burst(25, 8, 0.6 * MIB) };
-        let sample = Sample { cpu, gpu, mem: 0.6 + 0.004 * (t / 6.0).sin(), read, write, down, up, t };
-        m.push(sample_reading(true, &sample));
-    }
-    m
-}
-
-/// Show over games, for its scenes: a game at about 144 fps (one hitch in
-/// the minute), the GPU near full and warm. Before the one-time OK the
-/// frame rate is unknown and no game has been counted.
-fn fake_game(scene: Scene, system: &mut Monitor) -> GameState {
-    if !scene.game() {
-        return GameState::default();
-    }
-    let allowed = scene == Scene::GameStats;
-    let in_front = true;
-    if in_front {
-        if let Some(r) = system.latest.as_mut() {
-            if let Some(c) = r.cpu.as_mut() {
-                c.load = 0.38;
-            }
-            if let Some(g) = r.gpu.as_mut() {
-                g.util = 0.97;
-                g.engine_3d = 0.97;
-                g.temp_c = Some(71.0);
-                g.mem_used = GIB * 63 / 10;
-            }
-        }
-    }
-    let mut history = Series::default();
-    if allowed {
-        for i in 0..HISTORY_LEN {
-            let t = i as f32;
-            let dip = if (33..36).contains(&i) { 38.0 } else { 0.0 };
-            history.push(Some(141.0 + 3.0 * (t / 3.7).sin() + 1.5 * (t / 1.3 + 0.6).sin() - dip));
-        }
-    }
-    GameState {
-        active: in_front,
-        app: in_front.then(|| "Harbor Racers".to_string()),
-        rate: (allowed && in_front).then_some(FrameRate { fps: 144.2, frame_ms: 6.93, worst_ms: 9.4 }),
-        history,
-        access: if allowed { FpsAccess::Ready } else { FpsAccess::NeedsOk },
-    }
-}
-
-/// One second of the sample minute.
-struct Sample {
-    cpu: f32,
-    gpu: f32,
-    mem: f32,
-    read: f64,
-    write: f64,
-    down: f64,
-    up: f64,
-    /// Seconds into the minute.
-    t: f32,
-}
-
-fn sample_reading(laptop: bool, s: &Sample) -> Reading {
-    let total = GIB * 16;
-    const MIB: u64 = 1024 * 1024;
-    // Six performance cores with two threads each, then eight efficiency cores.
-    let cores = (0..20)
-        .map(|k| {
-            let p = k < 12;
-            let wave = 0.5 + 0.5 * (s.t / 3.0 + k as f32 * 1.7).sin();
-            let load = if p { s.cpu * (0.6 + 1.1 * wave) } else { s.cpu * (0.3 + 0.5 * wave) };
-            CoreLoad { load: load.clamp(0.02, 1.0), kind: if p { CoreKind::Performance } else { CoreKind::Efficiency } }
-        })
-        .collect();
-    Reading {
-        cpu: Some(CpuReading {
-            load: s.cpu,
-            user: s.cpu * 0.62,
-            kernel: s.cpu * 0.38,
-            interrupt: s.cpu * 0.03,
-            cores,
-            logical: 20,
-            base_mhz: Some(2_600),
-            mhz: Some(3_400),
-            mhz_p: Some(3_900),
-            mhz_e: Some(2_800),
-            temp_c: laptop.then_some(54.0),
-            // Package power follows the load (a laptop's chip is a smaller one).
-            power_w: Some(if laptop { 18.5 } else { 34.0 + 165.0 * s.cpu }),
-            uptime_s: 3 * 86_400 + 4 * 3600 + 12 * 60,
-        }),
-        gpu: Some(GpuReading {
-            name: "NVIDIA GeForce RTX 4060 Laptop GPU".into(),
-            util: s.gpu,
-            engine_3d: s.gpu,
-            copy: 0.04,
-            video_decode: 0.12,
-            video_encode: 0.0,
-            tiler: 0.0,
-            mem_used: GIB * 21 / 10,
-            mem_total: GIB * 8,
-            integrated: false,
-            temp_c: Some(61.0),
-            fan_rpm: Some(2_150),
-            mhz: Some(1_890),
-            power_w: Some(12.0 + 95.0 * s.gpu),
-        }),
-        memory: Some(MemoryReading {
-            total,
-            used: (total as f64 * f64::from(s.mem)) as u64,
-            committed: GIB * 121 / 10,
-            commit_limit: GIB * 184 / 10,
-            cached: GIB * 42 / 10,
-            wired: GIB * 9 / 10,
-            compressed: GIB * 6 / 10,
-            free: GIB * 22 / 10,
-            page_used: GIB * 3 / 10,
-            page_total: GIB * 24 / 10,
-        }),
-        drives: vec![
-            Drive { root: "C:".into(), label: "Windows".into(), total: GIB * 476, free: GIB * 212, system: true },
-            Drive { root: "D:".into(), label: "Data".into(), total: GIB * 931, free: GIB * 640, system: false },
-        ],
-        disk: Some(DiskActivity { read_bps: s.read, write_bps: s.write, active: Some(0.14) }),
-        network: Some(NetReading {
-            online: true,
-            adapter: "Wi-Fi".into(),
-            ipv4: Some("192.168.1.42".into()),
-            mac: "3C:22:FB:0A:11:9E".into(),
-            link_bps: 866_700_000,
-            down_bps: s.down,
-            up_bps: s.up,
-            received: GIB * 34 / 10,
-            sent: 410 * MIB,
-        }),
-        battery: laptop.then(|| BatteryReading {
-            percent: 76,
-            secs_left: Some(2 * 3600 + 14 * 60),
-            design_mwh: Some(57_000),
-            full_mwh: Some(51_870),
-            cycles: Some(193),
-            rate_mw: Some(-8_200),
-            ..BatteryReading::default()
-        }),
-        power: None,
-        top_cpu: vec![
-            sample_app(0, "Microsoft Edge", 0.091, GIB * 21 / 10, 1.2e6),
-            sample_app(1, "Spotify", 0.042, 412 * MIB, 4.1e5),
-            sample_system(0.023, 0, 8.2e5),
-            sample_app(4, "Desktop Window Manager", 0.018, 88 * MIB, 0.0),
-            sample_app(2, "Windows Explorer", 0.013, 96 * MIB, 4.0e4),
-            sample_app(5, "Discord", 0.009, 520 * MIB, 1.2e4),
-            sample_app(3, "Visual Studio Code", 0.008, 940 * MIB, 9.6e4),
-            sample_app(6, "Antimalware Service Executable", 0.004, 280 * MIB, 3.1e6),
-        ],
-        top_memory: vec![
-            sample_app(0, "Microsoft Edge", 0.091, GIB * 21 / 10, 1.2e6),
-            sample_app(3, "Visual Studio Code", 0.008, 940 * MIB, 9.6e4),
-            sample_app(5, "Discord", 0.009, 520 * MIB, 1.2e4),
-            sample_app(1, "Spotify", 0.042, 412 * MIB, 4.1e5),
-            sample_app(6, "Antimalware Service Executable", 0.004, 280 * MIB, 3.1e6),
-            sample_app(7, "Microsoft Word", 0.002, 210 * MIB, 3.0e3),
-            sample_app(2, "Windows Explorer", 0.013, 96 * MIB, 4.0e4),
-            sample_app(4, "Desktop Window Manager", 0.018, 88 * MIB, 0.0),
-        ],
-        top_io: vec![
-            sample_app(6, "Antimalware Service Executable", 0.004, 280 * MIB, 3.1e6),
-            sample_app(0, "Microsoft Edge", 0.091, GIB * 21 / 10, 1.2e6),
-            sample_system(0.023, 0, 8.2e5),
-            sample_app(1, "Spotify", 0.042, 412 * MIB, 4.1e5),
-            sample_app(3, "Visual Studio Code", 0.008, 940 * MIB, 9.6e4),
-            sample_app(2, "Windows Explorer", 0.013, 96 * MIB, 4.0e4),
-            sample_app(5, "Discord", 0.009, 520 * MIB, 1.2e4),
-            sample_app(7, "Microsoft Word", 0.002, 210 * MIB, 3.0e3),
-        ],
-    }
-}
-
-/// Judge one reading from the real sources: the core readings must be
-/// there; the rest is reported (a build server has no battery or GPU counters).
-fn system_readings(p: crate::services::sysmon::Probe) -> (bool, String) {
-    use poni_core::sysmon::fmt_bytes;
-    let r = &p.reading;
-    let cpu = r.cpu.as_ref().filter(|c| (0.0..=1.0).contains(&c.load) && c.logical > 0);
-    let mem = r.memory.as_ref().filter(|m| m.total > 0 && m.used <= m.total);
-    let ok = cpu.is_some() && mem.is_some() && !r.drives.is_empty() && !r.top_memory.is_empty();
-    let apps: Vec<String> = r.top_memory.iter().take(3).map(|a| format!("{} ({}{})", a.name, fmt_bytes(a.memory), if a.path.is_some() { ", path" } else { "" })).collect();
-    let cores = cpu.map_or("missing".into(), |c| match c.hybrid() {
-        Some((p, e)) => format!("{} ({p} P + {e} E)", c.cores.len()),
-        None if c.cores.is_empty() => "total only".into(),
-        None => c.cores.len().to_string(),
-    });
-    let ms = |d: std::time::Duration| format!("{:.1} ms", d.as_secs_f64() * 1000.0);
-    let detail = format!(
-        "cpu {} · cores {} · temperature {} · package power {} · gpu {} · memory {} · drives {} · disk activity {} · network {} · battery {} · top memory {} · light reading {} · first full {} · full {} ({}) · light reading CPU {}",
-        cpu.map_or("missing".into(), |c| format!("{:.0}% of {} threads{}", c.load * 100.0, c.logical, c.mhz.map_or(String::new(), |m| format!(" at {m} MHz")))),
-        cores,
-        cpu.and_then(|c| c.temp_c).map_or("not reported".into(), |t| format!("{t:.0} °C")),
-        cpu.and_then(|c| c.power_w).map_or("not reported".into(), |w| format!("{w:.1} W")),
-        r.gpu.as_ref().map_or("none".into(), |g| format!("{} {:.0}% {} of {}", g.name, g.util * 100.0, fmt_bytes(g.mem_used), fmt_bytes(g.mem_total))),
-        mem.map_or("missing".into(), |m| format!("{} of {} (wired {}, compressed {}, cached {}, free {})", fmt_bytes(m.used), fmt_bytes(m.total), fmt_bytes(m.wired), fmt_bytes(m.compressed), fmt_bytes(m.cached), fmt_bytes(m.free))),
-        if r.drives.is_empty() { "none".into() } else { r.drives.iter().map(|d| d.root.clone()).collect::<Vec<_>>().join(" ") },
-        if r.disk.is_some() { "yes" } else { "no" },
-        r.network.as_ref().map_or("unavailable".into(), |n| if n.online { format!("{} {} {}", n.adapter, n.ipv4.as_deref().unwrap_or(""), poni_core::sysmon::fmt_link(n.link_bps)) } else { "offline".into() }),
-        r.battery.as_ref().map_or("none".into(), |b| format!("{}%", b.percent)),
-        if apps.is_empty() { "none".into() } else { apps.join(", ") },
-        ms(p.light),
-        ms(p.first_full),
-        ms(p.full),
-        p.parts.iter().map(|(name, d)| format!("{name} {}", ms(*d))).collect::<Vec<_>>().join(", "),
-        match (p.light_cycles, cpu.and_then(|c| c.mhz)) {
-            (Some(cycles), Some(mhz)) => format!("{cycles} cycles = {:.2} ms at {mhz} MHz", cycles as f64 / (f64::from(mhz) * 1000.0)),
-            (Some(cycles), None) => format!("{cycles} cycles"),
-            _ => "not measured".into(),
-        },
-    );
-    (ok, detail)
 }
 
 fn fake_stats() -> SysStats {
@@ -932,10 +673,6 @@ enum Scene {
     OyenzaTomorrow,
     /// Oyenza: a card charge read from the bank's email, its sum hidden.
     OyenzaMoneyOut,
-    /// Show over games: the readout over a game.
-    GameStats,
-    /// ...before the one-time OK: the frame rate waits, the rest shows.
-    GameStatsAllow,
     /// Music: a Japanese song whose kanji went unread, offering Japanese readings.
     JaOffer,
     /// Music: ...and Japanese readings coming in.
@@ -1108,7 +845,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 90] = [
+const SCENES: [Scene; 88] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1163,8 +900,6 @@ const SCENES: [Scene; 90] = [
     Scene::OyenzaYesterday,
     Scene::OyenzaTomorrow,
     Scene::OyenzaMoneyOut,
-    Scene::GameStats,
-    Scene::GameStatsAllow,
     Scene::JaOffer,
     Scene::JaGetting,
     // Appended so the numbers above stay. Every theme runs them; the Pill
@@ -1276,8 +1011,6 @@ impl Scene {
             Scene::OyenzaYesterday => "page-oyenza-yesterday".into(),
             Scene::OyenzaTomorrow => "page-oyenza-tomorrow".into(),
             Scene::OyenzaMoneyOut => "oyenza-money-out".into(),
-            Scene::GameStats => "game-stats".into(),
-            Scene::GameStatsAllow => "game-stats-allow".into(),
             Scene::JaOffer => "page-media-ja-offer".into(),
             Scene::JaGetting => "page-media-ja-getting".into(),
             Scene::IdleStatus => "idle-status".into(),
@@ -1391,11 +1124,6 @@ impl Scene {
 
     fn expanded(self) -> bool {
         self.page().is_some()
-    }
-
-    /// Show over games is on (and a game is in front, or was).
-    fn game(self) -> bool {
-        matches!(self, Scene::GameStats | Scene::GameStatsAllow)
     }
 
     fn media_playing(self) -> bool {
@@ -1914,10 +1642,6 @@ pub struct SelfTest {
     shelf_thumbs: Vec<(String, Option<Image>)>,
     /// The real add-on download (PONI_SELFTEST_ADDONS=download), running beside the scenes.
     addon_fetch: Option<std::sync::mpsc::Receiver<(bool, String)>>,
-    /// Show over games' frame count, run on Poni's own frames: Windows' frame
-    /// log must deliver them (PONI_SELFTEST_FRAMES=required on Windows CI,
-    /// which runs as admin).
-    frames: Option<crate::services::frames::Frames>,
 }
 
 /// Transitions recorded in animation mode: (name, from, to).
@@ -1993,23 +1717,11 @@ impl SelfTest {
             shelf_items: Vec::new(),
             shelf_thumbs: Vec::new(),
             addon_fetch: None,
-            frames: None,
         }
     }
 
     /// Seed the app with fake data. Called once before the first frame.
     pub fn begin(&mut self, st: &mut AppState) {
-        // The real readers behind the System page (its scenes show sample
-        // readings); before the scene clock starts, as it takes a moment.
-        let (ok, detail) = system_readings(crate::services::sysmon::probe());
-        self.checks.push(check("system-readings", ok, detail));
-        // Show over games: count Poni's own frames through the whole run.
-        let required = std::env::var("PONI_SELFTEST_FRAMES").is_ok_and(|v| v.trim().eq_ignore_ascii_case("required"));
-        match crate::services::frames::Frames::start_selftest(std::process::id()) {
-            Ok(f) => self.frames = Some(f),
-            Err(e) if required => self.checks.push(check("frame-count", false, format!("the frame count didn't start: {e:?}"))),
-            Err(e) => crate::pinfo!("selftest: frame count not started ({e:?})"),
-        }
         self.t0 = Instant::now();
         if self.theme == Theme::Glass {
             let run = GlassRun::from_env();
@@ -2945,9 +2657,6 @@ impl SelfTest {
         } else {
             st.store.script.text.clear();
         }
-        st.system = fake_system(scene);
-        st.settings.game_stats = scene.game();
-        st.game = fake_game(scene, &mut st.system);
         if let Some(p) = scene.page() {
             st.page = p;
         }
@@ -3594,17 +3303,6 @@ impl SelfTest {
             write_errors.join("; ")
         };
         self.checks.push(check("png-files", writers_done && write_errors.is_empty(), detail));
-        // The GPU renderer presents every frame through DXGI, so the count
-        // must have seen them; the software renderer presents none.
-        if let Some(f) = self.frames.take() {
-            let n = f.total();
-            drop(f);
-            if self.renderer != "software" {
-                self.checks.push(check("frame-count", n > 0, format!("{n} of Oyenza Studio's own frames counted from Windows' frame log")));
-            } else {
-                crate::pinfo!("selftest: frame count saw {n} frames (the software renderer presents none)");
-            }
-        }
         if let Some(rx) = self.addon_fetch.take() {
             let (ok, detail) = rx.recv_timeout(std::time::Duration::from_secs(60)).unwrap_or((false, "still downloading 60 s after the scenes".into()));
             self.checks.push(check("addon-download", ok, detail));

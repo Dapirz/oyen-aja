@@ -1,6 +1,5 @@
-//! What the collapsed island shows: idle pill, live activities (a screen
-//! recording, media, timer, the minutes before a prayer, the readout over
-//! games, downloads), HUD
+//! What the collapsed island shows: idle pill, live activities (media,
+//! timer, the minutes before a prayer, downloads), HUD
 //! pop-ups (volume, charging, Bluetooth) and notices.
 //!
 //! Collapsed pills are sized to their content: Windows has no camera
@@ -11,15 +10,13 @@ use crate::icons::Icon;
 use crate::island::Geom;
 use crate::oyen;
 use crate::pages::{self, PageKind};
-use crate::state::{AppState, FpsAccess, HudKind, InlineAction, Notice};
+use crate::state::{AppState, HudKind, InlineAction, Notice};
 use crate::ui::{wid, PillStyle, Ui, PILL_SMALL};
 use poni_core::datetime::{fmt_clock, fmt_countdown};
-use poni_core::frames::fmt_fps;
 use poni_core::geom::{clamp01, palette, Color, Point, Rect};
 use poni_core::pomodoro::Phase;
 use poni_core::settings::IdleStyle;
 use poni_core::svgpath::Seg;
-use poni_core::sysmon::fmt_pct;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Activity {
@@ -28,8 +25,6 @@ pub enum Activity {
     MediaTimer,
     /// Prayer times: the minutes before the next prayer.
     Prayer,
-    /// Show over games: frame rate, GPU and CPU while a full-screen app is in front.
-    Game,
     /// The Downloader add-on: how far its downloads are.
     Download,
 }
@@ -94,12 +89,6 @@ const PRAYER_OK_H: f32 = 24.0;
 const PRAYER_OK_INSET: f32 = (32.0 - PRAYER_OK_H) / 2.0;
 /// What the OK takes at the pill's right end, from where the words end.
 pub(crate) const PRAYER_OK_ROOM: f32 = 12.0 + PRAYER_OK_W + PRAYER_OK_INSET;
-/// The readout over games: room for "999 fps", "GPU 100% · 100°" and
-/// "CPU 100%" with dividers (tabular digits keep it still as numbers
-/// change), and without the temperature when the driver reports none.
-const GAME_W: f32 = 276.0;
-const GAME_NO_TEMP_W: f32 = 236.0;
-const GAME_DIVIDER: Color = Color::white(0.18);
 /// Downloads: the ring with the arrow in it, then "37%" (the timer's
 /// width); the long timer's while the count sits beside the ring.
 const DOWNLOAD_W: f32 = 96.0;
@@ -115,7 +104,6 @@ pub fn content_key(m: &Mode) -> u32 {
         Mode::Activity(Activity::Timer) => 3,
         Mode::Activity(Activity::MediaTimer) => 4,
         Mode::Activity(Activity::Prayer) => 5,
-        Mode::Activity(Activity::Game) => 6,
         Mode::Activity(Activity::Download) => 8,
         Mode::Hud(t) => 10 + *t as u32,
         Mode::Notice => 20,
@@ -160,10 +148,6 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
     if prayer_countdown(st).is_some() {
         return Some(Activity::Prayer);
     }
-    // Over a game the readout takes the pill; music and timer wait.
-    if st.game.active {
-        return Some(Activity::Game);
-    }
     let media = st.settings.show_media_activity
         && st.media.as_ref().is_some_and(|m| m.is_playing() || media_grace_end(st).is_some_and(|end| st.now < end));
     let timer = st.pomodoro.is_active();
@@ -186,8 +170,8 @@ fn downloading(st: &AppState) -> bool {
 
 pub fn collapsed_mode(st: &AppState) -> Mode {
     // A notice that stays (a new version's) waits under a volume or
-    // brightness change and a game's readout, and shows again after.
-    let waits = st.notice.as_ref().is_some_and(|n| n.stays()) && (st.hud.is_some() || st.game.active);
+    // brightness change, and shows again after.
+    let waits = st.notice.as_ref().is_some_and(|n| n.stays()) && st.hud.is_some();
     if st.notice.is_some() && !waits {
         Mode::Notice
     } else if let Some(h) = &st.hud {
@@ -280,7 +264,6 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
         }
         Mode::Activity(Activity::MediaTimer) => Geom::new(132.0, 32.0, 15.0),
         Mode::Activity(Activity::Prayer) => Geom::new(PRAYER_W, 32.0, 15.0),
-        Mode::Activity(Activity::Game) => Geom::new(if game_temp(st).is_some() { GAME_W } else { GAME_NO_TEMP_W }, 32.0, 15.0),
         Mode::Activity(Activity::Download) => Geom::new(if download_many(st) { DOWNLOAD_MANY_W } else { DOWNLOAD_W }, 32.0, 15.0),
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
@@ -600,7 +583,6 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             let end = draw_prayer_ok(ui, body);
             ui.c.text(&text, Rect::new(body.x + 36.0, body.y, end - body.x - 36.0, body.h), &ts);
         }
-        Activity::Game => draw_game(ui, st, body),
         Activity::Download => draw_download(ui, st, body),
         Activity::MediaTimer => {
             // Art on the left; the ring sits right next to its countdown.
@@ -692,56 +674,6 @@ fn arrow_down(ui: &mut Ui, c: Point, color: Color) {
     let (x, y) = (c.x, c.y);
     let segs = [Seg::MoveTo(x, y - 4.25), Seg::LineTo(x, y + 4.25), Seg::MoveTo(x - 3.5, y + 0.75), Seg::LineTo(x, y + 4.25), Seg::LineTo(x + 3.5, y + 0.75)];
     ui.c.path(&segs, None, Some((color, 1.6)));
-}
-
-/// The GPU's temperature for the readout, when its driver reports one.
-fn game_temp(st: &AppState) -> Option<f32> {
-    st.system.latest.as_ref()?.gpu.as_ref()?.temp_c
-}
-
-/// "144 fps | GPU 97% · 71° | CPU 38%", centred. The frame rate is a dim
-/// dash until Windows lets Poni read frames and while the game isn't
-/// drawing; the rest comes from the System page's readers.
-fn draw_game(ui: &mut Ui, st: &AppState, body: Rect) {
-    let reading = st.system.latest.as_ref();
-    let label = TextStyle::footnote().color(palette::TEXT_DIM);
-    let value = TextStyle::body().weight(Weight::Semibold).tabular();
-    let big = TextStyle::headline().weight(Weight::Bold).tabular();
-    let dash = || "\u{2013}".to_string();
-    let fps = match (st.game.rate, &st.game.access) {
-        (Some(r), _) => [(fmt_fps(r.fps), big), (" fps".into(), label)],
-        (None, FpsAccess::Ready | FpsAccess::Unknown | FpsAccess::Checking) => [(dash(), big), (" fps".into(), label)],
-        // Waiting for the one-time OK: the slot stays, dimmer.
-        (None, _) => [(dash(), big.color(palette::DISABLED)), (" fps".into(), label.color(palette::DISABLED))],
-    };
-    let gpu = match reading.and_then(|r| r.gpu.as_ref()) {
-        Some(g) => match g.temp_c {
-            Some(t) => format!("{} \u{b7} {t:.0}\u{b0}", fmt_pct(g.util)),
-            None => fmt_pct(g.util),
-        },
-        None => dash(),
-    };
-    let cpu = reading.and_then(|r| r.cpu.as_ref()).map_or_else(dash, |c| fmt_pct(c.load));
-    let groups = [fps, [("GPU ".into(), label), (gpu, value)], [("CPU ".into(), label), (cpu, value)]];
-
-    const GAP: f32 = 11.0;
-    let widths: Vec<[f32; 2]> = groups.iter().map(|g| g.each_ref().map(|(t, ts)| ui.c.measure(t, ts, 200.0).0)).collect();
-    let total = widths.iter().flatten().sum::<f32>() + (groups.len() - 1) as f32 * (2.0 * GAP + 1.0);
-    let mut x = (body.center().x - total / 2.0).max(body.x + 12.0);
-    let cy = body.center().y;
-    for (i, (group, ws)) in groups.iter().zip(&widths).enumerate() {
-        if i > 0 {
-            x += GAP;
-            ui.c.fill_rect(Rect::new(snap(ui, x), cy - 8.0, 1.0, 16.0), GAME_DIVIDER);
-            x += 1.0 + GAP;
-        }
-        for ((t, ts), w) in group.iter().zip(ws) {
-            // Smaller words sit a pixel low, nearer the numbers' baseline.
-            let dy = if ts.size < value.size { 1.0 } else { 0.0 };
-            ui.c.text(t, Rect::new(x, body.y + dy, w + 2.0, body.h), ts);
-            x += w;
-        }
-    }
 }
 
 fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
@@ -1059,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn a_notice_that_stays_waits_under_a_volume_change_and_a_games_readout() {
+    fn a_notice_that_stays_waits_under_a_volume_change() {
         let mut st = AppState::new(Settings::default(), Store::default());
         st.notify(Icon::Download, palette::GREEN, "Update available", "", f64::INFINITY, None);
         assert!(st.notice.as_ref().is_some_and(|n| n.stays()));
@@ -1067,14 +999,10 @@ mod tests {
         st.hud = Some(crate::state::Hud { kind: HudKind::Volume { level: 0.5, muted: false }, until: st.now + 2.0 });
         assert_eq!(collapsed_mode(&st), Mode::Hud(HudTag::Volume));
         st.hud = None;
-        st.game.active = true;
-        assert_eq!(collapsed_mode(&st), Mode::Activity(Activity::Game));
-        st.game.active = false;
-        assert_eq!(collapsed_mode(&st), Mode::Notice, "and back once they're gone");
-        // A notice with a time limit still shows over both.
+        assert_eq!(collapsed_mode(&st), Mode::Notice, "and back once it's gone");
+        // A notice with a time limit still shows over it.
         st.notify(Icon::Download, palette::GREEN, "Saved", "", 5.0, None);
         st.hud = Some(crate::state::Hud { kind: HudKind::Volume { level: 0.5, muted: false }, until: st.now + 2.0 });
-        st.game.active = true;
         assert_eq!(collapsed_mode(&st), Mode::Notice);
     }
 
@@ -1137,9 +1065,6 @@ mod tests {
         assert_eq!(current_activity(&song), Some(Activity::Media));
         st.pomodoro.start(st.now);
         assert_eq!(current_activity(&st), Some(Activity::Timer));
-        // So does a game's readout.
-        st.game.active = true;
-        assert_eq!(current_activity(&st), Some(Activity::Game));
         // Where the Downloader isn't offered (the Mac, for now): never.
         let mut mac = with_downloads(AppState::new(Settings::default(), Store::default()), 1);
         mac.downloader_offered = false;

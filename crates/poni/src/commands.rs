@@ -123,11 +123,6 @@ pub enum Command {
     WantStats(bool),
     /// Start with Windows on or off (the Settings page's switch).
     SetAutostart(bool),
-    /// Show over games: find out whether Windows lets Poni read frames
-    /// (the answer lands in `AppState::game.access`).
-    CheckFps,
-    /// Show over games: ask Windows once for the right to read frames.
-    AllowFps,
     Phone(PhoneCmd),
     Pair(PairCmd),
     Oyenza(OyenzaCmd),

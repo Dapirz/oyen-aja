@@ -17,7 +17,7 @@ use crate::services::{self, Services};
 use crate::settings_host::{self, SettingsWindow};
 use crate::settings_window::Section;
 use crate::state::{
-    AppState, FpsAccess, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, Notice, NoticeAction, NotifyAccess, OyenzaLink, PairedPhone, PhoneAsk,
+    AppState, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, Notice, NoticeAction, NotifyAccess, OyenzaLink, PairedPhone, PhoneAsk,
     PhoneDrop, PhoneTransfer, PhoneView, PrayerState,
 };
 use crate::tray::{self, Tray};
@@ -60,15 +60,8 @@ const TIMER_MINUTE: usize = 6;
 pub const TIMER_SELFTEST: usize = 7;
 const TIMER_TRAY: usize = 8;
 const TIMER_RAISE: usize = 9;
-/// Show over games: the readout's peek ends.
-const TIMER_PEEK: usize = 10;
 /// The next read of the update file (`crate::updates`).
 const TIMER_UPDATE: usize = 11;
-/// Show over games: how long the readout shows over a game, the least time
-/// between two peeks for a frame-rate drop, and Alt+Shift+F's id.
-const PEEK_S: f64 = 5.0;
-const DROP_PEEK_EVERY_S: f64 = 30.0;
-const HOTKEY_PEEK: i32 = 1;
 /// Alt+Shift+S pauses and resumes the Script page's reading from any app.
 const HOTKEY_SCRIPT: i32 = 2;
 /// Raises that follow a new foreground window, and their spacing.
@@ -102,10 +95,6 @@ pub enum Deferred {
 
 pub fn main_entry() -> i32 {
     let args: Vec<String> = std::env::args().collect();
-    // Show over games' one-time OK runs this exe elevated, just for this.
-    if let Some(i) = args.iter().position(|a| a == services::frames::ALLOW_ARG) {
-        return services::frames::allow_main(args.get(i + 1).map_or("", String::as_str));
-    }
     let selftest_dir = args.iter().position(|a| a == "--selftest").map(|i| args.get(i + 1).cloned().unwrap_or_else(|| "selftest-out".into()));
     if let Some(dir) = &selftest_dir {
         let home = std::path::Path::new(dir).join("home");
@@ -393,30 +382,10 @@ pub struct App {
     covered_by: HashSet<String>,
     shown: bool,
     stats_on: bool,
-    /// The CPU and GPU reader for the readout over a game, from the first
-    /// game it is needed for.
-    sysmon: Option<services::sysmon::SysMon>,
-    /// What the System reader was last told about nobody being there and battery saver.
-    sysmon_rest: poni_core::sysmon::Rest,
     /// The Oyenza page is on screen: its day list stays live (`services::oyenza`).
     oyenza_watch: bool,
     /// The Today page is on screen: the worker asks for the day (`services::oyenza`).
     today_watch: bool,
-    /// Show over games: the game's frames, counted while the readout shows.
-    frames: Option<services::frames::Frames>,
-    /// The process whose frames count (the full-screen app).
-    game_pid: Option<u32>,
-    /// Show over games, peeks only: the readout shows over the game until this
-    /// mono time (a peek), else the island hides so the game goes straight to
-    /// the screen.
-    game_peek_until: f64,
-    /// When a frame-rate drop last made it peek.
-    game_drop_at: f64,
-    /// Show over games, the readout that stays: Alt+Shift+F hid it until the
-    /// next game (or until pressed again).
-    game_hidden: bool,
-    /// Alt+Shift+F is registered (only while a game is in front).
-    peek_hotkey: bool,
     /// Alt+Shift+S is registered (only while the Script page can read).
     script_hotkey: bool,
     /// The Script page has asked for the island to stay out of screen capture.
@@ -624,16 +593,8 @@ impl App {
             covered_by: HashSet::new(),
             shown: false,
             stats_on: false,
-            sysmon: None,
-            sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
             today_watch: false,
-            frames: None,
-            game_pid: None,
-            game_peek_until: 0.0,
-            game_drop_at: f64::NEG_INFINITY,
-            game_hidden: false,
-            peek_hotkey: false,
             script_hotkey: false,
             script_excluded: false,
             script_held: false,
@@ -680,12 +641,6 @@ impl App {
             self.sync_top_watch();
             self.st.paired = self.services.as_ref().map(|s| paired_phones(s.pairs())).unwrap_or_default();
             self.sync_pair_offer();
-            // A frame count left running by a Poni that crashed, and whether
-            // Windows lets this sign-in read frames (the System page shows it).
-            services::frames::stop_stale();
-            if self.st.settings.game_stats {
-                self.check_fps();
-            }
             // Notifications on: listen if Windows already allows it (its
             // question waits for the page's Allow).
             if self.st.notifications_on() {
@@ -717,9 +672,6 @@ impl App {
     fn shutdown(&mut self) -> i32 {
         self.save_now();
         self.settings_win = None;
-        // Stops the frame count's trace session (it would outlive Poni).
-        self.frames = None;
-        self.set_peek_hotkey(false);
         self.set_script_hotkey(false);
         self.glass.stop(self.hwnd, &mut self.gfx);
         if let Some(p) = self.phone.take() {
@@ -968,7 +920,7 @@ impl App {
     /// page, and the island opens.
     fn open_from_press(&mut self) {
         // Clicking a notice jumps to its page (a new version's
-        // may be waiting under a volume change or a game's readout).
+        // may be waiting under a volume change).
         let shown = self.mode == Mode::Notice;
         // Another app's notification opens that app instead.
         let mut opened = false;
@@ -1373,7 +1325,6 @@ impl App {
                 let p = services::power::query();
                 self.on_event(AppEvent::Power(p));
                 self.tell_oyenza_activity();
-                self.tell_sysmon_rest();
                 self.update_due();
                 self.request_frame();
                 Some(LRESULT(1))
@@ -1385,13 +1336,7 @@ impl App {
                     _ => {}
                 }
                 self.tell_oyenza_activity();
-                self.tell_sysmon_rest();
                 self.update_due();
-                self.request_frame();
-                Some(LRESULT(0))
-            }
-            WM_HOTKEY if wp.0 == HOTKEY_PEEK as usize => {
-                self.toggle_readout();
                 self.request_frame();
                 Some(LRESULT(0))
             }
@@ -1404,11 +1349,6 @@ impl App {
             WM_QUERYENDSESSION => Some(LRESULT(1)),
             WM_ENDSESSION => {
                 self.save_now();
-                // Windows ends Poni without shutdown(): stop the frame count's
-                // trace session now, or it would outlive the sign-in.
-                if wp.0 != 0 {
-                    self.frames = None;
-                }
                 Some(LRESULT(0))
             }
             WM_DISPLAYCHANGE | WM_SETTINGCHANGE => {
@@ -1678,22 +1618,6 @@ impl App {
                     unsafe {
                         let _ = KillTimer(self.hwnd, TIMER_RAISE);
                     }
-                }
-            }
-            TIMER_PEEK => {
-                unsafe {
-                    let _ = KillTimer(self.hwnd, TIMER_PEEK);
-                }
-                let now = clock::mono();
-                if self.expanded || self.hovering {
-                    // Not from under the pointer: it hides once the island closes.
-                    self.game_peek_until = now + 1.0;
-                    unsafe {
-                        SetTimer(self.hwnd, TIMER_PEEK, 1000, None);
-                    }
-                } else {
-                    self.game_peek_until = 0.0;
-                    self.apply_fullscreen(now);
                 }
             }
             TIMER_COLLAPSE => {
@@ -2054,8 +1978,6 @@ impl App {
 
     /// Apply side effects of a settings change (from the menu, a reload or a page).
     fn settings_changed(&mut self, before: &Settings) {
-        // Show over games and Hide in full-screen apps follow each other.
-        self.st.settings.pair_game_stats(before);
         let now = &self.st.settings;
         if before.theme != now.theme {
             self.st.accent = theme_accent(now.theme);
@@ -2118,21 +2040,6 @@ impl App {
                 self.stop_notify();
             }
         }
-        if before.game_stats != self.st.settings.game_stats {
-            if self.st.settings.game_stats && self.st.game.access == FpsAccess::Unknown {
-                self.check_fps();
-            }
-            self.sync_game();
-        }
-        if before.game_peek != self.st.settings.game_peek && self.st.game.active {
-            // Over a game: peeks start with one (it hides after its few
-            // seconds), and the readout that stays shows at once.
-            self.game_peek_until = 0.0;
-            unsafe {
-                let _ = KillTimer(self.hwnd, TIMER_PEEK);
-            }
-            self.peek_game(if self.st.settings.game_peek { "peeks picked" } else { "picked to stay" });
-        }
         // The display the island hangs on, or its width when open (the
         // Settings window has both).
         if before.monitor != self.st.settings.monitor {
@@ -2157,8 +2064,6 @@ impl App {
             ToggleLyrics => s.lyrics = !s.lyrics,
             TogglePronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
             SetHideFullscreen(hide) => s.hide_in_fullscreen = hide,
-            ToggleGameStats => s.game_stats = !s.game_stats,
-            ToggleGamePeek => s.game_peek = !s.game_peek,
             ToggleSounds => s.sounds = !s.sounds,
             TogglePinned => self.st.pinned = !self.st.pinned,
             CentreIsland => s.island_x = None,
@@ -2352,8 +2257,7 @@ impl App {
             }
             AppEvent::Fullscreen(on) => {
                 self.fullscreen_on = on;
-                // The readout and its peeks first, then whether the island shows.
-                self.sync_game();
+                self.apply_fullscreen(clock::mono());
             }
             AppEvent::Foreground => self.start_raises(),
             AppEvent::TopWindows(places) => {
@@ -2398,37 +2302,6 @@ impl App {
                 self.st.shelf_thumbs.insert(path, image);
             }
             AppEvent::Stats(s) => self.st.stats = s,
-            AppEvent::System(m) => {
-                // A reading still on its way when the game left is dropped.
-                if self.st.game.active {
-                    self.st.system = *m;
-                }
-                // Over a game the frame rate goes with each reading, once a second.
-                if self.st.game.active {
-                    self.st.game.rate = self.frames.as_ref().and_then(|f| f.rate());
-                    let fps = self.st.game.rate.map(|r| r.fps);
-                    let before: Vec<f32> = self.st.game.history.values().collect();
-                    self.st.game.history.push(fps);
-                    // Peeks only: a sharp drop shows the readout (at most every half minute).
-                    let now = clock::mono();
-                    if let Some(fps) = fps.filter(|_| self.st.settings.game_peek) {
-                        if now >= self.game_peek_until && now - self.game_drop_at >= DROP_PEEK_EVERY_S && poni_core::frames::sharp_drop(&before, fps) {
-                            self.game_drop_at = now;
-                            self.peek_game("the frame rate dropped");
-                        }
-                    }
-                }
-            }
-            AppEvent::FpsAccess(a) => {
-                if self.st.game.access == FpsAccess::Asking {
-                    self.blur_text();
-                }
-                if a != self.st.game.access {
-                    pinfo!("show over games: frames {a:?}");
-                }
-                self.st.game.access = a;
-                self.sync_game();
-            }
             AppEvent::AppleMusic(status) => self.on_apple_music(status),
             AppEvent::Phone(e) => self.on_phone(e),
             AppEvent::Paired(e) => self.on_paired(e),
@@ -2649,56 +2522,16 @@ impl App {
         }
     }
 
-    fn start_sysmon(&mut self) {
-        self.sysmon_rest = self.rest_now();
-        match services::sysmon::SysMon::start(self.sink.clone(), false, self.sysmon_rest) {
-            Ok(s) => self.sysmon = Some(s),
-            Err(e) => pwarn!("sysmon: couldn't start ({e})"),
-        }
-    }
-
-    /// Nobody at the PC (locked, or the display off) and battery saver.
-    fn rest_now(&self) -> poni_core::sysmon::Rest {
-        poni_core::sysmon::Rest { away: self.locked || self.display_off, saver: self.st.power.saver }
-    }
-
-    /// The CPU and GPU reader rests while nobody is at the PC
-    /// (`poni_core::sysmon::reads`). What it drops, the readout drops too.
-    fn tell_sysmon_rest(&mut self) {
-        let rest = self.rest_now();
-        if rest == self.sysmon_rest || self.selftest.is_some() {
-            return;
-        }
-        self.sysmon_rest = rest;
-        if let Some(s) = &self.sysmon {
-            s.rest(rest);
-        }
-        if !poni_core::sysmon::reads(false, self.st.game.active, false, rest) {
-            self.st.system.clear();
-        }
-    }
-
-    /// Over a full-screen app the island hides when the setting says Hide, and
-    /// under Show over games while the readout is away: between its peeks
-    /// (peeks only), or once Alt+Shift+F hid it. Then nothing covers the game,
-    /// and Windows sends its frames straight to the screen.
-    fn fullscreen_hides(&self, now: f64) -> bool {
-        self.fullscreen_on && (self.st.settings.hide_in_fullscreen || (self.st.game.active && self.readout_away(now)))
-    }
-
-    /// Show over games: the readout is off the screen. It stays unless the
-    /// person picked peeks (`Settings::game_peek`) or hid it.
-    fn readout_away(&self, now: f64) -> bool {
-        if self.st.settings.game_peek {
-            now >= self.game_peek_until
-        } else {
-            self.game_hidden
-        }
+    /// Over a full-screen app the island hides when the setting says Hide.
+    /// Then nothing covers the app, and Windows sends its frames straight to
+    /// the screen.
+    fn fullscreen_hides(&self) -> bool {
+        self.fullscreen_on && self.st.settings.hide_in_fullscreen
     }
 
     /// Shows or hides the island for what is in front now.
     fn apply_fullscreen(&mut self, now: f64) {
-        let hide = self.fullscreen_hides(now);
+        let hide = self.fullscreen_hides();
         if hide != self.fullscreen_hidden {
             self.fullscreen_hidden = hide;
             unsafe {
@@ -2714,9 +2547,8 @@ impl App {
                 self.hovering = false;
                 self.input.mouse = None;
             }
-            let why = if self.fullscreen_on && !self.st.settings.hide_in_fullscreen && self.st.game.active { " (show over games)" } else { "" };
-            pinfo!("fullscreen app {}: island {}{why}", if self.fullscreen_on { "in front" } else { "gone" }, if hide { "hidden" } else { "shown" });
-            // Notices held back wait for the game to leave, not for a peek.
+            pinfo!("fullscreen app {}: island {}", if self.fullscreen_on { "in front" } else { "gone" }, if hide { "hidden" } else { "shown" });
+            // Notices held back wait for the full-screen app to leave.
             if !hide && !self.fullscreen_on {
                 self.show_held_notice(now);
             }
@@ -2726,66 +2558,6 @@ impl App {
             // top of the topmost band, and an island shown again after
             // a full-screen app is not raised by showing it.
             self.start_raises();
-        }
-    }
-
-    /// Show over games: the readout shows over the game, and stays (peeks
-    /// only: for a few seconds).
-    fn peek_game(&mut self, why: &str) {
-        let now = clock::mono();
-        if !self.st.settings.game_peek {
-            self.game_hidden = false;
-            pinfo!("show over games: readout shows and stays ({why})");
-            self.apply_fullscreen(now);
-            return;
-        }
-        self.game_peek_until = now + PEEK_S;
-        unsafe {
-            SetTimer(self.hwnd, TIMER_PEEK, (PEEK_S * 1000.0) as u32, None);
-        }
-        pinfo!("show over games: readout shows ({why})");
-        self.apply_fullscreen(now);
-    }
-
-    /// Alt+Shift+F: hide the readout, or show it again (peeks only: show it
-    /// for a few seconds, or hide it again before its time).
-    fn toggle_readout(&mut self) {
-        if !self.st.game.active {
-            return;
-        }
-        let now = clock::mono();
-        if !self.st.settings.game_peek {
-            self.game_hidden = !self.game_hidden;
-            pinfo!("show over games: readout {} (Alt+Shift+F)", if self.game_hidden { "hidden until the next game" } else { "shows again" });
-            self.apply_fullscreen(now);
-            return;
-        }
-        if now < self.game_peek_until {
-            self.game_peek_until = 0.0;
-            unsafe {
-                let _ = KillTimer(self.hwnd, TIMER_PEEK);
-            }
-            self.apply_fullscreen(now);
-        } else {
-            self.peek_game("Alt+Shift+F");
-        }
-    }
-
-    /// Alt+Shift+F belongs to Poni only while a game is in front.
-    fn set_peek_hotkey(&mut self, on: bool) {
-        if on == self.peek_hotkey {
-            return;
-        }
-        unsafe {
-            if on {
-                match RegisterHotKey(self.helper, HOTKEY_PEEK, MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, u32::from(b'F')) {
-                    Ok(()) => self.peek_hotkey = true,
-                    Err(e) => pwarn!("show over games: Alt+Shift+F is taken ({e})"),
-                }
-            } else {
-                let _ = UnregisterHotKey(self.helper, HOTKEY_PEEK);
-                self.peek_hotkey = false;
-            }
         }
     }
 
@@ -2842,90 +2614,6 @@ impl App {
             pinfo!("script: {}", if ok { "left out of screen capture" } else { "Windows can't leave the island out of screen capture" });
         }
         self.st.script_hidden = Some(ok);
-    }
-
-    /// Show over games: the readout shows while the setting is on and a
-    /// full-screen app has the island's monitor with the island over it.
-    /// It follows the full-screen app; the readings and the frame count run
-    /// only meanwhile.
-    fn sync_game(&mut self) {
-        let want = self.st.settings.game_stats && self.fullscreen_on && !self.st.settings.hide_in_fullscreen && self.selftest.is_none();
-        if want != self.st.game.active {
-            self.st.game.active = want;
-            self.set_peek_hotkey(want);
-            if !want {
-                self.game_peek_until = 0.0;
-                self.game_hidden = false;
-                unsafe {
-                    let _ = KillTimer(self.hwnd, TIMER_PEEK);
-                }
-            }
-            if want && self.sysmon.is_none() {
-                self.start_sysmon();
-            }
-            // A failure last time is tried again with each new game.
-            if want && matches!(self.st.game.access, FpsAccess::Failed(_)) {
-                self.st.game.access = FpsAccess::Unknown;
-            }
-            if let Some(s) = &self.sysmon {
-                s.game(want);
-            }
-            if !want {
-                self.frames = None;
-                self.game_pid = None;
-                self.st.game.rate = None;
-                self.st.game.app = None;
-                self.st.system.clear();
-            }
-            pinfo!("show over games: readout {}", if want { "on" } else { "off" });
-        }
-        if !want {
-            self.apply_fullscreen(clock::mono());
-            return;
-        }
-        let pid = services::fullscreen::fullscreen_pid();
-        if pid != self.game_pid {
-            self.game_pid = pid;
-            self.st.game.app = pid.and_then(services::sysmon::app_name);
-            self.st.game.rate = None;
-            self.st.game.history = Default::default();
-            if let (Some(f), Some(p)) = (&self.frames, pid) {
-                f.set_target(p);
-            }
-            pinfo!("show over games: {} in front", self.st.game.app.as_deref().unwrap_or("an app"));
-            // A game came to the front: the readout shows for a moment.
-            self.peek_game("a game came to the front");
-        } else {
-            self.apply_fullscreen(clock::mono());
-        }
-        let Some(pid) = pid else { return };
-        if self.frames.is_none() && matches!(self.st.game.access, FpsAccess::Unknown | FpsAccess::Ready) {
-            match services::frames::Frames::start(pid) {
-                Ok(f) => {
-                    self.frames = Some(f);
-                    self.st.game.access = FpsAccess::Ready;
-                }
-                // Tells the one-time OK apart from a sign-out still to come
-                // (once: a check that said yes isn't asked again).
-                Err(services::frames::StartError::NoAccess) if self.st.game.access == FpsAccess::Ready => {
-                    self.st.game.access = FpsAccess::NeedsOk;
-                }
-                Err(services::frames::StartError::NoAccess) => self.check_fps(),
-                Err(services::frames::StartError::Failed(why)) => {
-                    pwarn!("frames: couldn't start ({why})");
-                    self.st.game.access = FpsAccess::Failed(why);
-                }
-            }
-        }
-    }
-
-    /// Asks (off the UI thread) whether Windows lets Poni read frames.
-    fn check_fps(&mut self) {
-        if self.selftest.is_some() || matches!(self.st.game.access, FpsAccess::Checking | FpsAccess::Asking) {
-            return;
-        }
-        self.st.game.access = FpsAccess::Checking;
-        services::frames::check_async(self.sink.clone());
     }
 
     /// Puts the island back on top after another window came forward. Apps
@@ -3080,8 +2768,7 @@ impl App {
 
     /// Step aside (off since 0.2.6, see `Settings::step_aside`) while an app window
     /// reaches under where the island rests. Over a full-screen app the
-    /// full-screen choice decides instead (Hide, or Stay on top for the
-    /// readout over games). Each frame, before the mode is picked: it only
+    /// full-screen choice decides instead (Hide, or Stay on top). Each frame, before the mode is picked: it only
     /// compares a few rects.
     fn sync_aside(&mut self) {
         let r = self.rest_rect();
@@ -4101,14 +3788,6 @@ impl App {
                     SetTimer(self.hwnd, TIMER_SAVE, 800, None);
                 },
                 Command::SetPage(p) => self.set_page(p),
-                Command::CheckFps => self.check_fps(),
-                Command::AllowFps => {
-                    // The island takes the focus for Windows' prompt (a
-                    // background app's prompt waits in the taskbar), as for typing.
-                    self.focus_text();
-                    self.st.game.access = FpsAccess::Asking;
-                    services::frames::request_access(self.sink.clone(), SendHwnd::new(self.hwnd));
-                }
                 Command::SetPinned(b) => {
                     self.st.pinned = b;
                     if !b {

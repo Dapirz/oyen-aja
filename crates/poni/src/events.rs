@@ -153,12 +153,6 @@ pub enum AppEvent {
     DragHover(bool),
     ShelfThumb { path: String, image: Option<Image> },
     Stats(SysStats),
-    /// The latest CPU and GPU reading, for the readout over a game
-    /// (`services::sysmon`, each second while a game is in front).
-    System(Box<poni_core::sysmon::Monitor>),
-    /// Show over games: whether Windows lets Poni read frames (a check, or
-    /// the one-time OK's outcome).
-    FpsAccess(crate::state::FpsAccess),
     /// Phone drop's server: a phone opened the page, asked, sent, gave up.
     Phone(poni_core::phonedrop::Event),
     /// Paired phones: pairing done, the list changed, files from a phone.
