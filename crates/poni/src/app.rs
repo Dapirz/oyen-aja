@@ -2870,8 +2870,8 @@ impl App {
 
         // Decide whether to keep the frame clock running. Real motion runs
         // at the display's full refresh rate; ambient motion runs on every
-        // n-th refresh (the equalizer near 60 fps, a drifting progress bar
-        // near 30) and pauses while the session is locked or the display off.
+        // n-th refresh (the playing island at its Frame rate setting, a
+        // drifting progress bar near 30) and pauses while the session is locked or the display off.
         let ambient_ok = !self.locked && !self.display_off;
         let eq_live = ambient_ok && activities::is_live(&self.mode, &self.st);
         let drift_live = ambient_ok && ui_live;
@@ -2891,7 +2891,12 @@ impl App {
         self.clock.set_divisor(if moving {
             1
         } else if eq_live {
-            ambient_divisor(hz, 60.0)
+            // The playing island at the frame rate picked in Settings
+            // (0: every refresh).
+            match self.st.settings.music_fps {
+                0 => 1,
+                fps => ambient_divisor(hz, f64::from(fps)),
+            }
         } else {
             ambient_divisor(hz, 30.0)
         });

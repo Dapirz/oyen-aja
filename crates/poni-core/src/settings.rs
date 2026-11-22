@@ -88,6 +88,11 @@ pub struct Settings {
     /// right), kept on screen ([`crate::spot`]). None: the middle.
     pub island_x: Option<f32>,
     pub show_media_activity: bool,
+    /// Frames a second for the closed island while music plays (the
+    /// equalizer, the sung line): 0 = every refresh of the display, else the
+    /// nearest whole share of its rate (60 on a 144 Hz display is every
+    /// second refresh, 72 fps). Lower costs less CPU. 15..=240 when not 0.
+    pub music_fps: u32,
     pub lyrics: bool,
     /// Romanized "pronunciation" line under Japanese, Korean and Chinese lyrics.
     pub lyrics_pronunciation: bool,
@@ -200,6 +205,7 @@ impl Default for Settings {
             monitor: MonitorChoice::Primary,
             island_x: None,
             show_media_activity: true,
+            music_fps: 60,
             lyrics: true,
             lyrics_pronunciation: true,
             lyrics_offset_ms: 0,
@@ -267,6 +273,9 @@ impl Settings {
         self.step_aside = false;
         self.hover_delay_ms = self.hover_delay_ms.min(2000);
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
+        if self.music_fps != 0 {
+            self.music_fps = self.music_fps.clamp(15, 240);
+        }
         self.collapse_delay_ms = self.collapse_delay_ms.min(5000);
         if !self.expanded_width.is_finite() {
             self.expanded_width = 620.0;
@@ -377,6 +386,15 @@ mod tests {
         // file doesn't parse, and `store::load_json` sets it aside for its
         // backup (or the defaults), as it does a damaged file.
         assert!(serde_json::from_str::<Settings>(r#"{"theme":"snowglobe"}"#).is_err());
+    }
+
+    #[test]
+    fn music_fps_defaults_to_60_and_keeps_to_its_range() {
+        // Files from before the setting keep the old 60.
+        let s: Settings = serde_json::from_str(r#"{"lyrics":true}"#).unwrap();
+        assert_eq!(s.sanitized().music_fps, 60);
+        let fps = |v: u32| Settings { music_fps: v, ..Default::default() }.sanitized().music_fps;
+        assert_eq!((fps(0), fps(30), fps(5), fps(1000)), (0, 30, 15, 240));
     }
 
     #[test]
