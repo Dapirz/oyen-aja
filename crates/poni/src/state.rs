@@ -362,9 +362,6 @@ pub struct PageUiState {
     /// the side of the camera they peek out from (`mac/notch.rs`).
     #[cfg(target_os = "macos")]
     pub peek: poni_core::peek::Peek,
-    /// The Caffeine page: the drink picked, a drag, the list's scroll, Add
-    /// a drink while it's open, and the chart kept with its painted dots.
-    pub caffeine: crate::pages::caffeine::CaffeineUi,
     /// The Downloads page: its link field, mode and scroll.
     pub downloads: crate::pages::downloads::DownloadsUi,
     /// The AI tab's own state while it shows (`pages::usage`).
@@ -873,9 +870,6 @@ impl AppState {
             notes: Default::default(),
             cmds: Vec::new(),
         };
-        // Drinks in time order, each with its own id (old ones go when one is
-        // added, with the real time).
-        st.store.caffeine.mend();
         // On ones start by checking their files (the worker reports back);
         // one without files is ready at once.
         for a in poni_core::addons::ALL {
@@ -889,7 +883,6 @@ impl AppState {
             PageKind::Script => !st.script_on(),
             PageKind::System => !st.system_on(),
             PageKind::Health => !st.health_on(),
-            PageKind::Caffeine => !st.caffeine_on(),
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Record => !st.record_on(),
             PageKind::Notifications => !st.notifications_on(),
@@ -955,12 +948,6 @@ impl AppState {
     /// The Health add-on is on: the Health tab shows and the steps are asked for.
     pub fn health_on(&self) -> bool {
         self.addon(poni_core::addons::HEALTH.id) == AddonStatus::Ready
-    }
-
-    /// The Caffeine add-on is on: the Caffeine tab shows, and the island
-    /// reminds of the day's last call.
-    pub fn caffeine_on(&self) -> bool {
-        self.addon(poni_core::addons::CAFFEINE.id) == AddonStatus::Ready
     }
 
     /// The Downloader add-on is on, with its tools in place, for an account

@@ -130,7 +130,6 @@ fn icon(a: &Addon) -> Icon {
         "script" => Icon::Script,
         "system" => Icon::Gauge,
         "health" => Icon::Steps,
-        "caffeine" => Icon::Coffee,
         "notifications" => Icon::Bell,
         "recorder" => Icon::Recorder,
         "downloader" => Icon::Download,

@@ -384,8 +384,6 @@ pub struct App {
     glass: crate::glass::Glass,
     /// Prayer times' adzan, while it plays.
     adzan: services::adzan::AdzanPlayer,
-    /// Caffeine's reminder before last call: its minute and the day it showed.
-    last_call: crate::last_call::Reminder,
     /// The IELTS page's calls, microphone and voice (each only while needed).
     ielts: services::ielts::Kit,
     /// Music that played was paused for the IELTS session (it plays again after).
@@ -675,7 +673,6 @@ impl App {
             services: None,
             glass: crate::glass::Glass::new(services::apps_use_light_theme()),
             adzan: Default::default(),
-            last_call: Default::default(),
             ielts: Default::default(),
             ielts_music: false,
             ielts_shown: false,
@@ -3561,13 +3558,6 @@ impl App {
             pages::focus::on_phase_ended(&mut self.st, ended);
         }
         self.prayer_tick();
-        // Caffeine's reminder before last call waits for the island the same
-        // way, behind a prayer's notice, which doesn't wait. The self-test's
-        // clock jumps between pictures: it shows none.
-        let here = !self.fullscreen_hidden && !self.locked && !self.display_off && !self.expanded && !peeks;
-        if !self.in_selftest && self.last_call.tick(&mut self.st, here) {
-            self.request_frame();
-        }
         self.ielts_tick();
         self.notes_tick();
         self.script_tick();
@@ -3576,7 +3566,6 @@ impl App {
             PageKind::Prayer => !self.st.prayer_on(),
             PageKind::System => !self.st.system_on(),
             PageKind::Health => !self.st.health_on(),
-            PageKind::Caffeine => !self.st.caffeine_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
             PageKind::Ielts => !self.st.ielts_on(),
@@ -4071,11 +4060,6 @@ impl App {
         let singing = self.mode == Mode::Activity(activities::Activity::Media);
         let watched = visible && !((pill::on(self.st.settings.theme) || singing) && (self.locked || self.display_off));
         if let Some(t) = activities::next_wake(&self.mode, &self.st).filter(|_| watched) {
-            consider(t);
-        }
-        // Caffeine's reminder comes on its minute, the island asleep or not
-        // (one wake a day at most).
-        if let Some(t) = self.last_call.wake(&self.st) {
             consider(t);
         }
         if let Mode::Expanded(p) = self.mode {

@@ -10,7 +10,6 @@
 //! files, saving, …).
 
 pub mod addons;
-pub mod caffeine;
 pub mod card;
 pub mod downloads;
 pub mod downloads_offer;
@@ -87,8 +86,6 @@ pub enum PageKind {
     Record,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
-    /// The day's caffeine, while the Caffeine add-on is on ([`tabs`]).
-    Caffeine,
     /// Links to save as video or sound, while the Downloader add-on is on ([`tabs`]).
     Downloads,
     /// Which apps' notifications show on the island, while Notifications is
@@ -104,7 +101,7 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, Oyenza, then the
     /// add-ons' pages and the "+".
-    pub const ALL: [PageKind; 19] = [
+    pub const ALL: [PageKind; 18] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -119,7 +116,6 @@ impl PageKind {
         PageKind::Script,
         PageKind::Record,
         PageKind::Prayer,
-        PageKind::Caffeine,
         PageKind::Downloads,
         PageKind::Notifications,
         PageKind::Addons,
@@ -142,7 +138,6 @@ impl PageKind {
             PageKind::Record => "record",
             PageKind::Oyenza => "oyenza",
             PageKind::Prayer => "prayer",
-            PageKind::Caffeine => "caffeine",
             PageKind::Downloads => "downloads",
             PageKind::Notifications => "notifications",
             PageKind::Addons => "addons",
@@ -172,7 +167,6 @@ impl PageKind {
             PageKind::Record => "Record",
             PageKind::Oyenza => "Oyenza",
             PageKind::Prayer => "Prayer",
-            PageKind::Caffeine => "Caffeine",
             PageKind::Downloads => "Downloads",
             PageKind::Notifications => "Notifications",
             PageKind::Addons => "Add-ons",
@@ -196,7 +190,6 @@ impl PageKind {
             PageKind::Record => Icon::Recorder,
             PageKind::Oyenza => Icon::Wallet,
             PageKind::Prayer => Icon::Moon,
-            PageKind::Caffeine => Icon::Coffee,
             PageKind::Downloads => Icon::Download,
             PageKind::Notifications => Icon::Bell,
             PageKind::Addons => Icon::Addons,
@@ -273,7 +266,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::System => st.system_on(),
             PageKind::Prayer => st.prayer_on(),
             PageKind::Script => st.script_on(),
-            PageKind::Caffeine => st.caffeine_on(),
             PageKind::Downloads => st.downloader_on(),
             PageKind::Record => st.record_on(),
             PageKind::Notifications => st.notifications_on(),
@@ -307,7 +299,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Record => record::height(st),
         PageKind::Oyenza => oyenza::height(st),
         PageKind::Prayer => prayer::height(st),
-        PageKind::Caffeine => caffeine::height(st),
         PageKind::Downloads => downloads::height(st),
         PageKind::Notifications => notifications::height(st),
         PageKind::Addons => addons::height(st),
@@ -392,7 +383,6 @@ pub(crate) fn content_area(body: Rect) -> Rect {
 /// the new one fades in. Every theme's frame draws its pages with this, so
 /// a switch moves the same in all of them.
 pub(crate) fn draw_pages(ui: &mut Ui, st: &mut AppState, body: Rect, header: Rect, page: PageKind, tr: Option<PageTransition>) {
-    caffeine::put_away(ui, st);
     let area = content_area(body);
     // Content may reach a little above `area` (text boxes whose cap height,
     // not their line box, sits on the content top) but never into the tabs.
@@ -449,7 +439,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Record => record::draw(ui, st, area),
         PageKind::Oyenza => oyenza::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
-        PageKind::Caffeine => caffeine::draw(ui, st, area),
         PageKind::Downloads => downloads::draw(ui, st, area),
         PageKind::Notifications => notifications::draw(ui, st, area),
         PageKind::Addons => addons::draw(ui, st, area),
@@ -838,7 +827,6 @@ mod tests {
         // The window is as tall as the tallest page (System, laid out for
         // whether it shows or not); the add-ons' rows stay under it.
         assert!(content_height(PageKind::Addons, &st) <= content_height(PageKind::System, &st));
-        assert!(content_height(PageKind::Caffeine, &st) <= content_height(PageKind::System, &st));
         // Notifications with as many apps as it lists.
         for i in 0..poni_core::notifications::MAX_APPS {
             st.settings.notifications.remember(&format!("App.{i}"), &format!("App {i}"));
@@ -872,11 +860,10 @@ mod tests {
     }
 
     #[test]
-    fn system_health_and_caffeine_have_a_tab_only_while_their_add_ons_are_on() {
+    fn system_and_health_have_a_tab_only_while_their_add_ons_are_on() {
         for (page, addon) in [
             (PageKind::System, poni_core::addons::SYSTEM),
             (PageKind::Health, poni_core::addons::HEALTH),
-            (PageKind::Caffeine, poni_core::addons::CAFFEINE),
         ] {
             let mut st = state();
             assert!(!tabs(&st).contains(&page), "{} is off for everyone until switched on", addon.id);

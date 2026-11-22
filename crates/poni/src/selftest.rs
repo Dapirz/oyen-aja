@@ -53,7 +53,6 @@ use crate::clock;
 use crate::gfx::{Image, ImageData};
 use crate::icons::Icon;
 use crate::island::Geom;
-use crate::pages::caffeine::Picture as CaffeinePicture;
 use crate::pages::usage::Picture as AiPicture;
 use crate::pages::{self, PageKind};
 use crate::paths;
@@ -63,7 +62,7 @@ use crate::state::{
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, CAFFEINE, DOWNLOADER, HEALTH, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
+use poni_core::addons::{Status as AddonStatus, DOWNLOADER, HEALTH, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
@@ -777,23 +776,6 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
     }
 }
 
-/// The Caffeine page's scenes on made-up days (`pages::caffeine::picture`),
-/// the clock held at the picture's time; every other scene: no drinks, and
-/// the PC's own clock.
-fn seed_caffeine(st: &mut AppState, scene: Scene) {
-    match scene.caffeine() {
-        Some(shows) => {
-            crate::pages::caffeine::picture(st, shows);
-            clock::hold_local(Some(st.local));
-        }
-        None => {
-            st.store.caffeine = poni_core::caffeine::Log::default();
-            st.ui.caffeine = crate::pages::caffeine::CaffeineUi::default();
-            clock::hold_local(None);
-        }
-    }
-}
-
 /// The Downloads page's list for its scenes, newest first: a YouTube link
 /// whose puzzle QuickJS is solving, a film coming in from PeerTube, a
 /// private video that failed and a finished film, moved along by yt-dlp's
@@ -1258,15 +1240,6 @@ enum Scene {
     /// The open island where it was dragged to the screen's right edge: it
     /// grows away from the edge, whole on the screen.
     IslandOpenAtEdge,
-    /// Caffeine: Add a drink open on its kinds (`Page(Caffeine)` is the day
-    /// itself, `caffeine::Picture::Day`).
-    CaffeineKinds,
-    /// Caffeine: Add a drink on a 2-shot es kopi susu, Blend, now.
-    CaffeineAdd,
-    /// Caffeine: no drink yet in the morning, last call ahead.
-    CaffeineEmpty,
-    /// Caffeine: a late day over the limit, its usual drink too strong for bed.
-    CaffeineLate,
 }
 
 /// A later release than this build, as the update file describes one.
@@ -1362,7 +1335,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 140] = [
+const SCENES: [Scene; 135] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1542,15 +1515,6 @@ const SCENES: [Scene; 140] = [
     // the place picker before anything is typed: the Kemenag / Muhammadiyah row.
     Scene::PrayerMuhammadiyah,
     Scene::PrayerPickerFollow,
-    // The Caffeine add-on on made-up days, each on a clock held at its own
-    // time (`caffeine::picture`): a day at 15:42 with its last call passed,
-    // Add a drink's kinds and a 2-shot es kopi susu, an empty morning and
-    // a late day over the limit.
-    Scene::Page(PageKind::Caffeine),
-    Scene::CaffeineKinds,
-    Scene::CaffeineAdd,
-    Scene::CaffeineEmpty,
-    Scene::CaffeineLate,
 ];
 
 impl Scene {
@@ -1671,10 +1635,6 @@ impl Scene {
             Scene::PrayerPickerFollow => "page-prayer-picker-follow".into(),
             Scene::IslandDrag => "island-dragged".into(),
             Scene::IslandOpenAtEdge => "island-open-at-edge".into(),
-            Scene::CaffeineKinds => "page-caffeine-kinds".into(),
-            Scene::CaffeineAdd => "page-caffeine-add".into(),
-            Scene::CaffeineEmpty => "page-caffeine-empty".into(),
-            Scene::CaffeineLate => "page-caffeine-late".into(),
         }
     }
 
@@ -1722,19 +1682,6 @@ impl Scene {
             }
             Scene::NotesListening | Scene::NotesWriting | Scene::NotesReady | Scene::NotesPro => Some(PageKind::Notes),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
-            Scene::CaffeineKinds | Scene::CaffeineAdd | Scene::CaffeineEmpty | Scene::CaffeineLate => Some(PageKind::Caffeine),
-            _ => None,
-        }
-    }
-
-    /// The Caffeine page's picture in its scenes.
-    fn caffeine(self) -> Option<CaffeinePicture> {
-        match self {
-            Scene::Page(PageKind::Caffeine) => Some(CaffeinePicture::Day),
-            Scene::CaffeineKinds => Some(CaffeinePicture::Kinds),
-            Scene::CaffeineAdd => Some(CaffeinePicture::Add),
-            Scene::CaffeineEmpty => Some(CaffeinePicture::Empty),
-            Scene::CaffeineLate => Some(CaffeinePicture::Late),
             _ => None,
         }
     }
@@ -3841,12 +3788,12 @@ impl SelfTest {
         let ielts = scene.page() == Some(PageKind::Ielts);
         // Meeting notes: on for its page and its pill.
         let notes = scene.page() == Some(PageKind::Notes) || scene == Scene::NotesActivity;
-        let caffeine = scene.page() == Some(PageKind::Caffeine);
-        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (IELTS.id, ielts), (MEETING_NOTES.id, notes), (CAFFEINE.id, caffeine)] {
+        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (IELTS.id, ielts), (MEETING_NOTES.id, notes)] {
             st.settings.set_addon(id, on);
             st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
         }
-        seed_caffeine(st, scene);
+        // The PC's own clock (a Diorama run holds its own after this).
+        clock::hold_local(None);
         // The Downloader: offered in its own scenes, and on there (its tools
         // in place, so the tab shows) except on the Add-ons page, whose row
         // shows it off; signed out (`AddonsPro`) its row says what it is.
