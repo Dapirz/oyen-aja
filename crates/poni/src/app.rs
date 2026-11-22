@@ -2734,7 +2734,13 @@ impl App {
                 if let Some(p) = glass.as_ref() {
                     canvas.glass(p, canvas_r);
                 } else {
-                    let island_color = if hidden_idle { Color::black(1.0 / 255.0) } else { palette::ISLAND };
+                    let island_color = if hidden_idle {
+                        Color::black(1.0 / 255.0)
+                    } else if crate::smoke::on(self.st.settings.theme) {
+                        crate::smoke::ground(self.expanded)
+                    } else {
+                        palette::ISLAND
+                    };
                     let border = if hidden_idle { None } else { Some(canvas.look().border) };
                     if floating {
                         // Hidden floats nothing: its band takes the mouse.

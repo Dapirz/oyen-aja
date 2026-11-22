@@ -29,6 +29,10 @@ pub enum Theme {
     #[default]
     #[serde(alias = "oyen")]
     Classic,
+    /// Smoke: Classic's island in translucent black, what's behind it
+    /// showing through, with its own music layout (the art, the time and
+    /// the bars over the line being sung and the song's progress).
+    Smoke,
     /// Liquid glass: the island bends, frosts and tints what's under it.
     Glass,
     /// Pill: the island floats a little below the top edge as a black
@@ -374,11 +378,12 @@ mod tests {
         // it has its name here, and then the loop below asks for it.
         let name = |t: Theme| match t {
             Theme::Classic => "classic",
+            Theme::Smoke => "smoke",
             Theme::Glass => "glass",
             Theme::Pill => "pill",
             Theme::Diorama => "diorama",
         };
-        for theme in [Theme::Classic, Theme::Glass, Theme::Pill, Theme::Diorama] {
+        for theme in [Theme::Classic, Theme::Smoke, Theme::Glass, Theme::Pill, Theme::Diorama] {
             let s = Settings { theme, ..Settings::default() };
             let j = serde_json::to_string(&s).unwrap();
             assert!(j.contains(&format!(r#""theme":"{}""#, name(theme))), "{theme:?}: {j}");

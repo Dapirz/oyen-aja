@@ -66,10 +66,9 @@ const SEG_PAD: f32 = 11.0;
 const KNOB_INSET: f32 = 2.0;
 const STEP_BTN: f32 = 26.0;
 const STEP_VALUE_W: f32 = 84.0;
-/// The Appearance section's theme cards: two to a row (four themes, two
-/// even rows), each half the content wide, so the rows end where the groups
-/// under them do.
-const THEME_COLS: usize = 2;
+/// The Appearance section's theme cards: three to a row, each a column of
+/// the content wide, so the rows end where the groups under them do.
+const THEME_COLS: usize = 3;
 const THEME_CARD_H: f32 = 154.0;
 const THEME_PREVIEW_H: f32 = 74.0;
 const THEME_GAP: f32 = 12.0;
@@ -356,8 +355,9 @@ const MUSIC_FPS: [(u32, &str); 3] = [(30, "30 fps"), (60, "60 fps"), (0, "Displa
 const SOUNDS: [(PrayerSound, &str); 3] = [(PrayerSound::Adzan, "Adzan"), (PrayerSound::Tone, "Tone"), (PrayerSound::Silent, "Silent")];
 /// Whose times and Hijri dates (the Prayer page's place picker has the same).
 const FOLLOWS: [(PrayerFollow, &str); 2] = [(PrayerFollow::Kemenag, "Kemenag"), (PrayerFollow::Muhammadiyah, "Muhammadiyah (KHGT)")];
-const THEMES: [(Theme, &str, &str); 4] = [
+const THEMES: [(Theme, &str, &str); 5] = [
     (Theme::Classic, "Classic", "A black island at the top edge"),
+    (Theme::Smoke, "Smoke", "See-through black, song on two rows"),
     (Theme::Glass, "Glass", "Frosted glass over your screen"),
     (Theme::Pill, "Pill", "Floats just below the top edge"),
     (Theme::Diorama, "Diorama", "A little place that keeps your day"),
@@ -1474,7 +1474,7 @@ fn theme_card(r: Rect, i: usize) -> Rect {
     Rect::new(r.x + col * (w + THEME_GAP), r.y + GROUP_TITLE_H + row * (THEME_CARD_H + THEME_GAP), w, THEME_CARD_H)
 }
 
-/// The themes, a card each, two to a row: a small screen with the island
+/// The themes, a card each, three to a row: a small screen with the island
 /// on it as the theme draws it, the name and a line. The ring and the tick
 /// fade to the theme picked.
 fn draw_themes(ui: &mut Ui, st: &mut AppState, r: Rect, view: Rect, sf: &Surfaces, m: &mut Motion) {
@@ -1581,10 +1581,11 @@ fn draw_theme_preview(c: &mut Canvas, theme: Theme, screen: Rect) {
     let cx = screen.center().x;
     let clock = TextStyle::caption().weight(Weight::Semibold).tabular().center();
     match theme {
-        Theme::Classic | Theme::Glass => {
+        Theme::Classic | Theme::Smoke | Theme::Glass => {
             let body = Rect::new(cx - 34.0, screen.y, 68.0, 20.0);
             let (fill, border) = match theme {
                 Theme::Glass => (Color::white(0.30), Some(Color::white(0.45))),
+                Theme::Smoke => (Color::black(crate::smoke::ALPHA_CLOSED), Some(Color::white(0.12))),
                 _ => (palette::ISLAND, None),
             };
             c.notch(body, 9.0, 5.0, fill, border);
@@ -1803,15 +1804,16 @@ mod tests {
     fn place(t: Theme) -> usize {
         match t {
             Theme::Classic => 0,
-            Theme::Glass => 1,
-            Theme::Pill => 2,
-            Theme::Diorama => 3,
+            Theme::Smoke => 1,
+            Theme::Glass => 2,
+            Theme::Pill => 3,
+            Theme::Diorama => 4,
         }
     }
 
     #[test]
     fn every_theme_has_a_card_in_the_pickers_order() {
-        assert_eq!(THEMES.map(|t| t.1), ["Classic", "Glass", "Pill", "Diorama"]);
+        assert_eq!(THEMES.map(|t| t.1), ["Classic", "Smoke", "Glass", "Pill", "Diorama"]);
         for (i, (theme, name, line)) in THEMES.iter().enumerate() {
             assert_eq!(place(*theme), i, "{name}");
             assert!(!line.is_empty(), "{name} says what it is");
@@ -1819,16 +1821,16 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_cards_sit_two_to_a_row_as_wide_as_the_content() {
+    fn the_theme_cards_sit_three_to_a_row_as_wide_as_the_content() {
         // The content column: the card less the sidebar and the padding.
         let r = Rect::new(SIDEBAR_W + PAD, CONTENT_Y, CARD_W - SIDEBAR_W - 2.0 * PAD, block_h(&state(), &Block::Themes));
         let cards: Vec<Rect> = (0..THEMES.len()).map(|i| theme_card(r, i)).collect();
-        // Four themes: two rows of two, the same size.
-        assert_eq!(cards.iter().filter(|c| c.y == cards[0].y).count(), 2);
-        assert_eq!(cards.iter().filter(|c| c.y == cards[2].y).count(), 2);
+        // Five themes: three, then two, the same size.
+        assert_eq!(cards.iter().filter(|c| c.y == cards[0].y).count(), 3);
+        assert_eq!(cards.iter().filter(|c| c.y == cards[3].y).count(), 2);
         assert_eq!(r.h, GROUP_TITLE_H + 2.0 * THEME_CARD_H + THEME_GAP);
         for (i, c) in cards.iter().enumerate() {
-            assert_eq!((c.w, c.h), (276.0, THEME_CARD_H), "card {i}");
+            assert_eq!((c.w, c.h), (180.0, THEME_CARD_H), "card {i}");
             assert!(c.x >= r.x && c.right() <= r.right() && c.y >= r.y + GROUP_TITLE_H && c.bottom() <= r.bottom(), "card {i} leaves the block: {c:?}");
             for (j, d) in cards[..i].iter().enumerate() {
                 let apart = c.x >= d.right() + THEME_GAP || d.x >= c.right() + THEME_GAP || c.y >= d.bottom() + THEME_GAP || d.y >= c.bottom() + THEME_GAP;
@@ -1837,7 +1839,7 @@ mod tests {
         }
         // A row ends where the groups under the cards do, and the second
         // starts under the first.
-        assert_eq!((cards[0].x, cards[1].right(), cards[2].x), (r.x, r.right(), r.x));
+        assert_eq!((cards[0].x, cards[2].right(), cards[3].x), (r.x, r.right(), r.x));
         // Every card's line keeps its measure, and its little screen has
         // room for the widest island drawn on it with air either side.
         assert!(cards[0].w - 24.0 >= THEME_LINE_W);

@@ -64,7 +64,7 @@ const CHIP_ICON_GAP: f32 = 5.0;
 const CHIP_GAP: f32 = 6.0;
 
 // Glass: on Windows from a copy of the screen, on a Mac macOS's own glass.
-const THEMES: [(Theme, &str); 4] = [(Theme::Classic, "Classic"), (Theme::Glass, "Glass"), (Theme::Pill, "Pill"), (Theme::Diorama, "Diorama")];
+const THEMES: [(Theme, &str); 5] = [(Theme::Classic, "Classic"), (Theme::Smoke, "Smoke"), (Theme::Glass, "Glass"), (Theme::Pill, "Pill"), (Theme::Diorama, "Diorama")];
 
 /// An idle look's name in the picker.
 fn idle_name(s: IdleStyle) -> &'static str {
@@ -430,15 +430,16 @@ mod tests {
     fn place(t: Theme) -> usize {
         match t {
             Theme::Classic => 0,
-            Theme::Glass => 1,
-            Theme::Pill => 2,
-            Theme::Diorama => 3,
+            Theme::Smoke => 1,
+            Theme::Glass => 2,
+            Theme::Pill => 3,
+            Theme::Diorama => 4,
         }
     }
 
     #[test]
     fn the_theme_picker_has_every_theme_by_its_name() {
-        assert_eq!(THEMES.map(|t| t.1), ["Classic", "Glass", "Pill", "Diorama"]);
+        assert_eq!(THEMES.map(|t| t.1), ["Classic", "Smoke", "Glass", "Pill", "Diorama"]);
         for (i, (theme, name)) in THEMES.iter().enumerate() {
             assert_eq!(place(*theme), i, "{name}");
         }
@@ -446,7 +447,7 @@ mod tests {
 
     #[test]
     fn the_idle_look_picker_names_each_themes_own_looks() {
-        for theme in [Theme::Classic, Theme::Glass] {
+        for theme in [Theme::Classic, Theme::Smoke, Theme::Glass] {
             assert_eq!(idle_names(theme), ["Clock", "Eyes", "Minimal", "Hidden"], "{theme:?}");
         }
         // Diorama rests as its picture, with the time or alone: no eyes.

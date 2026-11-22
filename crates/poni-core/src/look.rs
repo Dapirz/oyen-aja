@@ -114,6 +114,22 @@ pub const CLASSIC: Look = Look {
     swaps: &[],
 };
 
+/// Smoke: Classic's black and white, the island's black translucent (the
+/// app paints its body at `smoke::ALPHA_*`). Pages paint exactly as they
+/// ask, as in Classic; a faint rim keeps the edge on a dark screen.
+pub const SMOKE: Look = Look {
+    ground: Color::black(1.0),
+    ink: Color::white(1.0),
+    accent: None,
+    border: Color::white(0.08),
+    light: false,
+    font: None,
+    material: Material::Solid,
+    shape: Shape::Notch,
+    frame: None,
+    swaps: &[],
+};
+
 /// Glass over a dark backdrop (and in Windows dark mode): white ink, the
 /// palette's own accents (made for dark grounds), the system UI font.
 pub const GLASS_DARK: Look = Look {
@@ -253,6 +269,7 @@ pub const DIORAMA_NIGHT: Look = Look {
 pub fn of(theme: Theme) -> &'static Look {
     match theme {
         Theme::Classic => &CLASSIC,
+        Theme::Smoke => &SMOKE,
         Theme::Glass => &GLASS_DARK,
         Theme::Pill => &PILL,
         Theme::Diorama => &DIORAMA_DAY,
@@ -267,6 +284,7 @@ pub fn of(theme: Theme) -> &'static Look {
 pub fn around_notch(theme: Theme) -> &'static Look {
     match theme {
         Theme::Classic => &CLASSIC,
+        Theme::Smoke => &SMOKE,
         Theme::Glass => &GLASS_DARK,
         Theme::Pill => &PILL,
         Theme::Diorama => &DIORAMA_DAY,

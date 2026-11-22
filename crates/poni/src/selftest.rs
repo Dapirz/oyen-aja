@@ -1288,7 +1288,7 @@ pub struct SelfTest {
     /// the next line on a held clock, one frame per refresh at that rate.
     scroll_hz: Option<f64>,
     dpi_applied: bool,
-    /// PONI_SELFTEST_THEME=glass|pill|diorama: run every scene in that theme.
+    /// PONI_SELFTEST_THEME=smoke|glass|pill|diorama: run every scene in that theme.
     theme: Theme,
     /// PONI_SELFTEST_DIORAMA=only, in the Diorama theme: its own pictures
     /// (`RESTS`) and no scene.
@@ -1347,6 +1347,7 @@ impl SelfTest {
     pub fn new(dir: String) -> Self {
         let track_key = MediaSession::make_track_key(TITLE, ARTIST, ALBUM);
         let theme = match std::env::var("PONI_SELFTEST_THEME").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            Ok("smoke") => Theme::Smoke,
             Ok("glass") => Theme::Glass,
             Ok("pill") => Theme::Pill,
             Ok("diorama") => Theme::Diorama,
@@ -2620,6 +2621,11 @@ impl SelfTest {
                     a >= 254 && off <= 6,
                     format!("pixel ({px}, {py}) = rgba({r}, {g}, {b}, {a}), ground rgb{ground:?}, 1.5 DIPs inside the frame at the left end"),
                 ));
+            } else if crate::smoke::on(app.st.settings.theme) {
+                // Smoke: black, as translucent as the theme says (closed or open).
+                let want = [crate::smoke::ALPHA_CLOSED, crate::smoke::ALPHA_OPEN].map(|k| (k * 255.0).round() as u8);
+                let ok = r.max(g).max(b) <= 2 && want.iter().any(|w| a.abs_diff(*w) <= 4);
+                checks.push(check("body-smoke-ground", ok, format!("pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), want black at alpha {want:?}")));
             } else {
                 let ground = rgb8(crate::pill::look(&app.st, false).ground);
                 let off = [r, g, b].iter().zip(ground).map(|(&p, q)| p.abs_diff(q)).max().unwrap_or(0);

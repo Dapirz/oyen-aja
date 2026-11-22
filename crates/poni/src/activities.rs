@@ -230,6 +230,7 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
             IdleStyle::Eyes => Geom::new(118.0, 30.0, 14.0),
             IdleStyle::Hidden => hidden_strip(),
         },
+        Mode::Activity(Activity::Media) if crate::smoke::on(st.settings.theme) => crate::smoke::media_geom(st),
         Mode::Activity(Activity::Media) => {
             // A song with synced lyrics sings its line here, as in the Pill
             // theme: the pill is as wide as its words (`pill::media`), and
@@ -396,7 +397,7 @@ pub fn draw_eyes(ui: &mut Ui, st: &AppState, cx: f32, cy: f32, look: f32) {
 }
 
 /// Little equalizer (4 bars): animated while playing, low and static when paused.
-fn equalizer(ui: &mut Ui, r: Rect, color: Color, playing: bool, t: f64) {
+pub(crate) fn equalizer(ui: &mut Ui, r: Rect, color: Color, playing: bool, t: f64) {
     let n = 4;
     let gap = 2.5;
     let bw = (r.w - gap * (n as f32 - 1.0)) / n as f32;
@@ -410,7 +411,7 @@ fn equalizer(ui: &mut Ui, r: Rect, color: Color, playing: bool, t: f64) {
 }
 
 /// Album art (or a note glyph), dimmed while the player is paused.
-fn art_or_icon(ui: &mut Ui, st: &AppState, r: Rect, playing: bool) {
+pub(crate) fn art_or_icon(ui: &mut Ui, st: &AppState, r: Rect, playing: bool) {
     let art = st.media.as_ref().and_then(|m| m.art.as_ref());
     ui.c.with_alpha(if playing { 1.0 } else { 0.55 }, |c| match art {
         Some(art) => c.image(art, r, 6.0),
@@ -496,6 +497,7 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
     let art = Rect::new(body.x + 12.0, cy - 11.0, 22.0, 22.0);
     let playing = st.media.as_ref().is_some_and(|m| m.is_playing());
     match a {
+        Activity::Media if crate::smoke::on(st.settings.theme) => crate::smoke::draw_media(ui, st, body),
         Activity::Media => draw_music(ui, st, body, true),
         Activity::Timer => {
             // Ring (with the phase glyph) on the left, digits right after it.
