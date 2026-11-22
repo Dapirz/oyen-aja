@@ -153,8 +153,8 @@ pub enum AppEvent {
     DragHover(bool),
     ShelfThumb { path: String, image: Option<Image> },
     Stats(SysStats),
-    /// The System page's latest reading and the minute behind it
-    /// (`services::sysmon`, each second while the page is open).
+    /// The latest CPU and GPU reading, for the readout over a game
+    /// (`services::sysmon`, each second while a game is in front).
     System(Box<poni_core::sysmon::Monitor>),
     /// Show over games: whether Windows lets Poni read frames (a check, or
     /// the one-time OK's outcome).

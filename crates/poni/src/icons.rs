@@ -67,12 +67,8 @@ pub enum Icon {
     Unlink,
     /// The header's Settings button.
     Gear,
-    /// The System tab: a dial with its needle.
-    Gauge,
     /// An app whose own icon isn't known.
     App,
-    /// The Windows mark, for Windows' own processes in the System page's lists.
-    Windows,
     /// The Add-ons tab: three tiles and a plus where the fourth would be.
     Addons,
     /// The Script tab: lines of text with a cue arrow at the line to say.
@@ -240,12 +236,10 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.2 2.2a3 3 0 0 1-4.2 0"),
             s("M4 4l16 16"),
         ],
-        Gauge => p![s("M4.6 18.5A8.5 8.5 0 1 1 19.4 18.5"), s("M12 14.5l3.8-4.3"), f("M10.6 14.5a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0")],
         App => p![
             s("M6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11A2.5 2.5 0 0 1 6.5 4z"),
             s("M4 8.5h16"),
         ],
-        Windows => p![f("M4 4h7.5v7.5H4z"), f("M12.5 4H20v7.5h-7.5z"), f("M4 12.5h7.5V20H4z"), f("M12.5 12.5H20V20h-7.5z")],
         // Eight teeth (tops on r 9.5, valleys on r 7) around a hole. The outline
         // starts at a tooth's corner, not mid-curve, so its closing join can't spike.
         Gear => p![
@@ -295,7 +289,7 @@ mod tests {
         Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File, Icon::Trash, Icon::Undo, Icon::Reset,
         Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye, Icon::MoneyIn, Icon::MoneyOut, Icon::Transfer, Icon::Card, Icon::Wallet,
         Icon::Unlink, Icon::Gear,
-        Icon::Gauge, Icon::App, Icon::Windows, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script, Icon::Download,
+        Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script, Icon::Download,
         Icon::AppWindow, Icon::Bell, Icon::Message,
         Icon::Oyenza,
     ];

@@ -35,7 +35,6 @@ use crate::ui::{wid, wid_n, PillStyle, Ui, PILL_SMALL};
 use poni_core::agenda::{self, Answer, Mark, Source, Sources, Weeks};
 use poni_core::datetime::{civil_from_days, days_from_civil, fmt_clock, fmt_date_short, weekday_from_days, LocalDateTime, MONTH_SHORT, WEEKDAY_SHORT};
 use poni_core::geom::{palette, Color, Point, Rect};
-use poni_core::sysmon::Module;
 
 const HEIGHT: f32 = 200.0;
 
@@ -737,19 +736,12 @@ fn draw_tiles(ui: &mut Ui, st: &mut AppState, r: Rect, card: Option<(Rect, f32)>
     let s = &st.stats;
     let battery = st.power.has_battery;
     let tiles = [cpu_tile(s), memory_tile(s), disk_tile(s), if battery { battery_tile(&st.power) } else { uptime_tile(st) }];
-    // With System on, each ring opens its module on the System page (uptime
-    // lives under CPU there); without it the tiles are only to read.
-    let modules = [Module::Cpu, Module::Memory, Module::Drives, if battery { Module::Battery } else { Module::Cpu }];
-    let system = st.system_on();
+    // The tiles are only to read.
     let rows = r.rows(2, TILE_GAP);
     for (i, tile) in tiles.iter().enumerate() {
         let row = rows[i / 2];
         let cell = row.columns(2, TILE_GAP)[i % 2];
-        let resp = system.then(|| ui.button(wid_n("today-tile", i as u64), cell));
-        draw_tile(ui, cell, tile, resp.is_some_and(|r| r.hovered), card);
-        if resp.is_some_and(|r| r.clicked) {
-            st.cmd(Command::OpenSystem(modules[i]));
-        }
+        draw_tile(ui, cell, tile, false, card);
     }
 }
 

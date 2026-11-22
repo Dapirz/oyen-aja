@@ -261,7 +261,6 @@ pub enum Key {
     Autostart,
     Sounds,
     Clock24,
-    SystemHistory,
     IdleLook,
     HoverDelay,
     CloseDelay,
@@ -422,14 +421,11 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
     let s = &st.settings;
     match section {
         Section::General => {
-            let mut rows = vec![
+            let rows = vec![
                 item(Key::Autostart, AUTOSTART.0, Some(AUTOSTART.1), Ctl::Switch(st.ui.autostart)),
                 switch(Key::Sounds, "Sounds", Some("A soft sound for timers, drops and reminders"), s.sounds),
                 switch(Key::Clock24, "24-hour clock", None, s.use_24h),
             ];
-            if s.system_on() {
-                rows.push(switch(Key::SystemHistory, "Keep System page history", Some("The charts keep the last minute while the page is closed"), s.system_history));
-            }
             vec![Block::Version, Block::Group(None, rows)]
         }
         Section::Appearance => {
@@ -612,7 +608,6 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         }
         Key::Sounds => s.sounds = !s.sounds,
         Key::Clock24 => s.use_24h = !s.use_24h,
-        Key::SystemHistory => s.system_history = !s.system_history,
         Key::IdleLook => {
             let looks = status::looks(theme);
             match act {

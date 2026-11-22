@@ -61,7 +61,7 @@ use crate::state::{
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, DOWNLOADER, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
+use poni_core::addons::{Status as AddonStatus, DOWNLOADER, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
@@ -70,12 +70,11 @@ use poni_core::oyenza::{Activity, Bill, Day, DayPick, Saved, Seen, Txn, WalletRe
 use poni_core::phonedrop::QrMatrix;
 use poni_core::prayer::{PlaceList, World};
 use poni_core::pomodoro::{Phase as PomoPhase, RunState};
-use poni_core::power::{PowerReading, PsuReading, Rail};
 use poni_core::settings::{IdleStyle, PrayerFollow, Theme};
 use poni_core::shelf::ShelfItem;
 use poni_core::frames::FrameRate;
 use poni_core::sysmon::{
-    AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading, MemoryReading, Module, Monitor, NetReading, Reading,
+    AppUse, BatteryReading, CoreKind, CoreLoad, CpuReading, DiskActivity, Drive, GpuReading, MemoryReading, Monitor, NetReading, Reading,
     Series, HISTORY_LEN,
 };
 use poni_core::timeline::Timeline;
@@ -283,29 +282,6 @@ const SAMPLE_ICONS: [(&str, u32); 8] = [
     ("C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE", 0x2B579A),
 ];
 
-/// A plain rounded tile standing in for an app icon, laid out like the
-/// shell's icon pictures (the tile fills the middle 72 %).
-fn sample_icon(rgb: u32) -> Image {
-    const PX: u32 = 48;
-    let (r, g, b) = ((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
-    let inset = PX as f32 * 0.14;
-    let (lo, hi, radius) = (inset, PX as f32 - inset, PX as f32 * 0.16);
-    let mut px = vec![0u8; (PX * PX * 4) as usize];
-    for y in 0..PX {
-        for x in 0..PX {
-            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            // Distance outside the rounded square, smoothed over one pixel.
-            let dx = (lo + radius - fx).max(fx - (hi - radius)).max(0.0);
-            let dy = (lo + radius - fy).max(fy - (hi - radius)).max(0.0);
-            let a = (radius + 0.5 - (dx * dx + dy * dy).sqrt()).clamp(0.0, 1.0);
-            let i = ((y * PX + x) * 4) as usize;
-            let k = |c: u8| (f32::from(c) * a).round() as u8;
-            px[i..i + 4].copy_from_slice(&[k(b), k(g), k(r), (a * 255.0).round() as u8]);
-        }
-    }
-    ImageData::new(PX, PX, px)
-}
-
 fn sample_app(i: usize, name: &str, cpu: f32, memory: u64, io: f64) -> AppUse {
     let path = SAMPLE_ICONS[i].0;
     let image = path.rsplit('\\').next().unwrap_or(path).to_lowercase();
@@ -317,14 +293,10 @@ fn sample_system(cpu: f32, memory: u64, io: f64) -> AppUse {
     AppUse { image: "system".into(), name: "System".into(), path: None, pid: 4, cpu, memory, io, processes: 1 }
 }
 
-/// The System page's sample minute (all made up): a laptop with a hybrid
-/// CPU, or a desktop without a battery (with its power: from the power
-/// supply, or estimated); nothing yet when the page has just opened.
-fn fake_system(scene: Scene) -> Monitor {
+/// The readings' sample minute for the readout over a game (all made up):
+/// a laptop with a hybrid CPU.
+fn fake_system(_scene: Scene) -> Monitor {
     let mut m = Monitor::default();
-    if scene == Scene::SystemWaiting {
-        return m;
-    }
     const MIB: f64 = 1024.0 * 1024.0;
     for i in 0..HISTORY_LEN {
         let t = i as f32;
@@ -338,38 +310,9 @@ fn fake_system(scene: Scene) -> Monitor {
         let down = if last { 1.2 * MIB } else { 0.08 * MIB + burst(5, 14, 3.4 * MIB) + burst(46, 10, 1.6 * MIB) };
         let up = if last { 0.082 * MIB } else { 0.02 * MIB + burst(25, 8, 0.6 * MIB) };
         let sample = Sample { cpu, gpu, mem: 0.6 + 0.004 * (t / 6.0).sin(), read, write, down, up, t };
-        let desktop = matches!(scene, Scene::SystemMemory | Scene::SystemPower | Scene::SystemPowerEstimate);
-        let mut r = sample_reading(!desktop, &sample);
-        if matches!(scene, Scene::SystemPower | Scene::SystemPowerEstimate) {
-            r.power = sample_power(&r, scene == Scene::SystemPower, t);
-        }
-        m.push(r);
+        m.push(sample_reading(true, &sample));
     }
     m
-}
-
-/// The desktop's power that second: what the power supply reports (its
-/// output a little above the parts' sum, as the board, memory and fans add
-/// theirs), or the estimate.
-fn sample_power(r: &Reading, psu: bool, t: f32) -> Option<PowerReading> {
-    let cpu_w = r.cpu.as_ref().and_then(|c| c.power_w);
-    let gpu_w = r.gpu.as_ref().and_then(|g| g.power_w);
-    if !psu {
-        return PowerReading::estimate(cpu_w, gpu_w, true);
-    }
-    let out_w = cpu_w? + gpu_w? + 46.0 + 2.0 * (t / 2.9).sin();
-    let rail = |nominal: f32, volts: f32, amps: f32| Rail { nominal, volts, amps };
-    let reading = PsuReading {
-        name: "MSI MEG Ai1600T".into(),
-        out_w,
-        in_w: Some(out_w / 0.93),
-        efficiency: Some(0.93),
-        mains_v: Some(229.6),
-        temp_c: Some(38.5),
-        fan_rpm: Some(0),
-        rails: vec![rail(12.0, 12.06, (out_w - 14.0) / 12.06), rail(5.0, 5.02, 1.9), rail(3.3, 3.31, 1.4)],
-    };
-    Some(PowerReading::from_psu(reading, cpu_w, gpu_w))
 }
 
 /// Show over games, for its scenes: a game at about 144 fps (one hitch in
@@ -379,8 +322,8 @@ fn fake_game(scene: Scene, system: &mut Monitor) -> GameState {
     if !scene.game() {
         return GameState::default();
     }
-    let allowed = matches!(scene, Scene::GameStats | Scene::SystemGames);
-    let in_front = scene != Scene::SystemGamesAllow;
+    let allowed = scene == Scene::GameStats;
+    let in_front = true;
     if in_front {
         if let Some(r) = system.latest.as_mut() {
             if let Some(c) = r.cpu.as_mut() {
@@ -955,16 +898,6 @@ enum Scene {
     SettingsSigningIn,
     /// Settings signed in to Oyenza.
     SettingsSignedIn,
-    /// System page on a desktop (no battery): Memory and its apps.
-    SystemMemory,
-    /// System page: the drives and disk activity.
-    SystemDrives,
-    /// System page: the network.
-    SystemNetwork,
-    /// System page: the laptop's battery.
-    SystemBattery,
-    /// System page just opened: no reading yet.
-    SystemWaiting,
     /// Settings with Stay on top chosen for full-screen apps.
     SettingsStayOnTop,
     /// Phone drop showing a pairing QR code (paired phones).
@@ -975,8 +908,6 @@ enum Scene {
     ShelfPairedPhones,
     /// Files from a paired phone landed while the island was closed.
     PairedNotice,
-    /// System page: the graphics card.
-    SystemGpu,
     /// Add-ons: Prayer times downloading.
     AddonsDownloading,
     /// Add-ons: Prayer times on, its files in place.
@@ -1005,10 +936,6 @@ enum Scene {
     GameStats,
     /// ...before the one-time OK: the frame rate waits, the rest shows.
     GameStatsAllow,
-    /// System page, Games: a game in front, its frame rate's minute.
-    SystemGames,
-    /// System page, Games, before the one-time OK.
-    SystemGamesAllow,
     /// Music: a Japanese song whose kanji went unread, offering Japanese readings.
     JaOffer,
     /// Music: ...and Japanese readings coming in.
@@ -1023,10 +950,6 @@ enum Scene {
     LowBatteryHud,
     /// The Script page partway through a reading (paused, so the shot holds still).
     ScriptReading,
-    /// System page on a desktop, Power: its power supply reports over USB.
-    SystemPower,
-    /// ...and a desktop whose power supply doesn't: the estimate.
-    SystemPowerEstimate,
     /// A maximized window under the island, Step aside on (no longer offered): the
     /// clock waits out of the way, an invisible strip at the top edge.
     AsideIdle,
@@ -1185,7 +1108,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 101] = [
+const SCENES: [Scene; 90] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1217,12 +1140,6 @@ const SCENES: [Scene; 101] = [
     Scene::GearClick,
     Scene::SettingsSigningIn,
     Scene::SettingsSignedIn,
-    Scene::Page(PageKind::System),
-    Scene::SystemMemory,
-    Scene::SystemDrives,
-    Scene::SystemNetwork,
-    Scene::SystemBattery,
-    Scene::SystemWaiting,
     Scene::SettingsStayOnTop,
     // Appended so the numbers of the screenshots above stay the same. They
     // show an empty shelf: items shown again after ShelfEmpty would fade in.
@@ -1230,7 +1147,6 @@ const SCENES: [Scene; 101] = [
     Scene::ShelfPaired,
     Scene::ShelfPairedPhones,
     Scene::PairedNotice,
-    Scene::SystemGpu,
     // The Add-ons page: off (the "+" tab), then each state of a download.
     Scene::Page(PageKind::Addons),
     Scene::AddonsDownloading,
@@ -1249,8 +1165,6 @@ const SCENES: [Scene; 101] = [
     Scene::OyenzaMoneyOut,
     Scene::GameStats,
     Scene::GameStatsAllow,
-    Scene::SystemGames,
-    Scene::SystemGamesAllow,
     Scene::JaOffer,
     Scene::JaGetting,
     // Appended so the numbers above stay. Every theme runs them; the Pill
@@ -1261,9 +1175,6 @@ const SCENES: [Scene; 101] = [
     // The Script page: empty, then partway through a reading.
     Scene::Page(PageKind::Script),
     Scene::ScriptReading,
-    // The whole PC's power: read from the power supply, then estimated.
-    Scene::SystemPower,
-    Scene::SystemPowerEstimate,
     // A maximized window under the island: what rests steps aside, what
     // happens still shows. Then the Settings page with Stay picked.
     Scene::AsideIdle,
@@ -1346,11 +1257,6 @@ impl Scene {
             Scene::GearClick => "page-settings".into(),
             Scene::SettingsSigningIn => "page-settings-signing-in".into(),
             Scene::SettingsSignedIn => "page-settings-signed-in".into(),
-            Scene::SystemMemory => "page-system-memory".into(),
-            Scene::SystemDrives => "page-system-drives".into(),
-            Scene::SystemNetwork => "page-system-network".into(),
-            Scene::SystemBattery => "page-system-battery".into(),
-            Scene::SystemWaiting => "page-system-waiting".into(),
             Scene::SettingsStayOnTop => "page-settings-stay-on-top".into(),
             Scene::SettingsTabs => "page-settings-tabs".into(),
             Scene::SettingsTabsStore => "page-settings-tabs-store".into(),
@@ -1358,7 +1264,6 @@ impl Scene {
             Scene::ShelfPaired => "page-shelf-paired".into(),
             Scene::ShelfPairedPhones => "page-shelf-paired-phones".into(),
             Scene::PairedNotice => "paired-received-notice".into(),
-            Scene::SystemGpu => "page-system-gpu".into(),
             Scene::AddonsDownloading => "page-addons-downloading".into(),
             Scene::AddonsOn => "page-addons-on".into(),
             Scene::AddonsOffline => "page-addons-offline".into(),
@@ -1373,16 +1278,12 @@ impl Scene {
             Scene::OyenzaMoneyOut => "oyenza-money-out".into(),
             Scene::GameStats => "game-stats".into(),
             Scene::GameStatsAllow => "game-stats-allow".into(),
-            Scene::SystemGames => "page-system-games".into(),
-            Scene::SystemGamesAllow => "page-system-games-allow".into(),
             Scene::JaOffer => "page-media-ja-offer".into(),
             Scene::JaGetting => "page-media-ja-getting".into(),
             Scene::IdleStatus => "idle-status".into(),
             Scene::MediaLyric => "media-lyric".into(),
             Scene::LowBatteryHud => "low-battery-hud".into(),
             Scene::ScriptReading => "page-script-reading".into(),
-            Scene::SystemPower => "page-system-power".into(),
-            Scene::SystemPowerEstimate => "page-system-power-estimate".into(),
             Scene::AsideIdle => "aside-idle".into(),
             Scene::AsideLyric => "aside-media-lyric".into(),
             Scene::AsidePeek => "aside-new-song".into(),
@@ -1432,16 +1333,6 @@ impl Scene {
             | Scene::SettingsUpdate
             | Scene::UpdateSheet
             | Scene::UpdateReady => Some(PageKind::Settings),
-            Scene::SystemMemory
-            | Scene::SystemDrives
-            | Scene::SystemNetwork
-            | Scene::SystemBattery
-            | Scene::SystemWaiting
-            | Scene::SystemGpu
-            | Scene::SystemGames
-            | Scene::SystemGamesAllow
-            | Scene::SystemPower
-            | Scene::SystemPowerEstimate => Some(PageKind::System),
             Scene::ShelfPairing | Scene::ShelfPaired | Scene::ShelfPairedPhones => Some(PageKind::Shelf),
             Scene::AddonsDownloading | Scene::AddonsOn | Scene::AddonsOffline | Scene::AddonsFailed => Some(PageKind::Addons),
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
@@ -1504,7 +1395,7 @@ impl Scene {
 
     /// Show over games is on (and a game is in front, or was).
     fn game(self) -> bool {
-        matches!(self, Scene::GameStats | Scene::GameStatsAllow | Scene::SystemGames | Scene::SystemGamesAllow)
+        matches!(self, Scene::GameStats | Scene::GameStatsAllow)
     }
 
     fn media_playing(self) -> bool {
@@ -3018,16 +2909,10 @@ impl SelfTest {
         // Script reader: on for the Script page's scenes, off (no tab) elsewhere.
         let script = scene.page() == Some(PageKind::Script);
         st.addons.insert(SCRIPT_READER.id, if script { AddonStatus::Ready } else { AddonStatus::Off });
-        // System (an add-on, off by default): on for its own page's scenes only.
-        let system = scene.page() == Some(PageKind::System);
         // Notifications (on by default, but only in the Store copy: the self-test
         // runs the download): as the Store copy for its page, its notices and
         // the Settings scene with its chip.
         st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore);
-        for (id, on) in [(SYSTEM.id, system)] {
-            st.settings.set_addon(id, on);
-            st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
-        }
         // The PC's own clock (a Diorama run holds its own after this).
         clock::hold_local(None);
         // The Downloader: offered in its own scenes, and on there (its tools
@@ -3063,19 +2948,6 @@ impl SelfTest {
         st.system = fake_system(scene);
         st.settings.game_stats = scene.game();
         st.game = fake_game(scene, &mut st.system);
-        st.ui.system_module = match scene {
-            Scene::SystemMemory => Module::Memory,
-            Scene::SystemDrives => Module::Drives,
-            Scene::SystemNetwork => Module::Network,
-            Scene::SystemBattery => Module::Battery,
-            Scene::SystemGpu => Module::Gpu,
-            Scene::SystemGames | Scene::SystemGamesAllow => Module::Games,
-            Scene::SystemPower | Scene::SystemPowerEstimate => Module::Power,
-            _ => Module::Cpu,
-        };
-        for (path, rgb) in SAMPLE_ICONS {
-            st.app_icons.entry(path.to_string()).or_insert_with(|| Some(sample_icon(rgb)));
-        }
         if let Some(p) = scene.page() {
             st.page = p;
         }

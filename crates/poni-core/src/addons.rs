@@ -168,24 +168,6 @@ pub const SCRIPT_READER: Addon = Addon {
     pro: false,
 };
 
-/// System: the System page (the processor, graphics, memory, drives,
-/// network and power, and the apps using them). A tab for everyone up to
-/// 0.2.8; an add-on, off, in the versions after it, so the island's own tabs
-/// are the everyday ones. Its code is in the app, so there is nothing to download.
-/// Off, there is no System tab, and its readings never start at rest
-/// (`Settings::system_history` only counts while it is on). Show over games
-/// keeps its own switch: its readout reads the counters while a game is in
-/// front, System on or off.
-pub const SYSTEM: Addon = Addon {
-    id: "system",
-    title: "System",
-    blurb: "Live CPU, GPU, memory, drives, network and power, and the apps using them.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: false,
-};
-
 /// Downloader: the Downloads page, which saves the video or sound of a link
 /// with yt-dlp (`ytdlp`, `downloads`). yt-dlp and QuickJS (which yt-dlp needs
 /// for YouTube) come from their own releases, unchanged; FFmpeg, which joins
@@ -261,7 +243,7 @@ pub fn is_downloader_tool(name: &str) -> bool {
 }
 
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 5] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &DOWNLOADER];
+pub const ALL: [&Addon; 4] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -377,7 +359,7 @@ mod tests {
 
     #[test]
     fn built_in_add_ons_are_off_until_switched_on() {
-        for a in [&SYSTEM] {
+        for a in [&SCRIPT_READER] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
             assert_eq!(Addon::find(a.id), Some(a));
             assert_eq!(Status::Ready.line(a, false), "On");
@@ -468,7 +450,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

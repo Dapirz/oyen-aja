@@ -113,7 +113,6 @@ fn icon(a: &Addon) -> Icon {
         "sholat" => Icon::Moon,
         "ja" => Icon::Lyrics,
         "script" => Icon::Script,
-        "system" => Icon::Gauge,
         "notifications" => Icon::Bell,
         "downloader" => Icon::Download,
         _ => Icon::Addons,

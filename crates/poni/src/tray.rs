@@ -55,7 +55,6 @@ impl Tray {
 pub enum MenuCmd {
     ToggleIdleStyle(IdleStyle),
     SetTheme(Theme),
-    ToggleSystemHistory,
     ToggleLyrics,
     TogglePronunciation,
     /// true: hide in full-screen apps; false: stay on top of them.
@@ -167,11 +166,6 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, update: Updat
     if s.island_x.is_some() {
         let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::TogglePinned, .. })).map_or(items.len(), |i| i + 1);
         items.insert(at, item("Move island to the centre", MenuCmd::CentreIsland, false));
-    }
-    // Only while the System add-on is on: its page's history, under Sounds.
-    if s.system_on() {
-        let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. })).unwrap_or(items.len());
-        items.insert(at, item("Keep System page history", MenuCmd::ToggleSystemHistory, s.system_history));
     }
     match update {
         // A new version first, until it is installed.
@@ -357,18 +351,6 @@ mod tests {
         let moved = cmds(&Settings { island_x: Some(0.8), ..Settings::default() });
         let pin = moved.iter().position(|c| *c == MenuCmd::TogglePinned).expect("no Keep island open");
         assert_eq!(moved.get(pin + 1), Some(&MenuCmd::CentreIsland));
-    }
-
-    #[test]
-    fn system_history_is_in_the_menu_only_while_system_is_on() {
-        let has = |s: &Settings| menu_items(s, false, &OyenzaLink::Off, UpdateLine::None).iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSystemHistory, .. }));
-        let mut s = Settings::default();
-        assert_eq!(has(&s), None, "System is off by default");
-        s.set_addon(poni_core::addons::SYSTEM.id, true);
-        let at = has(&s).expect("no System history item");
-        // Right above Sounds, where it always was.
-        let items = menu_items(&s, false, &OyenzaLink::Off, UpdateLine::None);
-        assert!(matches!(&items[at + 1], MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. }));
     }
 
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {

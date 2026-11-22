@@ -21,7 +21,6 @@ pub mod prayer;
 pub mod script;
 pub mod settings;
 pub mod shelf;
-pub mod system;
 pub mod tasks;
 pub mod today;
 
@@ -58,8 +57,6 @@ pub enum PageKind {
     /// Oyenza, with Oyen himself as its tab (`oyen::tab`): signed out, the
     /// way to sign in; signed in, the money by day.
     Oyenza,
-    /// The System add-on's page, while it is on ([`tabs`]).
-    System,
     /// The teleprompter: a script read under the webcam.
     Script,
     /// Prayer times, while that add-on is on ([`tabs`]).
@@ -79,14 +76,13 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, Oyenza, then the
     /// add-ons' pages and the "+".
-    pub const ALL: [PageKind; 13] = [
+    pub const ALL: [PageKind; 12] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
         PageKind::Tasks,
         PageKind::Focus,
         PageKind::Oyenza,
-        PageKind::System,
         PageKind::Script,
         PageKind::Prayer,
         PageKind::Downloads,
@@ -102,7 +98,6 @@ impl PageKind {
             PageKind::Shelf => "shelf",
             PageKind::Tasks => "tasks",
             PageKind::Today => "today",
-            PageKind::System => "system",
             PageKind::Script => "script",
             PageKind::Oyenza => "oyenza",
             PageKind::Prayer => "prayer",
@@ -125,7 +120,6 @@ impl PageKind {
             PageKind::Shelf => "Shelf",
             PageKind::Tasks => "Tasks",
             PageKind::Today => "Today",
-            PageKind::System => "System",
             PageKind::Script => "Script",
             PageKind::Oyenza => "Oyenza",
             PageKind::Prayer => "Prayer",
@@ -143,7 +137,6 @@ impl PageKind {
             PageKind::Shelf => Icon::Tray,
             PageKind::Tasks => Icon::ListChecks,
             PageKind::Today => Icon::Calendar,
-            PageKind::System => Icon::Gauge,
             PageKind::Script => Icon::Script,
             PageKind::Oyenza => Icon::Wallet,
             PageKind::Prayer => Icon::Moon,
@@ -180,7 +173,7 @@ impl PageKind {
     }
 }
 
-/// The tabs in the header: every page but Settings, with System, Script and Prayer only while their add-ons are on.
+/// The tabs in the header: every page but Settings, with Script and Prayer only while their add-ons are on.
 /// Music, Today, Shelf, Tasks and Focus unless Settings took them off the
 /// row; one of those still shows while its page is open (a file dropped on
 /// the island opens the Shelf). Notifications wherever the copy can read
@@ -214,7 +207,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
     PageKind::ALL
         .into_iter()
         .filter(|&p| match p {
-            PageKind::System => st.system_on(),
             PageKind::Prayer => st.prayer_on(),
             PageKind::Script => st.script_on(),
             PageKind::Downloads => st.downloader_on(),
@@ -233,6 +225,11 @@ pub fn step_tab(p: PageKind, st: &AppState, forward: bool) -> PageKind {
     tabs[if forward { (i + 1) % n } else { (i + n - 1) % n }]
 }
 
+/// How tall the open island's pages may be, at the least: the window is
+/// laid out for the tallest page, and the System page, gone since, was
+/// always this tall. Keeping it keeps the window the size it was.
+pub const TALLEST: f32 = 256.0;
+
 pub fn content_height(p: PageKind, st: &AppState) -> f32 {
     match p {
         PageKind::Media => media::height(st),
@@ -240,7 +237,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Shelf => shelf::height(st),
         PageKind::Tasks => tasks::height(st),
         PageKind::Today => today::height(st),
-        PageKind::System => system::height(st),
         PageKind::Script => script::height(st),
         PageKind::Oyenza => oyenza::height(st),
         PageKind::Prayer => prayer::height(st),
@@ -372,7 +368,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Shelf => shelf::draw(ui, st, area),
         PageKind::Tasks => tasks::draw(ui, st, area),
         PageKind::Today => today::draw(ui, st, area),
-        PageKind::System => system::draw(ui, st, area),
         PageKind::Script => script::draw(ui, st, area),
         PageKind::Oyenza => oyenza::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
@@ -695,10 +690,8 @@ mod tests {
         st.oyenza.pro = Some(true);
         assert_eq!(tabs(&st), [Media, Today, Shelf, Tasks, Focus, Oyenza, Addons]);
         // The add-ons' pages come after Oyenza, before the "+".
-        for id in ["system", "script"] {
-            st.addons.insert(id, poni_core::addons::Status::Ready);
-        }
-        assert_eq!(&tabs(&st)[5..], [Oyenza, System, Script, Addons]);
+        st.addons.insert("script", poni_core::addons::Status::Ready);
+        assert_eq!(&tabs(&st)[5..], [Oyenza, Script, Addons]);
         // Clipboard left the app: an island last open there opens on Music.
         assert_eq!(PageKind::from_key("clipboard"), Media);
     }
@@ -761,37 +754,20 @@ mod tests {
         st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
         assert_eq!(tabs(&st).last(), Some(&PageKind::Addons));
         assert_eq!(PageKind::from_key("addons"), PageKind::Addons);
-        // The window is as tall as the tallest page (System, laid out for
-        // whether it shows or not); the add-ons' rows stay under it.
-        assert!(content_height(PageKind::Addons, &st) <= content_height(PageKind::System, &st));
+        // The window is as tall as the tallest page, `TALLEST` at the
+        // least; the add-ons' rows stay under it.
+        assert!(content_height(PageKind::Addons, &st) <= TALLEST);
         // Notifications with as many apps as it lists.
         for i in 0..poni_core::notifications::MAX_APPS {
             st.settings.notifications.remember(&format!("App.{i}"), &format!("App {i}"));
         }
-        assert!(content_height(PageKind::Notifications, &st) <= content_height(PageKind::System, &st));
+        assert!(content_height(PageKind::Notifications, &st) <= TALLEST);
         // Signed out, Oyenza's sign-in is as tall as its code, so starting to
         // sign in doesn't move the island.
         st.oyenza.link = OyenzaLink::Off;
         let signed_out = content_height(PageKind::Oyenza, &st);
         st.oyenza.link = OyenzaLink::Connecting { code: "ABCD-EFGH".into(), url: String::new(), until: 600.0 };
         assert_eq!(signed_out, content_height(PageKind::Oyenza, &st));
-    }
-
-    #[test]
-    fn system_has_a_tab_only_while_its_add_on_is_on() {
-        for (page, addon) in [(PageKind::System, poni_core::addons::SYSTEM)] {
-            let mut st = state();
-            assert!(!tabs(&st).contains(&page), "{} is off for everyone until switched on", addon.id);
-            st.settings.set_addon(addon.id, true);
-            st.addons.insert(addon.id, poni_core::addons::Status::Ready);
-            assert!(tabs(&st).contains(&page));
-            // An island last open on its page opens on the first tab while it's off.
-            let store = Store { last_page: page.key().into(), ..Store::default() };
-            let mut settings = Settings { remember_page: true, ..Settings::default() };
-            assert_eq!(AppState::new(settings.clone(), store.clone()).page, PageKind::ALL[0]);
-            settings.set_addon(addon.id, true);
-            assert_eq!(AppState::new(settings, store).page, page);
-        }
     }
 
     #[test]
@@ -882,7 +858,7 @@ mod tests {
     #[test]
     fn the_add_ons_never_make_the_window_taller() {
         let st = state();
-        let tallest = content_height(PageKind::System, &st);
+        let tallest = TALLEST;
         assert!(content_height(PageKind::Addons, &st) <= tallest, "{} > {tallest}", content_height(PageKind::Addons, &st));
     }
 
@@ -897,10 +873,10 @@ mod tests {
 
     #[test]
     fn settings_never_makes_the_window_taller() {
-        // The window fits the tallest page; System is always 256 DIPs (Settings
+        // The window fits the tallest page, `TALLEST` at the least (Settings
         // has three rows of switches since Clipboard history left).
         let mut st = state();
-        assert!(content_height(PageKind::Settings, &st) <= content_height(PageKind::System, &st));
+        assert!(content_height(PageKind::Settings, &st) <= TALLEST);
         // Nor its new version's row, nor the Update sheet in its place.
         let rel = poni_core::update::Release {
             version: "9.9.9".into(),
@@ -914,6 +890,6 @@ mod tests {
         let row = content_height(PageKind::Settings, &st);
         st.update.sheet = true;
         let sheet = content_height(PageKind::Settings, &st);
-        assert!(row <= content_height(PageKind::System, &st) && sheet <= row, "{row} {sheet}");
+        assert!(row <= TALLEST && sheet <= row, "{row} {sheet}");
     }
 }

@@ -341,13 +341,6 @@ pub struct PageUiState {
     /// (`oyen::tab`). None while the island is closed: the next opening is
     /// his arrival.
     pub oyen_tab: Option<(crate::oyen::TabMove, f64)>,
-    /// The module the System page shows under its strip.
-    pub system_module: poni_core::sysmon::Module,
-    /// The last System reading had a GPU (keeps its chip while the next one is on its way).
-    pub system_gpu: bool,
-    /// The last full System reading had the whole PC's power (keeps its chip
-    /// while the page's first, light reading shows).
-    pub system_power: bool,
     /// The page the Settings button was pressed on (pressing it again goes back).
     pub before_settings: Option<PageKind>,
     /// Start with Windows, as last read off the UI thread (None until Settings first opens).
@@ -560,13 +553,11 @@ pub struct AppState {
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
     pub stats: SysStats,
-    /// The System page's readings and their last minute (empty while it's closed).
+    /// The CPU and GPU readings for the readout over a game (empty otherwise).
     pub system: poni_core::sysmon::Monitor,
     /// Show over games.
     pub game: GameState,
     pub shelf_thumbs: HashMap<String, Option<Image>>,
-    /// Icons of the apps the System page lists, by executable path (None = loading or none).
-    pub app_icons: HashMap<String, Option<Image>>,
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
     pub accent: Color,
@@ -661,7 +652,6 @@ impl AppState {
             system: poni_core::sysmon::Monitor::default(),
             game: GameState::default(),
             shelf_thumbs: HashMap::new(),
-            app_icons: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,
             page,
@@ -691,12 +681,11 @@ impl AppState {
             let on = st.settings.addon_on(a.id);
             st.addons.insert(a.id, if !on { AddonStatus::Off } else if a.downloads() { AddonStatus::Checking } else { AddonStatus::Ready });
         }
-        // Last open on the Script or System
+        // Last open on the Script
         // page, since switched off, or on a tab since hidden: open on the
         // first tab.
         let off = match st.page {
             PageKind::Script => !st.script_on(),
-            PageKind::System => !st.system_on(),
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Notifications => !st.notifications_on(),
             p => st.tab_hidden(p),
@@ -715,11 +704,6 @@ impl AppState {
     /// The Script reader add-on is on: the Script tab shows.
     pub fn script_on(&self) -> bool {
         self.addon(poni_core::addons::SCRIPT_READER.id) == AddonStatus::Ready
-    }
-
-    /// The System add-on is on: the System tab shows.
-    pub fn system_on(&self) -> bool {
-        self.addon(poni_core::addons::SYSTEM.id) == AddonStatus::Ready
     }
 
     /// The Downloader add-on is on, with its tools in place, for an account

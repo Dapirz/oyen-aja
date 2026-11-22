@@ -111,10 +111,6 @@ pub struct Settings {
     /// Oyenza (once signed in): show sums and senders on the island straight
     /// away. Off: they wait for a click on Show, so a shared screen shows none.
     pub oyenza_show_amounts: bool,
-    /// Keep the System page's charts going while it's closed (a light reading
-    /// of the kernel counters once a second), so they're full when it opens.
-    /// Only while the System add-on is on ([`Settings::system_history_on`]).
-    pub system_history: bool,
     /// Add-ons switched on, by id (`poni_core::addons`). Ids this version
     /// doesn't know are kept, so a newer Poni's choices survive a save.
     pub addons: BTreeMap<String, bool>,
@@ -231,7 +227,6 @@ impl Default for Settings {
             hidden_tabs: Vec::new(),
             pomodoro: PomodoroConfig::default(),
             oyenza_show_amounts: false,
-            system_history: true,
             addons: BTreeMap::new(),
             prayer: PrayerSettings::default(),
             game_stats: false,
@@ -264,17 +259,6 @@ impl Settings {
 
     pub fn set_addon(&mut self, id: &str, on: bool) {
         self.addons.insert(id.to_string(), on);
-    }
-
-    /// The System add-on is on: the System tab shows.
-    pub fn system_on(&self) -> bool {
-        self.addon_on(crate::addons::SYSTEM.id)
-    }
-
-    /// The System page's readings go on while it's closed: its history
-    /// switch, and only while System itself is on.
-    pub fn system_history_on(&self) -> bool {
-        self.system_on() && self.system_history
     }
 
     /// Has the person never switched the add-on `id` on or off? An add-on
@@ -462,21 +446,6 @@ mod tests {
         // A Clipboard start page from before 0.2.7 opens Music.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#).unwrap().sanitized();
         assert_eq!((s.start_page.as_str(), s.settings_version), ("media", SETTINGS_VERSION));
-    }
-
-    #[test]
-    fn system_history_counts_only_while_system_is_on() {
-        // Off by default, so nothing reads the counters at rest; its history
-        // switch keeps its default for when it is switched on.
-        let mut s = Settings::default();
-        assert!(!s.system_on() && s.system_history && !s.system_history_on());
-        s.set_addon(crate::addons::SYSTEM.id, true);
-        assert!(s.system_on() && s.system_history_on());
-        s.system_history = false;
-        assert!(!s.system_history_on());
-        // Files from before have no System switch: off.
-        let old: Settings = serde_json::from_str(r#"{"settings_version":4,"system_history":true}"#).unwrap();
-        assert!(!old.sanitized().system_on());
     }
 
     #[test]

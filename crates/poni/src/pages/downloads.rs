@@ -423,6 +423,6 @@ mod tests {
     #[test]
     fn the_page_never_makes_the_window_taller() {
         let st = AppState::new(Settings::default(), Store::default());
-        assert!(height(&st) <= super::super::content_height(crate::pages::PageKind::System, &st));
+        assert!(height(&st) <= crate::pages::TALLEST);
     }
 }

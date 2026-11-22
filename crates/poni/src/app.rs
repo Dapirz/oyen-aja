@@ -393,12 +393,9 @@ pub struct App {
     covered_by: HashSet<String>,
     shown: bool,
     stats_on: bool,
-    /// The System page's sampler thread: from the start while its history is
-    /// kept (`Settings::system_history_on`: System on, its history kept),
-    /// else from the first time the page opens or a game's readout needs it.
+    /// The CPU and GPU reader for the readout over a game, from the first
+    /// game it is needed for.
     sysmon: Option<services::sysmon::SysMon>,
-    /// The System page is open (its readings come each second).
-    sysmon_on: bool,
     /// What the System reader was last told about nobody being there and battery saver.
     sysmon_rest: poni_core::sysmon::Rest,
     /// The Oyenza page is on screen: its day list stays live (`services::oyenza`).
@@ -428,9 +425,6 @@ pub struct App {
     script_held: bool,
     /// The Script page was on screen at the last tick.
     script_shown: bool,
-    /// App icons the System page asked for and hasn't got yet (the Shelf's
-    /// thumbnail worker answers both pages with the same event).
-    icon_wait: HashSet<String>,
     tray: Option<Tray>,
     taskbar_created_msg: u32,
     selftest: Option<selftest::SelfTest>,
@@ -631,7 +625,6 @@ impl App {
             shown: false,
             stats_on: false,
             sysmon: None,
-            sysmon_on: false,
             sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
             today_watch: false,
@@ -645,7 +638,6 @@ impl App {
             script_excluded: false,
             script_held: false,
             script_shown: false,
-            icon_wait: HashSet::new(),
             tray: None,
             taskbar_created_msg,
             selftest,
@@ -688,9 +680,6 @@ impl App {
             self.sync_top_watch();
             self.st.paired = self.services.as_ref().map(|s| paired_phones(s.pairs())).unwrap_or_default();
             self.sync_pair_offer();
-            if self.st.settings.system_history_on() {
-                self.start_sysmon();
-            }
             // A frame count left running by a Poni that crashed, and whether
             // Windows lets this sign-in read frames (the System page shows it).
             services::frames::stop_stale();
@@ -774,7 +763,7 @@ impl App {
     /// centre stays put and both edges glide at sub-pixel precision. Call at
     /// start and whenever the scale, the monitor or the expanded width changes.
     fn layout_surface(&mut self) {
-        let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(0.0f32, f32::max);
+        let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(pages::TALLEST, f32::max);
         self.layout_surface_for(self.st.settings.expanded_width, pages::HEADER_H + tallest + pages::PAD);
         // The band Step aside watches follows the monitor and its scale.
         self.sync_top_watch();
@@ -928,7 +917,7 @@ impl App {
         let need_w = ((bw + 2.0 * self.island.side_room()) * s).ceil() as i32;
         let need_h = ((bh + self.island.bottom_room() + self.island.top()) * s).ceil() as i32;
         if need_w > self.surface.w || need_h > self.surface.h {
-            let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(0.0f32, f32::max);
+            let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(pages::TALLEST, f32::max);
             let body_h = (pages::HEADER_H + tallest + pages::PAD).max(bh / OVERSHOOT * 1.1);
             pinfo!("island outgrew the window; growing it to fit {bw:.0}x{bh:.0} DIP");
             self.layout_surface_for(self.st.settings.expanded_width.max(bw / OVERSHOOT * 1.1), body_h);
@@ -2156,19 +2145,6 @@ impl App {
         if let Some(w) = self.settings_win.as_mut() {
             w.view.dirty = true;
         }
-        // System's readings at rest: its history switch, while System is on.
-        let history = self.st.settings.system_history_on();
-        if before.system_history_on() != history && self.selftest.is_none() {
-            match &self.sysmon {
-                Some(s) => s.background(history),
-                None if history => self.start_sysmon(),
-                None => {}
-            }
-            // Off while the page is closed: the kept minute goes, so the next opening starts fresh.
-            if !history && !self.sysmon_on && !self.st.game.active {
-                self.st.system.clear();
-            }
-        }
     }
 
     fn on_menu(&mut self, cmd: tray::MenuCmd) {
@@ -2178,7 +2154,6 @@ impl App {
         match cmd {
             ToggleIdleStyle(style) => s.idle_style = style,
             SetTheme(theme) => s.theme = theme,
-            ToggleSystemHistory => s.system_history = !s.system_history,
             ToggleLyrics => s.lyrics = !s.lyrics,
             TogglePronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
             SetHideFullscreen(hide) => s.hide_in_fullscreen = hide,
@@ -2420,22 +2395,12 @@ impl App {
                 }
             }
             AppEvent::ShelfThumb { path, image } => {
-                // The answer to an app icon the System page asked for (only that
-                // answer touches its icons), and to the Shelf when it asked too.
-                let ours = self.icon_wait.remove(&path);
-                let for_shelf = !ours || self.st.shelf_thumbs.contains_key(&path);
-                if ours {
-                    let px = pages::system::icon_px(self.gfx.scale());
-                    self.st.app_icons.insert(path.clone(), image.as_ref().map(|i| pages::system::shrink_icon(i, px)));
-                }
-                if for_shelf {
-                    self.st.shelf_thumbs.insert(path, image);
-                }
+                self.st.shelf_thumbs.insert(path, image);
             }
             AppEvent::Stats(s) => self.st.stats = s,
             AppEvent::System(m) => {
-                // A reading still on its way when the page closed is dropped.
-                if self.sysmon_on || self.st.game.active {
+                // A reading still on its way when the game left is dropped.
+                if self.st.game.active {
                     self.st.system = *m;
                 }
                 // Over a game the frame rate goes with each reading, once a second.
@@ -2593,7 +2558,6 @@ impl App {
                 self.blur_text();
             }
             self.set_stats(false);
-            self.set_sysmon(false);
             // Oyen arrives in his tab again at the next opening.
             self.st.ui.oyen_tab = None;
             // Sums shown in the Oyenza tab hide again, and it opens on Today next time.
@@ -2685,33 +2649,9 @@ impl App {
         }
     }
 
-    /// The System page opened or closed. Open, its readings arrive each
-    /// second; with the history kept the minute behind them arrives at once,
-    /// else each opening starts a fresh minute.
-    fn set_sysmon(&mut self, on: bool) {
-        if on == self.sysmon_on {
-            return;
-        }
-        self.sysmon_on = on;
-        // The self-test shows sample readings; the real sources get their own check.
-        if self.selftest.is_some() {
-            return;
-        }
-        if on && self.sysmon.is_none() {
-            self.start_sysmon();
-        }
-        if let Some(s) = &self.sysmon {
-            s.open(on);
-        }
-        // The readout over a game still draws from them.
-        if !on && !self.st.settings.system_history_on() && !self.st.game.active {
-            self.st.system.clear();
-        }
-    }
-
     fn start_sysmon(&mut self) {
         self.sysmon_rest = self.rest_now();
-        match services::sysmon::SysMon::start(self.sink.clone(), self.st.settings.system_history_on(), self.sysmon_rest) {
+        match services::sysmon::SysMon::start(self.sink.clone(), false, self.sysmon_rest) {
             Ok(s) => self.sysmon = Some(s),
             Err(e) => pwarn!("sysmon: couldn't start ({e})"),
         }
@@ -2722,9 +2662,8 @@ impl App {
         poni_core::sysmon::Rest { away: self.locked || self.display_off, saver: self.st.power.saver }
     }
 
-    /// The System reader rests while nobody is at the PC, and its kept minute
-    /// also on battery saver (`poni_core::sysmon::reads`). What it drops, the
-    /// page drops too, so a minute from before never shows as the last one.
+    /// The CPU and GPU reader rests while nobody is at the PC
+    /// (`poni_core::sysmon::reads`). What it drops, the readout drops too.
     fn tell_sysmon_rest(&mut self) {
         let rest = self.rest_now();
         if rest == self.sysmon_rest || self.selftest.is_some() {
@@ -2734,7 +2673,7 @@ impl App {
         if let Some(s) = &self.sysmon {
             s.rest(rest);
         }
-        if !poni_core::sysmon::reads(self.sysmon_on, self.st.game.active, self.st.settings.system_history_on(), rest) {
+        if !poni_core::sysmon::reads(false, self.st.game.active, false, rest) {
             self.st.system.clear();
         }
     }
@@ -2936,9 +2875,7 @@ impl App {
                 self.game_pid = None;
                 self.st.game.rate = None;
                 self.st.game.app = None;
-                if !self.sysmon_on && !self.st.settings.system_history_on() {
-                    self.st.system.clear();
-                }
+                self.st.system.clear();
             }
             pinfo!("show over games: readout {}", if want { "on" } else { "off" });
         }
@@ -3251,10 +3188,9 @@ impl App {
         }
         self.prayer_tick();
         self.script_tick();
-        // Prayer times, System or Downloader switched off: its tab is gone.
+        // Prayer times or Downloader switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
-            PageKind::System => !self.st.system_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
             _ => false,
@@ -3356,7 +3292,6 @@ impl App {
         let dt = dt.clamp(0.0, 0.05) as f32;
         // Today's tiles need the readings only while they show (signed out it has the sign-in card, signed in the day).
         self.set_stats(self.mode == Mode::Expanded(PageKind::Today) && pages::today::shows_tiles(&self.st));
-        self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
         self.set_oyenza_watch(self.mode == Mode::Expanded(PageKind::Oyenza));
         self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
         // The Pill theme floats the island below the top edge.
@@ -4102,7 +4037,6 @@ impl App {
                 crate::autostart::report(self.sink.clone(), None);
             }
             self.set_stats(p == PageKind::Today && self.expanded);
-            self.set_sysmon(p == PageKind::System && self.expanded);
             if self.text_focus {
                 self.blur_text();
             }
@@ -4167,10 +4101,6 @@ impl App {
                     SetTimer(self.hwnd, TIMER_SAVE, 800, None);
                 },
                 Command::SetPage(p) => self.set_page(p),
-                Command::OpenSystem(m) => {
-                    self.st.ui.system_module = m;
-                    self.set_page(PageKind::System);
-                }
                 Command::CheckFps => self.check_fps(),
                 Command::AllowFps => {
                     // The island takes the focus for Windows' prompt (a
@@ -4178,13 +4108,6 @@ impl App {
                     self.focus_text();
                     self.st.game.access = FpsAccess::Asking;
                     services::frames::request_access(self.sink.clone(), SendHwnd::new(self.hwnd));
-                }
-                Command::LoadAppIcon(path) => {
-                    if !self.st.app_icons.contains_key(&path) {
-                        self.st.app_icons.insert(path.clone(), None);
-                        self.icon_wait.insert(path.clone());
-                        services::imaging::load_thumb_async(path, self.sink.clone());
-                    }
                 }
                 Command::SetPinned(b) => {
                     self.st.pinned = b;
