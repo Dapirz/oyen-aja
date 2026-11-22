@@ -35,7 +35,7 @@ Dipertahankan:
 - Tasks, Focus, Script, Bacaan Jepang: tetap ada, bisa dimatikan lewat toggle. Semua toggle fitur dikumpulkan di satu tempat (halaman Add-ons), dan fitur yang mati tidak jalan sama sekali (hemat memori).
 - Waktu sholat: lokasi otomatis dan pilih manual.
 - Downloader (yt-dlp): add-on, tidak perlu Pro lagi. Nyala setelah diaktifkan di Add-ons dan tools-nya terunduh.
-- Tema: menunggu keputusan (ingin mirip tema Poni Bos Digital).
+- Tema: tidak diganti (keputusan 22 Nov 2026). Classic, Glass, Pill, Diorama. Tema Oyen sudah dihapus.
 - Notifications: dipertahankan, cari cara supaya jalan di build non-Store (sekarang hanya jalan di copy versi Store).
 
 Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 1790ee2..ba747ac`):
@@ -46,17 +46,15 @@ Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 17
 - Ukuran poni.exe: 9,55 MB (sebelum Stocks) → 6,61 MB.
 - Kalau butuh kode yang sudah dihapus (misalnya perekaman Meeting notes untuk versi sendiri), ambil dari commit sebelum penghapusannya, contoh `git show 0800e50:crates/poni/src/services/notes.rs`.
 
-Masih ada sisa brand Oyenza/Oyen yang melanggar aturan aset:
-- `oyen::app_icon` (logo Oyen) di jendela Settings dan kartu versinya.
-- Tema Oyen (kucing Oyen di island).
-- Teks "Oyenza Studio" di beberapa komentar, string dan dokumen (README, PRIVACY).
+Sisa brand Oyenza/Oyen di app sudah dibersihkan (`2e062b5`): tema Oyen, `oyen::app_icon` diganti ikon Hihu (`logo.rs`), `docs/brand`, `res/poni.ico`, User-Agent, README dan PRIVACY. Yang masih ada: `installer/art`, `site/` dan tools rilis/website milik Oyenza (tidak dipakai fork ini), komentar kode yang menyebut asal kode, dan ARCHITECTURE.md.
 
-Selesaikan bersama keputusan tema.
+Fork ini masih memakai server Oyenza: `drop.oyenza.com` (pairing HP), `studio.oyenza.com/places` (kota sholat di luar Indonesia), release GitHub `lucacadalora/oyenza-studio` (file add-on), `quran.oyenza.com` (link).
 
 Identitas sendiri sudah selesai (`1790ee2`): nama app Hihu Island, ikon, folder data, mutex, kelas window, Run value dan uninstall key baru.
 
 Nanti (belum dikerjakan):
-- Hemat CPU saat musik jalan: island tertutup menggambar ulang equalizer dan lirik setiap refresh layar (144x/detik di layar 144 Hz), sekitar 12,7% dari satu core. Batasi animasinya ke 60 fps atau lebih rendah. Ukur sebelum dan sesudah dengan QueryProcessCycleTime. Saat diam CPU hanya 0,3% (baseline 22 Nov 2026, sebelum fitur-fitur dihapus; ukur ulang dulu). Disarankan dikerjakan berikutnya.
+- Glass berat saat musik jalan (ukuran 22 Nov 2026, layar 144 Hz, Mcycles/s): Glass 30 fps 670, 60 fps 1051, Display rate 1669; Classic 30 fps 166, 60 fps 303; diam 5. Setting Frame rate sudah ada (`5123451`). Cek apakah Glass menyalin layar dan menjalankan shader penuh di setiap frame walau hanya isi island yang berubah. Ukur dengan `tools\measure_cpu.ps1`.
+- RAM saat jalan sekitar 85–105 MB working set (Glass lebih tinggi), jauh dari target 15–30 MB. Cari penyebabnya.
 - Clipboard history: jumlah item dan lama simpan bisa diatur.
 - Screentime.
 - Island menyingkir saat didekati mouse (supaya tab browser tidak tertutup), dan baru terbuka kalau mouse didorong mentok ke tepi atas layar. Seperti di Poni.
