@@ -62,7 +62,7 @@ use crate::state::{
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, DOWNLOADER, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
+use poni_core::addons::{Status as AddonStatus, DOWNLOADER, IELTS, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
@@ -116,8 +116,7 @@ const CLICK_TIMEOUT: f64 = 1.5;
 /// was tight for four more). With 121 (Notifications, the AI tab and IELTS
 /// together, 28 Oct) the Classic run passed 70 s at scene 119. The CI and
 /// Store test steps wait 180 s for the whole run (this plus the writers'
-/// 3.5 s, the Classic runs' IELTS turn of about 26 s and notes turn of about
-/// 5 s or the Diorama runs' own pictures, about 7 s, which the deadline
+/// 3.5 s, the Classic runs' IELTS turn of about 26 s or the Diorama runs' own pictures, about 7 s, which the deadline
 /// leaves out, or 40 s more for the animation runs, stays under it), the
 /// Wine runner 180 s.
 const SCENE_DEADLINE: f64 = 90.0;
@@ -852,62 +851,11 @@ fn seed_ielts(st: &mut AppState, scene: Scene, now: f64) {
     st.ielts = Coach::sample(shows, now);
 }
 
-/// The Notes page's scenes in made-up states (nothing records: the levels
-/// hold still, and the time sits half a second into its second so the
-/// picture doesn't catch it turning); every other scene: no meeting.
-fn seed_notes(st: &mut AppState, scene: Scene, now: f64) {
-    use poni_core::notes::{Phase, Reply, Taker};
-    st.notes = Taker::default();
-    st.ui.notes_kept = false;
-    st.ui.notes_note = None;
-    // Studio Pro, as the server would say: on for the notes' and IELTS' own scenes.
+/// Studio Pro, as the server would say: on for IELTS' own scenes.
+fn seed_pro(st: &mut AppState, scene: Scene) {
     if st.oyenza.link != crate::state::OyenzaLink::Off {
-        st.oyenza.pro = Some(matches!(scene.page(), Some(PageKind::Notes | PageKind::Ielts)) && scene != Scene::NotesPro);
+        st.oyenza.pro = Some(scene.page() == Some(PageKind::Ielts));
     }
-    match scene {
-        Scene::Page(PageKind::Notes) => st.notes.last = Some(sample_notes()),
-        Scene::NotesListening | Scene::NotesActivity => {
-            let secs = if scene == Scene::NotesListening { 42.5 } else { 754.5 };
-            st.notes.started(now - secs, true, true);
-            (st.notes.mic, st.notes.pc) = (0.32, 0.55);
-        }
-        Scene::NotesWriting => {
-            st.notes.stopped(4, 1834.0);
-            st.notes.phase = Phase::Writing { since: now - 38.5 };
-        }
-        Scene::NotesReady => {
-            st.notes.reply(Reply::Saved(Box::new(sample_notes())), now);
-            // Oyen's tick long since drawn: at rest in the picture.
-            st.ui.notes_saved_at = f64::NEG_INFINITY;
-        }
-        _ => {}
-    }
-}
-
-/// A made-up meeting's notes (no real names).
-fn sample_notes() -> poni_core::notes::Saved {
-    use poni_core::notes::{Action, Line, Notes, Saved, Topic};
-    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
-    let notes = Notes {
-        title: "Studio launch plan".into(),
-        lang: "en".into(),
-        summary: s(&[
-            "The launch moves to 14 Nov so the Windows build is signed first.",
-            "Pro stays at Rp49rb a month; the student price waits for December.",
-            "Dimas takes the store listing, Rina the landing page and the video.",
-        ]),
-        decisions: s(&["Launch on 14 Nov", "No student price at launch"]),
-        actions: vec![
-            Action { who: "Dimas".into(), what: "Send the store listing for review".into(), when: "Friday".into() },
-            Action { who: "Rina".into(), what: "Cut the 30 s launch video".into(), when: "next Tuesday".into() },
-            Action { who: "".into(), what: "Ask two campuses about the student price".into(), when: "".into() },
-        ],
-        topics: vec![Topic { title: "Timing".into(), points: s(&["Signing takes a week", "14 Nov is a Friday"]) }],
-        transcript: vec![Line { t: 3.0, who: "Rina".into(), text: "Okay, let's start with the date.".into() }],
-        secs: 1834,
-    };
-    let started = poni_core::datetime::LocalDateTime { year: 2026, month: 10, day: 29, hour: 14, minute: 5, second: 0 };
-    Saved { notes, file: "2026-10-29 14.05 Studio launch plan.md".into(), started }
 }
 
 /// Prayer times for its scenes: on, in Kota Jakarta (Edinburgh, picked by
@@ -1203,16 +1151,6 @@ enum Scene {
     /// Settings in the Store copy: Notifications' chip beside the island's
     /// own pages, on as everyone's starts, and its bell in the header's row.
     SettingsTabsStore,
-    /// Meeting notes: Oyen listening, 0:42 in, both bars moving.
-    NotesListening,
-    /// Meeting notes: the meeting handed over, Oyen writing.
-    NotesWriting,
-    /// Meeting notes: the notes saved, with Open, Copy, the folder and Done.
-    NotesReady,
-    /// Meeting notes on the closed island: Oyen listening, 12:34 in.
-    NotesActivity,
-    /// Meeting notes signed in without Studio Pro: the Pro card.
-    NotesPro,
     /// The Add-ons page signed out where the Downloader is offered, its
     /// tools in place from before: the Downloader and Notifications stay
     /// off, each saying "Sign in with your Oyenza account".
@@ -1327,7 +1265,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 130] = [
+const SCENES: [Scene; 124] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1483,15 +1421,6 @@ const SCENES: [Scene; 130] = [
     // the Store copy, with Notifications' chip.
     Scene::SettingsTabs,
     Scene::SettingsTabsStore,
-    // Meeting notes: the page before a meeting (the notes saved last), Oyen
-    // listening, writing, the notes, and the closed island while he listens,
-    // all made up (`seed_notes`).
-    Scene::Page(PageKind::Notes),
-    Scene::NotesListening,
-    Scene::NotesWriting,
-    Scene::NotesReady,
-    Scene::NotesActivity,
-    Scene::NotesPro,
     // The Add-ons page signed out, without Pro: no Downloader row.
     Scene::AddonsPro,
     // The island dragged along the top edge, closed, then open at the edge.
@@ -1607,11 +1536,6 @@ impl Scene {
             Scene::IeltsCueCard => "page-ielts-cue-card".into(),
             Scene::IeltsResult => "page-ielts-result".into(),
             Scene::IeltsMicDenied => "page-ielts-mic-denied".into(),
-            Scene::NotesListening => "page-notes-listening".into(),
-            Scene::NotesWriting => "page-notes-writing".into(),
-            Scene::NotesReady => "page-notes-ready".into(),
-            Scene::NotesActivity => "notes-activity".into(),
-            Scene::NotesPro => "page-notes-pro".into(),
             Scene::AddonsPro => "page-addons-pro".into(),
             Scene::AddonsAbout => "page-addons-about".into(),
             Scene::PrayerMuhammadiyah => "page-prayer-muhammadiyah".into(),
@@ -1661,7 +1585,6 @@ impl Scene {
             Scene::IeltsSignedOut | Scene::IeltsTalking | Scene::IeltsRecording | Scene::IeltsCueCard | Scene::IeltsResult | Scene::IeltsMicDenied => {
                 Some(PageKind::Ielts)
             }
-            Scene::NotesListening | Scene::NotesWriting | Scene::NotesReady | Scene::NotesPro => Some(PageKind::Notes),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
             _ => None,
         }
@@ -1736,11 +1659,6 @@ impl Scene {
                 | Scene::IeltsCueCard
                 | Scene::IeltsResult
                 | Scene::IeltsMicDenied
-                | Scene::Page(PageKind::Notes)
-                | Scene::NotesListening
-                | Scene::NotesWriting
-                | Scene::NotesReady
-                | Scene::NotesPro
         )
     }
 
@@ -2376,184 +2294,6 @@ fn ielts_server(listener: std::net::TcpListener, seen: &Mutex<Vec<String>>, stop
     }
 }
 
-/// `notes-turn`: after the IELTS turn, a made-up meeting is handed over end
-/// to end with no microphone and no network. Two parts of a tone in 16 kHz
-/// WAV stand in for what the microphone and the PC's sound would have made,
-/// and a server of the run's own on 127.0.0.1 answers `/island/notes/*` the
-/// way catat-server's do. The app's own sender does the rest: the start,
-/// both parts as raw bytes, the finish, the asking, the notes saved as
-/// Markdown, the audio deleted, the server told to let go. The check reads
-/// what the server saw, the file saved and the audio left.
-struct NotesRun {
-    seen: Arc<Mutex<Vec<String>>>,
-    stop: Arc<AtomicBool>,
-    server: Option<JoinHandle<()>>,
-    dir: PathBuf,
-    started: Instant,
-}
-
-/// The run's meeting on its server, and the key it takes.
-const NOTES_ID: &str = "n-1";
-const NOTES_KEY: &str = "oyzd_selftest";
-/// How long the turn may take: one ask after the 4 s wait, on a slow runner.
-const NOTES_TURN_S: f64 = 30.0;
-
-impl NotesRun {
-    fn begin(app: &mut App) -> NotesRun {
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let stop = Arc::new(AtomicBool::new(false));
-        let dir = paths::notes_audio_dir().join("meeting-selftest");
-        let mut run = NotesRun { seen: seen.clone(), stop: stop.clone(), server: None, dir: dir.clone(), started: Instant::now() };
-        let listener = match std::net::TcpListener::bind("127.0.0.1:0") {
-            Ok(l) => l,
-            Err(e) => {
-                run.note(format!("no listener ({e})"));
-                return run;
-            }
-        };
-        let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
-        let _ = listener.set_nonblocking(true);
-        run.server = Some(std::thread::spawn(move || notes_server(listener, &seen, &stop)));
-        let _ = fs::create_dir_all(&dir);
-        let rate = poni_core::notes::RATE;
-        let parts = vec![dir.join("part-000.wav"), dir.join("part-001.wav")];
-        for (path, secs) in parts.iter().zip([2.0, 1.0]) {
-            if let Err(e) = fs::write(path, poni_core::ielts::tone_wav(secs, 220.0, rate)) {
-                run.note(format!("can't write a stand-in part ({e})"));
-            }
-        }
-        crate::pinfo!("selftest: notes turn against 127.0.0.1:{port}");
-        app.selftest_notes_begin(format!("http://127.0.0.1:{port}"), NOTES_KEY.into(), crate::services::notes::Take { dir, parts, secs: 3.0 });
-        run
-    }
-
-    fn note(&self, line: String) {
-        if let Ok(mut s) = self.seen.lock() {
-            s.push(line);
-        }
-    }
-
-    /// One self-test step, `t` seconds into the run: the check once it's over.
-    fn step(&mut self, app: &mut App, t: f64) -> Option<Check> {
-        use poni_core::notes::Phase as P;
-        match &app.st.notes.phase {
-            P::Ready => Some(self.finish(app, None)),
-            P::Failed(p) => {
-                let why = format!("{p:?}");
-                Some(self.finish(app, Some(why)))
-            }
-            _ if t > NOTES_TURN_S => Some(self.finish(app, Some(format!("still {:?} after {NOTES_TURN_S} s", app.st.notes.phase)))),
-            _ => None,
-        }
-    }
-
-    fn finish(&mut self, app: &mut App, failed: Option<String>) -> Check {
-        let ms = self.started.elapsed().as_millis();
-        let saved = app.st.notes.last.as_ref().map(|s| s.file.clone());
-        let md = saved.as_ref().and_then(|f| fs::read_to_string(f).ok()).unwrap_or_default();
-        let audio_left = self.dir.exists();
-        app.selftest_notes_end();
-        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(h) = self.server.take() {
-            let _ = h.join();
-        }
-        let _ = fs::remove_dir_all(&self.dir);
-        let seen = self.seen.lock().map(|s| s.clone()).unwrap_or_default();
-        let has = |want: &str| seen.iter().any(|l| l == want);
-        // Wine has no WinRT HttpClient (Windows.Web.Http): nothing reaches the
-        // server there, and the run is Windows CI's to judge.
-        let wine = under_wine() && seen.is_empty() && failed.as_deref() == Some("Offline");
-        let wrote = md.contains("# Self-test sync")
-            && md.contains("- [ ] Send the deck (Rina, Friday)")
-            && md.contains("**[0:01] Speaker 1:** Let's start.")
-            && saved.as_deref().is_some_and(|f| f.ends_with("2026-10-29 14.05 Self-test sync.md"));
-        let handed = failed.is_none()
-            && has("POST /island/notes key lang=auto")
-            && has(&format!("POST /island/notes/{NOTES_ID}/part/0 key wav=16000/1/16 2.0s"))
-            && has(&format!("POST /island/notes/{NOTES_ID}/part/1 key wav=16000/1/16 1.0s"))
-            && has(&format!("POST /island/notes/{NOTES_ID}/finish key"))
-            && has(&format!("GET /island/notes/{NOTES_ID} key"))
-            && has(&format!("DELETE /island/notes/{NOTES_ID} key"))
-            && wrote
-            && !audio_left;
-        let ok = handed || wine;
-        let note = if wine { "Wine has no WinRT HttpClient, so this runs on Windows only; " } else { "" };
-        let detail = format!(
-            "{note}{}server saw [{}]; notes {}; audio left: {audio_left}; {ms} ms",
-            failed.map_or(String::new(), |s| format!("stopped at {s}; ")),
-            seen.join(" | "),
-            if wrote { "saved" } else if saved.is_some() { "saved but not as expected" } else { "not saved" }
-        );
-        crate::pinfo!("selftest: notes-turn {}: {detail}", if ok { "ok" } else { "FAILED" });
-        check("notes-turn", ok, detail)
-    }
-}
-
-/// What `GET /island/notes/:id` answers once the run's meeting is written up.
-const NOTES_DONE: &str = r#"{"status":"done","secs":3,"notes":{"title":"Self-test sync","lang":"en","summary":["The deck goes out on Friday."],
-"decisions":["Ship on Friday"],"actions":[{"who":"Rina","what":"Send the deck","when":"Friday"}],"topics":[{"title":"Deck","points":["Two slides left"]}]},
-"transcript":[{"t":1,"who":"Speaker 1","text":"Let's start."},{"t":2,"who":"Rina","text":"I'll send the deck on Friday."}]}"#;
-
-/// The notes routes as catat-server answers them, for one meeting, until
-/// `stop`. What each request carried goes into `seen`, one line each.
-fn notes_server(listener: std::net::TcpListener, seen: &Mutex<Vec<String>>, stop: &AtomicBool) {
-    use std::io::{Read, Write};
-    let meeting = format!("/island/notes/{NOTES_ID}");
-    while !stop.load(std::sync::atomic::Ordering::SeqCst) {
-        let Ok((mut c, _)) = listener.accept() else {
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            continue;
-        };
-        let _ = c.set_nonblocking(false);
-        let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(5)));
-        // The headers, then as much body as Content-Length says.
-        let (mut buf, mut chunk, mut continued) = (Vec::new(), [0u8; 16 * 1024], false);
-        let (head, body) = loop {
-            match c.read(&mut chunk) {
-                Ok(0) | Err(_) => break (String::new(), Vec::new()),
-                Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            }
-            let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else { continue };
-            let head = String::from_utf8_lossy(&buf[..end]).to_ascii_lowercase();
-            let len = head.lines().find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0))).unwrap_or(0);
-            if head.contains("expect: 100-continue") && !continued {
-                continued = true;
-                let _ = c.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
-            }
-            if buf.len() >= end + 4 + len {
-                break (String::from_utf8_lossy(&buf[..end]).into_owned(), buf[end + 4..end + 4 + len].to_vec());
-            }
-        };
-        let mut first = head.lines().next().unwrap_or("").split_whitespace();
-        let (method, path) = (first.next().unwrap_or("").to_string(), first.next().unwrap_or("").to_string());
-        let key = head.lines().any(|l| l.split_once(':').is_some_and(|(k, v)| k.eq_ignore_ascii_case("authorization") && v.trim() == format!("Bearer {NOTES_KEY}")));
-        let mut line = format!("{method} {path} {}", if key { "key" } else { "no key" });
-        let (status, answer) = match (method.as_str(), path.as_str()) {
-            ("POST", "/island/notes") => {
-                let json: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
-                line.push_str(&format!(" lang={}", json["lang"].as_str().unwrap_or("?")));
-                (200, format!(r#"{{"id":"{NOTES_ID}","part_max":12582912,"max_secs":10800,"today":{{"used_min":0,"cap_min":240}}}}"#))
-            }
-            ("POST", p) if p.starts_with(&format!("{meeting}/part/")) => {
-                let n: u32 = p.rsplit('/').next().and_then(|n| n.parse().ok()).unwrap_or(0);
-                match poni_core::ielts::wav_info(&body) {
-                    Some(w) => line.push_str(&format!(" wav={}/{}/{} {:.1}s", w.rate, w.channels, w.bits, w.secs)),
-                    None => line.push_str(" no wav"),
-                }
-                (200, format!(r#"{{"next":{},"secs":{}}}"#, n + 1, 3))
-            }
-            ("POST", p) if p == format!("{meeting}/finish") => (202, r#"{"status":"working"}"#.to_string()),
-            ("GET", p) if p == meeting => (200, NOTES_DONE.to_string()),
-            ("DELETE", p) if p == meeting => (200, r#"{"ok":true}"#.to_string()),
-            _ => (404, r#"{"error":"no_notes"}"#.to_string()),
-        };
-        if let Ok(mut s) = seen.lock() {
-            s.push(line);
-        }
-        let _ = c.write_all(format!("HTTP/1.1 {status} OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}", answer.len()).as_bytes());
-    }
-}
-
 // ---------------------------------------------------------------- report
 
 #[derive(Clone, Debug, Serialize)]
@@ -2638,8 +2378,6 @@ enum Phase {
     /// The IELTS coach's one turn against a server of the self-test's own
     /// (Classic runs only; see [`IeltsRun`]).
     Ielts { since: f64 },
-    /// After the IELTS turn: one meeting handed over end to end (`NotesRun`).
-    Notes { since: f64 },
     /// The Diorama theme's own pictures of its resting pill, `RESTS[k]`,
     /// each settled like a scene. Diorama runs only: after the scenes and
     /// the Settings window (or the scene deadline), or with
@@ -2711,8 +2449,6 @@ pub struct SelfTest {
     frames: Option<crate::services::frames::Frames>,
     /// The IELTS one-turn run, while it goes.
     ielts: Option<IeltsRun>,
-    /// The meeting-notes run, while it goes.
-    notes: Option<NotesRun>,
 }
 
 /// Transitions recorded in animation mode: (name, from, to).
@@ -2790,7 +2526,6 @@ impl SelfTest {
             addon_fetch: None,
             frames: None,
             ielts: None,
-            notes: None,
         }
     }
 
@@ -2996,7 +2731,7 @@ impl SelfTest {
         if elapsed > SCENE_DEADLINE
             && !matches!(
                 self.phase,
-                Phase::Finish { .. } | Phase::Done(_) | Phase::Anim { .. } | Phase::Loop | Phase::Scroll | Phase::Ielts { .. } | Phase::Notes { .. } | Phase::Rests { .. }
+                Phase::Finish { .. } | Phase::Done(_) | Phase::Anim { .. } | Phase::Loop | Phase::Scroll | Phase::Ielts { .. } | Phase::Rests { .. }
             )
         {
             let at = match &self.phase {
@@ -3295,14 +3030,6 @@ impl SelfTest {
                 let run = self.ielts.get_or_insert_with(|| IeltsRun::begin(app));
                 if let Some(c) = run.step(app, now - since) {
                     self.ielts = None;
-                    self.checks.push(c);
-                    self.phase = Phase::Notes { since: clock::mono() };
-                }
-            }
-            Phase::Notes { since } => {
-                let run = self.notes.get_or_insert_with(|| NotesRun::begin(app));
-                if let Some(c) = run.step(app, now - since) {
-                    self.notes = None;
                     self.checks.push(c);
                     self.phase = self.after_scenes(clock::mono());
                 }
@@ -3750,9 +3477,7 @@ impl SelfTest {
         // the Settings scene with its chip.
         st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore);
         let ielts = scene.page() == Some(PageKind::Ielts);
-        // Meeting notes: on for its page and its pill.
-        let notes = scene.page() == Some(PageKind::Notes) || scene == Scene::NotesActivity;
-        for (id, on) in [(SYSTEM.id, system), (IELTS.id, ielts), (MEETING_NOTES.id, notes)] {
+        for (id, on) in [(SYSTEM.id, system), (IELTS.id, ielts)] {
             st.settings.set_addon(id, on);
             st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
         }
@@ -3768,7 +3493,7 @@ impl SelfTest {
         seed_downloads(st, scene);
         seed_notifications(st, scene);
         seed_ielts(st, scene, now);
-        seed_notes(st, scene, now);
+        seed_pro(st, scene);
         st.ui.addon_about = (scene == Scene::AddonsAbout).then_some(poni_core::addons::AI_USAGE.id);
         if scene.pro() {
             st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
@@ -4292,12 +4017,6 @@ impl SelfTest {
             let wine = under_wine();
             let note = if wine { " (Wine, which can't leave a window out)" } else { "" };
             checks.push(check("script-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {said}, Windows build {build:?}{note}")));
-        }
-        if scene == Scene::NotesActivity {
-            // A meeting being taken down rests on the closed island: Oyen, the dot, the time.
-            let (mode, _) = app.selftest_mode();
-            let want = Mode::Activity(crate::activities::Activity::Notes);
-            checks.push(check("notes-pill", mode == want, format!("{mode:?}, want {want:?}")));
         }
         if matches!(scene, Scene::RecordActivity | Scene::RecordPaused) {
             // The recording rests on the closed island, ahead of everything else.

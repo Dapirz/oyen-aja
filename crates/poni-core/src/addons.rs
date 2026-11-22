@@ -309,26 +309,8 @@ pub const IELTS: Addon = Addon {
     pro: true,
 };
 
-/// Meeting notes: the Notes page (`crate::notes`). One click and Oyen listens
-/// to the microphone and the computer's own sound (a call in Meet, Zoom,
-/// Teams; on a Mac through a Core Audio tap, macOS 14.2 and later), then the
-/// Oyenza account writes the notes. Its code is in the
-/// app, so there is nothing to download. Off, there is no Notes tab and
-/// nothing of it runs: no recording, no calls. Part of Studio Pro: the page
-/// records only for an account the server says has Pro, and the server
-/// writes notes only for one.
-pub const MEETING_NOTES: Addon = Addon {
-    id: "notes",
-    title: "Meeting notes",
-    blurb: "One click and Oyen listens to your meeting, Meet, Zoom or Teams, and writes the notes.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: true,
-};
-
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 9] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &AI_USAGE, &MEETING_NOTES, &IELTS, &DOWNLOADER];
+pub const ALL: [&Addon; 8] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &AI_USAGE, &IELTS, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -437,9 +419,9 @@ mod tests {
     }
 
     #[test]
-    fn pro_is_ai_usage_meeting_notes_ielts_and_the_downloader() {
+    fn pro_is_ai_usage_ielts_and_the_downloader() {
         let pro: Vec<&str> = ALL.iter().filter(|a| a.pro).map(|a| a.id).collect();
-        assert_eq!(pro, vec!["ai", "notes", "ielts", "downloader"]);
+        assert_eq!(pro, vec!["ai", "ielts", "downloader"]);
     }
 
     #[test]
@@ -457,7 +439,7 @@ mod tests {
 
     #[test]
     fn built_in_add_ons_are_off_until_switched_on() {
-        for a in [&SYSTEM, &IELTS, &MEETING_NOTES] {
+        for a in [&SYSTEM, &IELTS] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
             assert_eq!(Addon::find(a.id), Some(a));
             assert_eq!(Status::Ready.line(a, false), "On");
@@ -561,7 +543,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "ai", "notes", "ielts", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "ai", "ielts", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

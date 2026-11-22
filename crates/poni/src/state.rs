@@ -365,12 +365,6 @@ pub struct PageUiState {
     pub downloads: crate::pages::downloads::DownloadsUi,
     /// The AI tab's own state while it shows (`pages::usage`).
     pub usage: crate::pages::usage::UsageUi,
-    /// The Notes page: when the last notes were saved (Oyen's tick), a short
-    /// line beside them until a time ("Copied"), and whether a recording is
-    /// kept on this PC for Try again.
-    pub notes_saved_at: f64,
-    pub notes_note: Option<(String, f64)>,
-    pub notes_kept: bool,
     /// The Pro add-on whose "what it does" page shows on the Add-ons page.
     pub addon_about: Option<&'static str>,
 }
@@ -782,8 +776,6 @@ pub struct AppState {
     pub usage: UsageState,
     /// The IELTS page's session with Oyen (the IELTS add-on).
     pub ielts: poni_core::ielts::Coach,
-    /// The Notes page's meeting (the Meeting notes add-on).
-    pub notes: poni_core::notes::Taker,
     /// Side effects requested during the frame.
     pub cmds: Vec<Command>,
 }
@@ -863,7 +855,6 @@ impl AppState {
             notify_can: false,
             usage: UsageState::default(),
             ielts: Default::default(),
-            notes: Default::default(),
             cmds: Vec::new(),
         };
         // On ones start by checking their files (the worker reports back);
@@ -872,7 +863,7 @@ impl AppState {
             let on = st.settings.addon_on(a.id);
             st.addons.insert(a.id, if !on { AddonStatus::Off } else if a.downloads() { AddonStatus::Checking } else { AddonStatus::Ready });
         }
-        // Last open on the Script, System, IELTS or Notes
+        // Last open on the Script, System or IELTS
         // page, since switched off, or on a tab since hidden: open on the
         // first tab.
         let off = match st.page {
@@ -882,7 +873,6 @@ impl AppState {
             PageKind::Record => !st.record_on(),
             PageKind::Notifications => !st.notifications_on(),
             PageKind::Ielts => !st.ielts_on(),
-            PageKind::Notes => !st.notes_on(),
             PageKind::Ai => !st.ai_usage_on(),
             p => st.tab_hidden(p),
         };
@@ -978,11 +968,6 @@ impl AppState {
             OyenzaLink::Connected { .. } => self.oyenza.pro,
             _ => Some(false),
         }
-    }
-
-    /// The Meeting notes add-on is on: the Notes tab shows.
-    pub fn notes_on(&self) -> bool {
-        self.addon(poni_core::addons::MEETING_NOTES.id) == AddonStatus::Ready
     }
 
     /// Prayer times is on and its places are read: the tab and reminders run.
