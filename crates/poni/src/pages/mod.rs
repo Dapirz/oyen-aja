@@ -26,7 +26,6 @@ pub mod record;
 pub mod script;
 pub mod settings;
 pub mod shelf;
-pub mod stocks;
 pub mod system;
 pub mod tasks;
 pub mod today;
@@ -88,8 +87,6 @@ pub enum PageKind {
     Record,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
-    /// The IHSG and the person's stocks, while the Stocks add-on is on ([`tabs`]).
-    Stocks,
     /// The day's caffeine, while the Caffeine add-on is on ([`tabs`]).
     Caffeine,
     /// Links to save as video or sound, while the Downloader add-on is on ([`tabs`]).
@@ -107,7 +104,7 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, Oyenza, then the
     /// add-ons' pages and the "+".
-    pub const ALL: [PageKind; 20] = [
+    pub const ALL: [PageKind; 19] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -122,7 +119,6 @@ impl PageKind {
         PageKind::Script,
         PageKind::Record,
         PageKind::Prayer,
-        PageKind::Stocks,
         PageKind::Caffeine,
         PageKind::Downloads,
         PageKind::Notifications,
@@ -146,7 +142,6 @@ impl PageKind {
             PageKind::Record => "record",
             PageKind::Oyenza => "oyenza",
             PageKind::Prayer => "prayer",
-            PageKind::Stocks => "stocks",
             PageKind::Caffeine => "caffeine",
             PageKind::Downloads => "downloads",
             PageKind::Notifications => "notifications",
@@ -177,7 +172,6 @@ impl PageKind {
             PageKind::Record => "Record",
             PageKind::Oyenza => "Oyenza",
             PageKind::Prayer => "Prayer",
-            PageKind::Stocks => "Stocks",
             PageKind::Caffeine => "Caffeine",
             PageKind::Downloads => "Downloads",
             PageKind::Notifications => "Notifications",
@@ -202,7 +196,6 @@ impl PageKind {
             PageKind::Record => Icon::Recorder,
             PageKind::Oyenza => Icon::Wallet,
             PageKind::Prayer => Icon::Moon,
-            PageKind::Stocks => Icon::Stocks,
             PageKind::Caffeine => Icon::Coffee,
             PageKind::Downloads => Icon::Download,
             PageKind::Notifications => Icon::Bell,
@@ -239,7 +232,7 @@ impl PageKind {
 
 /// The tabs in the header: every page but Settings, AI only with Studio Pro,
 /// and Health, IELTS, Notes,
-/// System, Script, Record, Prayer and Stocks only while their add-ons are on.
+/// System, Script, Record and Prayer only while their add-ons are on.
 /// Music, Today, Shelf, Tasks and Focus unless Settings took them off the
 /// row; one of those still shows while its page is open (a file dropped on
 /// the island opens the Shelf). Notifications wherever the copy can read
@@ -280,7 +273,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::System => st.system_on(),
             PageKind::Prayer => st.prayer_on(),
             PageKind::Script => st.script_on(),
-            PageKind::Stocks => st.stocks_on(),
             PageKind::Caffeine => st.caffeine_on(),
             PageKind::Downloads => st.downloader_on(),
             PageKind::Record => st.record_on(),
@@ -315,7 +307,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Record => record::height(st),
         PageKind::Oyenza => oyenza::height(st),
         PageKind::Prayer => prayer::height(st),
-        PageKind::Stocks => stocks::height(st),
         PageKind::Caffeine => caffeine::height(st),
         PageKind::Downloads => downloads::height(st),
         PageKind::Notifications => notifications::height(st),
@@ -458,7 +449,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Record => record::draw(ui, st, area),
         PageKind::Oyenza => oyenza::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
-        PageKind::Stocks => stocks::draw(ui, st, area),
         PageKind::Caffeine => caffeine::draw(ui, st, area),
         PageKind::Downloads => downloads::draw(ui, st, area),
         PageKind::Notifications => notifications::draw(ui, st, area),
@@ -846,9 +836,8 @@ mod tests {
         assert_eq!(tabs(&st).last(), Some(&PageKind::Addons));
         assert_eq!(PageKind::from_key("addons"), PageKind::Addons);
         // The window is as tall as the tallest page (System, laid out for
-        // whether it shows or not); the add-ons' rows and Stocks stay under it.
+        // whether it shows or not); the add-ons' rows stay under it.
         assert!(content_height(PageKind::Addons, &st) <= content_height(PageKind::System, &st));
-        assert!(content_height(PageKind::Stocks, &st) <= content_height(PageKind::System, &st));
         assert!(content_height(PageKind::Caffeine, &st) <= content_height(PageKind::System, &st));
         // Notifications with as many apps as it lists.
         for i in 0..poni_core::notifications::MAX_APPS {
@@ -883,11 +872,10 @@ mod tests {
     }
 
     #[test]
-    fn system_health_and_stocks_have_a_tab_only_while_their_add_ons_are_on() {
+    fn system_health_and_caffeine_have_a_tab_only_while_their_add_ons_are_on() {
         for (page, addon) in [
             (PageKind::System, poni_core::addons::SYSTEM),
             (PageKind::Health, poni_core::addons::HEALTH),
-            (PageKind::Stocks, poni_core::addons::STOCKS),
             (PageKind::Caffeine, poni_core::addons::CAFFEINE),
         ] {
             let mut st = state();

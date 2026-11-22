@@ -465,8 +465,6 @@ pub struct App {
     sysmon_rest: poni_core::sysmon::Rest,
     /// The Oyenza page is on screen: its day list stays live (`services::oyenza`).
     oyenza_watch: bool,
-    /// The Stocks page was on screen at the last look (`set_stocks_watch`).
-    stocks_open: bool,
     /// The Today page is on screen: the worker asks for the day (`services::oyenza`).
     today_watch: bool,
     /// What the AI tab's worker was last told (`set_usage_watch`).
@@ -715,7 +713,6 @@ impl App {
             sysmon_on: false,
             sysmon_rest: poni_core::sysmon::Rest::default(),
             oyenza_watch: false,
-            stocks_open: false,
             today_watch: false,
             usage_watch: services::usage::Watch::default(),
             frames: None,
@@ -1475,7 +1472,6 @@ impl App {
                 self.on_event(AppEvent::Power(p));
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
-                self.set_stocks_watch();
                 self.set_usage_watch();
                 self.update_due();
                 self.request_frame();
@@ -1489,7 +1485,6 @@ impl App {
                 }
                 self.tell_oyenza_activity();
                 self.tell_sysmon_rest();
-                self.set_stocks_watch();
                 self.set_usage_watch();
                 self.update_due();
                 self.request_frame();
@@ -1987,22 +1982,6 @@ impl App {
         if on != self.today_watch {
             self.today_watch = on;
             self.tell_oyenza_activity();
-        }
-    }
-
-    /// The Stocks page asks oyenza.trade for prices only while it is on
-    /// screen and someone is at the PC (`pages::stocks::watch`); the worker
-    /// starts the first time it opens.
-    fn set_stocks_watch(&mut self) {
-        // The self-test's scenes show a made-up market: nothing is asked.
-        let open = self.mode == Mode::Expanded(PageKind::Stocks) && !self.locked && !self.display_off && self.selftest.is_none();
-        // Closed, and the worker already told so: nothing to do, every frame.
-        if !open && !self.stocks_open {
-            return;
-        }
-        self.stocks_open = open;
-        if let Some(s) = self.services.as_ref() {
-            s.stocks_watch(pages::stocks::watch(&self.st, open));
         }
     }
 
@@ -2722,7 +2701,6 @@ impl App {
             }
             AppEvent::Located(found) => self.on_located(found),
             AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
-            AppEvent::Stocks(ev) => self.st.stocks.apply(ev, self.st.unix),
             AppEvent::Notify(ev) => self.on_notify(ev),
             AppEvent::Usage(ev) => self.on_usage(ev),
             AppEvent::AdzanEnded => self.adzan_ended(),
@@ -3593,12 +3571,11 @@ impl App {
         self.ielts_tick();
         self.notes_tick();
         self.script_tick();
-        // Prayer times, System, Health, Stocks, AI usage, IELTS or Downloader switched off: its tab is gone.
+        // Prayer times, System, Health, AI usage, IELTS or Downloader switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
             PageKind::System => !self.st.system_on(),
             PageKind::Health => !self.st.health_on(),
-            PageKind::Stocks => !self.st.stocks_on(),
             PageKind::Caffeine => !self.st.caffeine_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
@@ -3707,7 +3684,6 @@ impl App {
         self.set_sysmon(self.mode == Mode::Expanded(PageKind::System));
         self.set_oyenza_watch(self.mode == Mode::Expanded(PageKind::Oyenza));
         self.set_today_watch(self.mode == Mode::Expanded(PageKind::Today));
-        self.set_stocks_watch();
         self.set_usage_watch();
         // The Pill theme floats the island below the top edge.
         self.island.set_floating(pill::on(self.st.settings.theme).then_some(pill::TOP_GAP));

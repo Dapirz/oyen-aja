@@ -490,8 +490,8 @@ impl<'a, 'g> Ui<'a, 'g> {
 
     /// Release keyboard focus (e.g. after submitting).
     /// Gives the text field `id` the keyboard, its caret after `len`
-    /// characters: a field that opens on a click elsewhere (the Stocks
-    /// page's search) is ready to type in.
+    /// characters: a field that opens on a click elsewhere
+    /// is ready to type in.
     pub fn focus_text(&mut self, id: WidgetId, len: usize) {
         if self.input.focused != Some(id) {
             self.input.focused = Some(id);

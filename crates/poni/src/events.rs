@@ -176,8 +176,6 @@ pub enum AppEvent {
     Located(crate::services::location::Located),
     /// One of prayer times' online city files (`services::cities`).
     Cities { file: String, got: Result<poni_core::prayer::World, String> },
-    /// The Stocks page's prices, names and years (`services::stocks`).
-    Stocks(crate::services::stocks::StocksEvent),
     /// One of yt-dlp's lines for download `id` (`services::downloader`).
     Download { id: u64, line: poni_core::ytdlp::Line },
     /// yt-dlp for download `id` ended (`ok`: it exited with 0).

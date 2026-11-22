@@ -14,7 +14,7 @@
 //! A tool this build doesn't pin yet is left out: FFmpeg's absence (yt-dlp
 //! is pointed at an ffmpeg that isn't there, so a copy on the runner is never
 //! used either) skips a run that needs it with a warning. The film's site
-//! having trouble only warns, like oyenza.trade in the Stocks test; anything
+//! having trouble only warns, like the other live tests; anything
 //! else that goes wrong fails.
 
 use crate::services::http::{Client, MtaGuard};

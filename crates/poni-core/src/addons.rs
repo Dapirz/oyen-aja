@@ -202,20 +202,6 @@ pub const HEALTH: Addon = Addon {
     pro: false,
 };
 
-/// Stocks: the Stocks page, the IHSG and up to ten IDX stocks with their
-/// day's line, from oyenza.trade (`poni_core::stocks`). Its code is in the
-/// app, so there is nothing to download. Off, there is no Stocks tab; on, the
-/// prices are asked for only while its page is on screen.
-pub const STOCKS: Addon = Addon {
-    id: "stocks",
-    title: "Stocks",
-    blurb: "The IHSG and up to 10 IDX stocks from oyenza.trade, 10 minutes behind IDX.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: false,
-};
-
 /// Caffeine: the Caffeine page, drinks the person adds (an espresso drink by
 /// its shots and beans, the rest by serving), how much is still in them hour
 /// by hour, and a reminder before the day's last call (`poni_core::caffeine`).
@@ -373,7 +359,7 @@ pub const MEETING_NOTES: Addon = Addon {
 };
 
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 12] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &HEALTH, &STOCKS, &CAFFEINE, &SCREEN_RECORDER, &AI_USAGE, &MEETING_NOTES, &IELTS, &DOWNLOADER];
+pub const ALL: [&Addon; 11] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &HEALTH, &CAFFEINE, &SCREEN_RECORDER, &AI_USAGE, &MEETING_NOTES, &IELTS, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -502,7 +488,7 @@ mod tests {
 
     #[test]
     fn built_in_add_ons_are_off_until_switched_on() {
-        for a in [&SYSTEM, &HEALTH, &STOCKS, &CAFFEINE, &IELTS, &MEETING_NOTES] {
+        for a in [&SYSTEM, &HEALTH, &CAFFEINE, &IELTS, &MEETING_NOTES] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
             assert_eq!(Addon::find(a.id), Some(a));
             assert_eq!(Status::Ready.line(a, false), "On");
@@ -606,7 +592,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "health", "stocks", "caffeine", "recorder", "ai", "notes", "ielts", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "system", "health", "caffeine", "recorder", "ai", "notes", "ielts", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

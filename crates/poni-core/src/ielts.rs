@@ -109,7 +109,7 @@ impl Spice {
 
 // ---------------------------------------------------------------- the answers
 //
-// Read from `serde_json::Value` by hand, as `stocks` does, rather than with
+// Read from `serde_json::Value` by hand, rather than with
 // derived deserializers: a dozen small types this way cost a fraction of the
 // code (this ships in poni.exe). Anything missing or of the wrong kind reads
 // as its default, so a server a little ahead still reads.

@@ -1,8 +1,8 @@
 //! Add-ons page, the "+" at the end of the tab row: features only the people
 //! who switch them on get (`poni_core::addons`). Most download then; Script
-//! reader, System, Health, Stocks, IELTS and Meeting notes are already in
-//! the app and only show their pages (System's readings, Health's steps and
-//! Stocks' prices also run only while they are on; IELTS only while a
+//! reader, System, Health, IELTS and Meeting notes are already in
+//! the app and only show their pages (System's readings and Health's steps
+//! also run only while they are on; IELTS only while a
 //! session runs, Meeting notes only while it records).
 //!
 //! One row per add-on: its icon, its name, what it does (or where its
@@ -130,7 +130,6 @@ fn icon(a: &Addon) -> Icon {
         "script" => Icon::Script,
         "system" => Icon::Gauge,
         "health" => Icon::Steps,
-        "stocks" => Icon::Stocks,
         "caffeine" => Icon::Coffee,
         "notifications" => Icon::Bell,
         "recorder" => Icon::Recorder,
@@ -318,7 +317,7 @@ mod tests {
 
     #[test]
     fn pro_add_ons_show_for_everyone_and_say_what_they_do_without_pro() {
-        use poni_core::addons::{AI_USAGE, DOWNLOADER, IELTS, MEETING_NOTES, STOCKS};
+        use poni_core::addons::{AI_USAGE, DOWNLOADER, IELTS, MEETING_NOTES, SCRIPT_READER};
         let connected = || OyenzaLink::Connected { account: "a\u{2022}\u{2022}\u{2022}@example.com".into() };
         let listed = |st: &AppState, id: &str| rows(st).iter().any(|a| a.id == id);
         let mut st = AppState::new(Settings::default(), Store::default());
@@ -356,10 +355,10 @@ mod tests {
         assert!(!listed(&st, DOWNLOADER.id));
         // A free add-on: listed and on without Pro.
         st.oyenza = Default::default();
-        st.settings.set_addon(STOCKS.id, true);
-        st.addons.insert(STOCKS.id, Status::Ready);
-        assert_eq!(status(&st, &STOCKS), Status::Ready);
-        assert!(listed(&st, STOCKS.id) && !locked(&st, &STOCKS));
+        st.settings.set_addon(SCRIPT_READER.id, true);
+        st.addons.insert(SCRIPT_READER.id, Status::Ready);
+        assert_eq!(status(&st, &SCRIPT_READER), Status::Ready);
+        assert!(listed(&st, SCRIPT_READER.id) && !locked(&st, &SCRIPT_READER));
     }
 
     #[test]

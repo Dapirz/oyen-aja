@@ -116,7 +116,7 @@ impl Drop for MtaGuard {
 /// `Cache-Control` comes back from that cache and never reaches the server
 /// (`cache_tests` below). A server whose answers change sends
 /// `Cache-Control: no-store`, as api.oyenza.app does on every `/island` route
-/// and oyenza.trade on the Stocks routes.
+/// and the other services the app reads.
 pub struct Client {
     http: HttpClient,
 }

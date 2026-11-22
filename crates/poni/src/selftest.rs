@@ -63,7 +63,7 @@ use crate::state::{
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, CAFFEINE, DOWNLOADER, HEALTH, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, STOCKS, SYSTEM};
+use poni_core::addons::{Status as AddonStatus, CAFFEINE, DOWNLOADER, HEALTH, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
@@ -777,25 +777,6 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
     }
 }
 
-/// The Stocks page's scenes on a made-up market (`pages::stocks::picture`);
-/// every other scene: the list as it starts, nothing loaded.
-fn seed_stocks(st: &mut AppState, scene: Scene, now: f64) {
-    use crate::pages::stocks::{picture, Picture};
-    let shows = match scene {
-        Scene::Page(PageKind::Stocks) => Picture::Day,
-        Scene::StocksPicked => Picture::Year,
-        Scene::StocksSearch => Picture::Search,
-        Scene::StocksEdit => Picture::Edit,
-        _ => {
-            st.store.stocks = poni_core::stocks::Watchlist::default();
-            st.stocks = crate::state::StocksState::default();
-            st.ui.stocks = crate::pages::stocks::StocksUi::default();
-            return;
-        }
-    };
-    picture(st, shows, now);
-}
-
 /// The Caffeine page's scenes on made-up days (`pages::caffeine::picture`),
 /// the clock held at the picture's time; every other scene: no drinks, and
 /// the PC's own clock.
@@ -1194,12 +1175,6 @@ enum Scene {
     TodayOff,
     /// Today with a date ten days on clicked in the grid: the list starts there.
     TodayPicked,
-    /// Stocks with Bank BCA picked, over a year.
-    StocksPicked,
-    /// Stocks: "Add a stock" open, "bank" typed.
-    StocksSearch,
-    /// Stocks in edit mode: remove buttons and handles.
-    StocksEdit,
     /// A recording with Oyenza Studio Recorder: the Record page while it
     /// records (`Page(Record)` shows its choices), then the closed island's
     /// recording pill, recording and paused.
@@ -1387,7 +1362,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 144] = [
+const SCENES: [Scene; 140] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1494,12 +1469,6 @@ const SCENES: [Scene; 144] = [
     Scene::TodayTiles,
     Scene::TodayOff,
     Scene::TodayPicked,
-    // The Stocks add-on: the IHSG's day, a stock's year, the search and
-    // edit mode, all on a made-up market (`stocks::sample`).
-    Scene::Page(PageKind::Stocks),
-    Scene::StocksPicked,
-    Scene::StocksSearch,
-    Scene::StocksEdit,
     // Oyenza Studio Recorder installed: the Record page's choices and the
     // recording, the closed island while it records and while paused, and
     // the Add-ons page with Screen recorder's row.
@@ -1669,9 +1638,6 @@ impl Scene {
             Scene::TodayTiles => "page-today-tiles".into(),
             Scene::TodayOff => "page-today-off".into(),
             Scene::TodayPicked => "page-today-picked".into(),
-            Scene::StocksPicked => "page-stocks-picked".into(),
-            Scene::StocksSearch => "page-stocks-search".into(),
-            Scene::StocksEdit => "page-stocks-edit".into(),
             Scene::RecordLive => "page-record-live".into(),
             Scene::RecordActivity => "record-activity".into(),
             Scene::RecordPaused => "record-paused-activity".into(),
@@ -1746,7 +1712,6 @@ impl Scene {
             Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld | Scene::PrayerMuhammadiyah | Scene::PrayerPickerFollow => Some(PageKind::Prayer),
             Scene::ScriptReading | Scene::ScriptRecorder => Some(PageKind::Script),
             Scene::TodayDay | Scene::TodayNoApps | Scene::TodayTiles | Scene::TodayOff | Scene::TodayPicked => Some(PageKind::Today),
-            Scene::StocksPicked | Scene::StocksSearch | Scene::StocksEdit => Some(PageKind::Stocks),
             Scene::RecordLive => Some(PageKind::Record),
             Scene::AddonsRecorder | Scene::AddonsDownloader | Scene::AddonsPro | Scene::AddonsAbout => Some(PageKind::Addons),
             Scene::DownloadsEmpty => Some(PageKind::Downloads),
@@ -3869,7 +3834,6 @@ impl SelfTest {
         // pages' scenes only (and Health for its goal notice).
         let system = scene.page() == Some(PageKind::System);
         let health = scene.page() == Some(PageKind::Health) || scene == Scene::HealthNotice;
-        let stocks = scene.page() == Some(PageKind::Stocks);
         // Notifications (on by default, but only in the Store copy: the self-test
         // runs the download): as the Store copy for its page, its notices and
         // the Settings scene with its chip.
@@ -3878,11 +3842,10 @@ impl SelfTest {
         // Meeting notes: on for its page and its pill.
         let notes = scene.page() == Some(PageKind::Notes) || scene == Scene::NotesActivity;
         let caffeine = scene.page() == Some(PageKind::Caffeine);
-        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (STOCKS.id, stocks), (IELTS.id, ielts), (MEETING_NOTES.id, notes), (CAFFEINE.id, caffeine)] {
+        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (IELTS.id, ielts), (MEETING_NOTES.id, notes), (CAFFEINE.id, caffeine)] {
             st.settings.set_addon(id, on);
             st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
         }
-        seed_stocks(st, scene, now);
         seed_caffeine(st, scene);
         // The Downloader: offered in its own scenes, and on there (its tools
         // in place, so the tab shows) except on the Add-ons page, whose row

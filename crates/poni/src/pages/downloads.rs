@@ -23,7 +23,7 @@ use poni_core::ytdlp::Mode;
 const HEIGHT: f32 = 256.0;
 /// A message from the app ("Copy a link first") shows this long.
 const NOTE_S: f64 = 4.0;
-/// The link row (a field as tall as Tasks' and Stocks'); the list, or the
+/// The link row (a field as tall as Tasks'); the list, or the
 /// empty page, starts under it.
 const FIELD_H: f32 = 34.0;
 const LIST_TOP: f32 = 44.0;
