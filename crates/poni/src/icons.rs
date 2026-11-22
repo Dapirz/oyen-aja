@@ -49,8 +49,6 @@ pub enum Icon {
     Phone,
     /// Show a hidden message (a notice's Show).
     Eye,
-    /// A broken link: an update check that couldn't connect.
-    Unlink,
     /// The header's Settings button.
     Gear,
     /// An app whose own icon isn't known.
@@ -185,11 +183,6 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Open => p![s("M14 4h6v6"), s("M20 4l-9 9"), s("M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10")],
         Phone => p![s("M9 2.5h6A2.5 2.5 0 0 1 17.5 5v14a2.5 2.5 0 0 1-2.5 2.5H9A2.5 2.5 0 0 1 6.5 19V5A2.5 2.5 0 0 1 9 2.5z"), s("M11 18.5h2")],
         Eye => p![s("M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"), s("M9.2 12a2.8 2.8 0 1 0 5.6 0a2.8 2.8 0 1 0-5.6 0")],
-        Unlink => p![
-            s("M9.5 14.5l-1.7 1.7a3 3 0 0 1-4.2-4.2l2.2-2.2a3 3 0 0 1 4.2 0"),
-            s("M14.5 9.5l1.7-1.7a3 3 0 0 1 4.2 4.2l-2.2 2.2a3 3 0 0 1-4.2 0"),
-            s("M4 4l16 16"),
-        ],
         App => p![
             s("M6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11A2.5 2.5 0 0 1 6.5 4z"),
             s("M4 8.5h16"),
@@ -229,7 +222,7 @@ mod tests {
         Icon::Battery, Icon::Bolt, Icon::Bluetooth, Icon::Headphones, Icon::Volume, Icon::VolumeLow, Icon::VolumeMute,
         Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File, Icon::Trash, Icon::Undo, Icon::Reset,
         Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye,
-        Icon::Unlink, Icon::Gear,
+        Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script, Icon::Download,
         Icon::AppWindow, Icon::Bell, Icon::Message,
     ];

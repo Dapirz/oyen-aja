@@ -791,21 +791,7 @@ mod tests {
     fn settings_never_makes_the_window_taller() {
         // The window fits the tallest page, `TALLEST` at the least (Settings
         // has three rows of switches since Clipboard history left).
-        let mut st = state();
+        let st = state();
         assert!(content_height(PageKind::Settings, &st) <= TALLEST);
-        // Nor its new version's row, nor the Update sheet in its place.
-        let rel = poni_core::update::Release {
-            version: "9.9.9".into(),
-            date: String::new(),
-            headline: "Something new".into(),
-            notes: String::new(),
-            windows: None,
-            mac: None,
-        };
-        st.update.offer = Some(rel);
-        let row = content_height(PageKind::Settings, &st);
-        st.update.sheet = true;
-        let sheet = content_height(PageKind::Settings, &st);
-        assert!(row <= TALLEST && sheet <= TALLEST, "{row} {sheet}");
     }
 }

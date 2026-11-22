@@ -118,8 +118,6 @@ pub enum AppEvent {
     Paired(poni_core::pairdrop::MeetEvent),
     /// Where an add-on's files stand (`services::addons`).
     Addon { id: &'static str, status: poni_core::addons::Status },
-    /// What the update file said (`services::update`).
-    Update(crate::services::update::UpdateEvent),
     /// Where Windows says the PC is (`services::location`), for prayer times.
     Located(crate::services::location::Located),
     /// One of prayer times' online city files (`services::cities`).

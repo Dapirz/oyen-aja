@@ -58,8 +58,6 @@ const TIMER_MINUTE: usize = 6;
 pub const TIMER_SELFTEST: usize = 7;
 const TIMER_TRAY: usize = 8;
 const TIMER_RAISE: usize = 9;
-/// The next read of the update file (`crate::updates`).
-const TIMER_UPDATE: usize = 11;
 /// Alt+Shift+S pauses and resumes the Script page's reading from any app.
 const HOTKEY_SCRIPT: i32 = 2;
 /// Raises that follow a new foreground window, and their spacing.
@@ -121,12 +119,6 @@ pub fn main_entry() -> i32 {
     }
     if crate::autostart::packaged() {
         pinfo!("running as the Microsoft Store package");
-    }
-    // Install on next start: the new version's Setup, downloaded and checked
-    // earlier, runs now, before any window, and opens the new version.
-    if crate::updates::ENABLED && selftest_dir.is_none() && !crate::autostart::packaged() && crate::updates::pending_install() {
-        unsafe { OleUninitialize() };
-        return 0;
     }
     let code = match run(selftest_dir) {
         Ok(code) => code,
@@ -293,7 +285,7 @@ fn run_deferred(d: Deferred) {
             let Some((helper, items)) = with_app(|app| {
                 // Right-clicked on the open island (the tray's menu leaves it as it is).
                 app.menu_open = app.expanded && app.hovering;
-                (app.helper, tray::menu_items(&app.st.settings, app.st.pinned, crate::updates::menu_line(&app.st, app.updater.is_some())))
+                (app.helper, tray::menu_items(&app.st.settings, app.st.pinned))
             }) else {
                 return;
             };
@@ -437,9 +429,6 @@ pub struct App {
     laid_spot: Option<f32>,
     /// A press on the closed island, which a sideways move turns into a drag.
     grab: Option<Grab>,
-    /// New versions (`crate::updates`); None in the self-test and in a
-    /// Store copy, which the Store updates.
-    updater: Option<crate::updates::Updater>,
     /// Notifications' listener while it is on; None while it's
     /// off, in the download (no package identity) and in the self-test.
     notify: Option<services::notifications::Listener>,
@@ -616,7 +605,6 @@ impl App {
             laid_floating: false,
             laid_spot: None,
             grab: None,
-            updater: None,
             notify: None,
         })
     }
@@ -638,11 +626,6 @@ impl App {
             }
             self.try_add_tray();
             services::power::register_session(self.helper);
-            if crate::updates::ENABLED && !crate::autostart::packaged() {
-                self.updater = Some(crate::updates::Updater::start(paths::data_dir().join("update.json"), &mut self.st, crate::updates::unix_now()));
-                self.schedule_update();
-                self.fetch_setup();
-            }
         }
         if let Err(e) = dragdrop::register(self.hwnd, self.sink.clone()) {
             pwarn!("drop target registration failed: {e}");
@@ -917,7 +900,6 @@ impl App {
         if let Some(n) = self.st.notice.take_if(|_| shown) {
             match n.action {
                 Some(NoticeAction::OpenPage(p)) => self.st.page = p,
-                Some(NoticeAction::OpenUpdate) => self.st.open_update(),
                 Some(NoticeAction::StartFocus) => {
                     self.st.page = PageKind::Focus;
                     if !self.st.pomodoro.is_active() {
@@ -1314,7 +1296,6 @@ impl App {
                 }
                 let p = services::power::query();
                 self.on_event(AppEvent::Power(p));
-                self.update_due();
                 self.request_frame();
                 Some(LRESULT(1))
             }
@@ -1324,7 +1305,6 @@ impl App {
                     WTS_SESSION_UNLOCK_ => self.locked = false,
                     _ => {}
                 }
-                self.update_due();
                 self.request_frame();
                 Some(LRESULT(0))
             }
@@ -1626,12 +1606,6 @@ impl App {
                 }
                 self.try_add_tray();
             }
-            TIMER_UPDATE => {
-                unsafe {
-                    let _ = KillTimer(self.hwnd, TIMER_UPDATE);
-                }
-                self.update_due();
-            }
             TIMER_SELFTEST => {
                 if let Some(mut t) = self.selftest.take() {
                     let done = t.step(self);
@@ -1854,12 +1828,6 @@ impl App {
             AppleMusicToken => self.use_apple_music_token(),
             AppleMusicHelp => shell::open(APPLE_MUSIC_HELP_URL),
             AppleMusicForget => self.forget_apple_music_token(),
-            // "Update to x…": the island opens on the Update sheet.
-            Update => {
-                self.st.open_update();
-                self.expand();
-            }
-            CheckForUpdates => self.check_for_updates(),
             Quit => {
                 self.quit(0);
                 return;
@@ -1879,7 +1847,7 @@ impl App {
         // What the Settings window shows that a service reports.
         let shown = matches!(
             ev,
-            AppEvent::Autostart(_) | AppEvent::Update(_) | AppEvent::Addon { .. } | AppEvent::Located(_) | AppEvent::Notify(_)
+            AppEvent::Autostart(_) | AppEvent::Addon { .. } | AppEvent::Located(_) | AppEvent::Notify(_)
         );
         if let Some(w) = self.settings_win.as_mut().filter(|_| shown) {
             w.view.dirty = true;
@@ -2063,23 +2031,6 @@ impl App {
                     }
                 }
             }
-            AppEvent::Update(services::update::UpdateEvent::Checked(r)) => {
-                let open = self.updater.as_mut().is_some_and(|u| u.checked(&mut self.st, r, crate::updates::unix_now()));
-                self.schedule_update();
-                self.fetch_setup();
-                // Check for updates… found one to install: the Update sheet.
-                if open {
-                    self.expand();
-                }
-                // A frame, so a new version's notice goes up now, not with the next redraw.
-                self.request_frame();
-            }
-            AppEvent::Update(services::update::UpdateEvent::Downloaded(r)) => {
-                if self.updater.as_mut().is_some_and(|u| u.fetched(&mut self.st, r)) {
-                    self.expand();
-                }
-                self.request_frame();
-            }
             AppEvent::Located(found) => self.on_located(found),
             AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
             AppEvent::Notify(ev) => self.on_notify(ev),
@@ -2163,8 +2114,6 @@ impl App {
             if self.st.page == PageKind::Settings {
                 self.st.page = self.st.ui.before_settings.take().filter(|p| pages::tabs(&self.st).contains(p)).unwrap_or_else(|| pages::first_tab(&self.st));
             }
-            self.st.update.sheet = false;
-            self.st.update.said = None;
             // A notice that arrived while expanded gets its full time now.
             let min_until = self.st.now + 4.0;
             if let Some(n) = self.st.notice.as_mut() {
@@ -2570,12 +2519,6 @@ impl App {
             if !self.expanded && now >= n.until {
                 self.st.notice = None;
             }
-        }
-        // A new version's notice (or "Updated to") waits for the island to be
-        // free. The first frame counts (the window shows at its end).
-        let free = !self.fullscreen_hidden && !self.locked && !self.display_off && !self.expanded && self.st.notice.is_none();
-        if self.updater.as_mut().is_some_and(|u| u.announce(&mut self.st, free)) {
-            self.request_frame();
         }
         if let Some(ended) = self.st.pomodoro.tick(now) {
             pages::focus::on_phase_ended(&mut self.st, ended);
@@ -3089,92 +3032,6 @@ impl App {
         }
     }
 
-    // ------------------------------------------------------------ new versions
-
-    /// Arm the update file's timer for the next read, or stop it while a
-    /// read runs.
-    fn schedule_update(&mut self) {
-        let secs = self.updater.as_ref().and_then(|u| u.due_in(crate::updates::unix_now()));
-        unsafe {
-            match secs {
-                // SetTimer waits at most about 24 days; reads are an hour apart.
-                Some(s) => {
-                    SetTimer(self.hwnd, TIMER_UPDATE, s.saturating_mul(1000).clamp(1000, 0x7FFF_FFFF) as u32, None);
-                }
-                None => {
-                    let _ = KillTimer(self.hwnd, TIMER_UPDATE);
-                }
-            }
-        }
-    }
-
-    /// The timer fired, or someone came back to the PC: read the update file
-    /// if a read is due and someone is here, not on battery saver. Otherwise
-    /// it waits; the lock, display and power events call this again.
-    fn update_due(&mut self) {
-        let now = crate::updates::unix_now();
-        let away = self.locked || self.display_off || self.st.power.saver;
-        match self.updater.as_ref().and_then(|u| u.due_in(now)) {
-            Some(0) if away => {}
-            Some(0) => self.read_update_file(now),
-            _ => self.schedule_update(),
-        }
-    }
-
-    /// Check for updates… (the menu): read the update file now, even on
-    /// battery saver (someone asked); the answer goes on the island.
-    fn check_for_updates(&mut self) {
-        let now = crate::updates::unix_now();
-        if self.updater.as_mut().is_some_and(|u| u.ask(now)) {
-            self.read_update_file(now);
-        }
-        self.request_frame();
-    }
-
-    /// Read the update file on the add-on thread; the answer comes back as
-    /// `UpdateEvent::Checked`.
-    fn read_update_file(&mut self, now: u64) {
-        let job = services::update::check_job(self.sink.clone());
-        let started = self.services.as_ref().is_some_and(|s| s.run_job(job));
-        if let Some(u) = self.updater.as_mut() {
-            u.begin();
-            if !started {
-                u.checked(&mut self.st, Err("the add-on thread isn't running".into()), now);
-                self.schedule_update();
-            }
-        }
-    }
-
-    /// The offered version's Setup, once per release, on the add-on thread
-    /// (after a look at the file, and at start for one already offered).
-    fn fetch_setup(&mut self) {
-        let Some((d, path)) = self.updater.as_mut().and_then(|u| u.want_setup(&mut self.st)) else { return };
-        let job = services::update::download_job(self.sink.clone(), d, path);
-        if !self.services.as_ref().is_some_and(|s| s.run_job(job)) && self.updater.as_mut().is_some_and(|u| u.fetched(&mut self.st, Err("the add-on thread isn't running".into()))) {
-            self.expand();
-        }
-    }
-
-    /// Install now (the Update sheet): run the downloaded Setup, which
-    /// closes this copy and opens the new version, and quit (saving, as on
-    /// any quit). Without one it opens the release's page.
-    fn update_now(&mut self) {
-        if let Some((setup, d)) = self.updater.as_ref().and_then(|u| u.ready_setup(&self.st)) {
-            match services::update::install(&setup, &d) {
-                Ok(()) => {
-                    pinfo!("updates: installing {}", d.file_name());
-                    self.quit(0);
-                    return;
-                }
-                Err(e) => pwarn!("updates: couldn't run the Setup ({e}); opening the release page"),
-            }
-        }
-        if let Some(url) = self.updater.as_ref().and_then(|u| u.download_page(&self.st)) {
-            pinfo!("updates: opening {url}");
-            shell::open(&url);
-        }
-    }
-
     /// Run a notice's inline action in place (the island stays collapsed),
     /// then show a check mark in the pill briefly before the notice leaves.
     fn run_inline_action(&mut self, a: InlineAction) {
@@ -3195,14 +3052,7 @@ impl App {
             if let Some(n) = self.st.notice.as_mut() {
                 n.until = self.st.now;
             }
-            // A new version's: it doesn't come back.
-            if let Some(u) = self.updater.as_mut() {
-                u.seen(&mut self.st);
-            }
             return;
-        }
-        if a == InlineAction::WhatsNew && self.st.notice.as_ref().is_some_and(|n| n.icon != Icon::Check) {
-            shell::open(&crate::version::notes_url());
         }
         let st = &mut self.st;
         // Already done: the check mark is showing.
@@ -3223,7 +3073,7 @@ impl App {
         }
         match a {
             InlineAction::StartFocus => st.pomodoro.start(st.now),
-            InlineAction::ShowAmount | InlineAction::StopAdzan | InlineAction::Hide | InlineAction::WhatsNew | InlineAction::Open => {}
+            InlineAction::ShowAmount | InlineAction::StopAdzan | InlineAction::Hide | InlineAction::Open => {}
         }
         let until = st.now + INLINE_DONE_S;
         if let Some(n) = st.notice.as_mut() {
@@ -3416,8 +3266,6 @@ impl App {
             self.st.page = p;
             // Settings is never where the island opens next time.
             if p != PageKind::Settings {
-                self.st.update.sheet = false;
-                self.st.update.said = None;
                 self.st.store.last_page = p.key().to_string();
                 unsafe {
                     SetTimer(self.hwnd, TIMER_SAVE, 800, None);
@@ -3491,16 +3339,8 @@ impl App {
                         self.maybe_schedule_collapse();
                     }
                 }
-                Command::Collapse => self.collapse(),
                 Command::Play(s) => services::sound::play(s),
                 Command::OpenUrl(u) => shell::open(&u),
-                Command::Update => self.update_now(),
-                Command::CheckForUpdates => self.check_for_updates(),
-                Command::InstallOnNextStart => {
-                    if let Some(u) = self.updater.as_mut() {
-                        u.install_on_next_start(&mut self.st);
-                    }
-                }
                 Command::SetAutostart(on) => {
                     self.st.ui.autostart = Some(on);
                     crate::autostart::report(self.sink.clone(), Some(on));

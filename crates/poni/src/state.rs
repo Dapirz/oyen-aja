@@ -119,8 +119,6 @@ pub enum NoticeAction {
     OpenPage(PageKind),
     /// Open Focus and start the (idle) timer.
     StartFocus,
-    /// Open the Update sheet in Settings (a new version's notice).
-    OpenUpdate,
     /// Open the app another app's notification came from (its
     /// AppUserModelID; Notifications). The island stays closed.
     OpenApp(String),
@@ -139,8 +137,6 @@ pub enum InlineAction {
     /// Put the notice away now (a new version's: the menu and Settings
     /// keep offering it).
     Hide,
-    /// Open this version's release notes ("Updated to").
-    WhatsNew,
     /// Open the app a notification came from (the notice's `OpenApp`).
     Open,
 }
@@ -200,35 +196,6 @@ impl Notice {
     pub fn stays(&self) -> bool {
         self.until.is_infinite()
     }
-}
-
-/// What the app knows about new versions.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct UpdateView {
-    /// A later release than this copy, with a download for this system.
-    pub offer: Option<poni_core::update::Release>,
-    /// Settings shows the Update sheet in place of its rows (until the
-    /// island closes or the page changes).
-    pub sheet: bool,
-    /// Its Setup is downloaded and checked (Windows): the sheet offers
-    /// Install now and Install on next start.
-    pub ready: bool,
-    /// Install on next start was picked for it.
-    pub next_start: bool,
-    /// This copy reads the update file itself (not a Microsoft Store copy):
-    /// Settings has Check now.
-    pub looks: bool,
-    /// What Settings says in Check now's place since it was clicked, until
-    /// the island closes or the page changes.
-    pub said: Option<Said>,
-}
-
-/// Check now's answer in Settings.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Said {
-    Checking,
-    UpToDate,
-    Failed,
 }
 
 /// A phone wants to send these files; the Shelf asks the person at the PC.
@@ -448,9 +415,6 @@ pub struct AppState {
     pub held: Option<(Notice, f64)>,
     /// Where each add-on stands, by id (every one in `poni_core::addons::ALL`).
     pub addons: BTreeMap<&'static str, AddonStatus>,
-    /// New versions (`crate::updates`): what Settings, the menu and the
-    /// island's notice show.
-    pub update: UpdateView,
     /// The Prayer times add-on, while it is on (its choices: `settings.prayer`).
     pub prayer: PrayerState,
     /// The Script page's reading (its script and pace are in `store.script`).
@@ -527,7 +491,6 @@ impl AppState {
             pair_server: None,
             held: None,
             addons: BTreeMap::new(),
-            update: UpdateView::default(),
             prayer: PrayerState::default(),
             script: poni_core::script::Reader::default(),
             script_note: None,
@@ -651,16 +614,6 @@ impl AppState {
     /// Show a notice pill for `secs` seconds.
     pub fn notify(&mut self, icon: Icon, color: Color, title: impl Into<String>, subtitle: impl Into<String>, secs: f64, action: Option<NoticeAction>) {
         self.notice = Some(Notice { icon, color, title: title.into(), title_dim: String::new(), subtitle: subtitle.into(), until: self.now + secs, action, inline: None, reveal: None });
-    }
-
-    /// The Update sheet: Settings, with the sheet in place of its rows (the
-    /// gear goes back to the page it was opened from).
-    pub fn open_update(&mut self) {
-        if self.page != PageKind::Settings {
-            self.ui.before_settings = Some(self.page);
-        }
-        self.page = PageKind::Settings;
-        self.update.sheet = true;
     }
 
     /// Give the current notice a one-click inline action pill.

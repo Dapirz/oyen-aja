@@ -85,18 +85,9 @@ pub enum Command {
     SetPage(PageKind),
     /// Keep the island open even when the cursor leaves.
     SetPinned(bool),
-    Collapse,
     Play(Sound),
     /// Open a URL in the default browser.
     OpenUrl(String),
-    /// Update to the version the update file offers: install it (Windows,
-    /// once its Setup is downloaded), or its release page or DMG.
-    Update,
-    /// Install it the next time the app starts (Windows).
-    InstallOnNextStart,
-    /// Settings' Check now: read the update file now, as the menu's Check
-    /// for updates… does (`AppState::update.said` takes the answer).
-    CheckForUpdates,
     /// Start with Windows on or off (the Settings page's switch).
     SetAutostart(bool),
     Phone(PhoneCmd),

@@ -26,7 +26,7 @@ use crate::pages::settings::picker_width;
 use crate::pages::PageKind;
 use crate::pill::status;
 use crate::state::AppState;
-use crate::ui::{wid, wid_n, CursorKind, Hit, Input, MouseButton, PillStyle, Ui, PILL_GAP, PILL_SMALL};
+use crate::ui::{wid, wid_n, CursorKind, Hit, Input, MouseButton, PillStyle, Ui, PILL_SMALL};
 use crate::version::VERSION;
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::settings::{IdleStyle, MonitorChoice, PrayerFollow, PrayerSound, Theme};
@@ -1179,13 +1179,7 @@ fn row_h(it: &Item) -> f32 {
 fn block_h(st: &AppState, b: &Block) -> f32 {
     match b {
         Block::Group(title, items) => title.map_or(0.0, |_| GROUP_TITLE_H) + items.iter().map(row_h).sum::<f32>(),
-        Block::Version => {
-            if st.update.offer.is_some() {
-                112.0
-            } else {
-                72.0
-            }
-        }
+        Block::Version => 72.0,
         Block::Themes => GROUP_TITLE_H + theme_cards_h(),
         Block::Addons => crate::pages::addons::height(st),
         Block::Note(_) => 18.0,
@@ -1425,65 +1419,17 @@ fn fill_row(ui: &mut Ui, row: Rect, c: Color, (first, last): (bool, bool)) {
     ui.c.unclip();
 }
 
-/// The version card: Oyen's tile, "Oyenza Studio" and this version, and
-/// Check now; with a later version out, what it brings and how to get it
-/// (the island's Update sheet does the same).
+/// The version card: the app's tile, its name and this version.
 fn draw_version(ui: &mut Ui, st: &mut AppState, r: Rect, view: Rect, sf: &Surfaces) {
     fill_group(ui, r, sf.group);
     let head = Rect::new(r.x + ROW_PAD, r.y, r.w - 2.0 * ROW_PAD, 72.0);
     let cy = head.center().y;
     crate::oyen::app_icon(ui.c, Point::new(head.x + 20.0, cy), 40.0);
     let tx = head.x + 54.0;
-    let clickable = visible(r, view).is_some_and(|v| v.h >= r.h - 0.5);
-    let check = clickable.then(|| crate::pages::settings::check_slot(ui, st, head)).flatten();
-    let right = check.map_or(head.right(), |b| b.x - 12.0);
+    let right = head.right();
     ui.c.text(crate::version::APP_NAME, Rect::new(tx, cy - 20.0, (right - tx).max(0.0), 22.0), &TextStyle::headline());
     ui.c.text(&format!("Version {VERSION}"), Rect::new(tx, cy + 2.0, (right - tx).max(0.0), 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
-    if let Some(b) = check {
-        crate::pages::settings::draw_check(ui, st, b);
-    }
-    let Some(rel) = st.update.offer.clone() else { return };
-    let px = 1.0 / ui.c.scale().max(0.5);
-    let row = Rect::new(head.x, head.bottom(), head.w, r.bottom() - head.bottom());
-    ui.c.fill_rect(Rect::new(row.x, row.y, row.w, px), RULE);
-    let accent = st.accent;
-    // Windows with the Setup in: now or next start; otherwise its page (or the Mac's DMG).
-    let mut buttons: Vec<(&str, Command, PillStyle)> = Vec::new();
-    if st.update.ready {
-        buttons.push(("Install now", Command::Update, PillStyle::Primary(accent)));
-        let later = if st.update.next_start { "Set for next start" } else { "On next start" };
-        buttons.push((later, Command::InstallOnNextStart, PillStyle::Utility));
-    } else {
-        buttons.push(("Download", Command::Update, PillStyle::Primary(accent)));
-    }
-    buttons.push(("What's new", Command::OpenUrl(rel.notes.clone()), PillStyle::Utility));
-    let mut x = row.right();
-    let by = row.center().y - PILL_SMALL / 2.0;
-    let mut picked = None;
-    for (i, (label, cmd, style)) in buttons.into_iter().enumerate().rev() {
-        let w = ui.pill_width(label, false, true);
-        x -= w;
-        let b = Rect::new(x, by, w, PILL_SMALL);
-        x -= PILL_GAP;
-        let clicked = if clickable {
-            ui.pill(wid_n("settingswin.update", i as u64), b, label, None, style).clicked
-        } else {
-            let mut none = Input::default();
-            let mut no_hits = Vec::new();
-            Ui::new(&mut *ui.c, &mut none, &mut no_hits, 0.0).pill(0, b, label, None, style);
-            false
-        };
-        if clicked {
-            picked = Some(cmd);
-        }
-    }
-    let tw = (x - 12.0 - row.x).max(0.0);
-    let cy = row.center().y;
-    crate::activities::text_with_dim(ui, "Update available", &rel.version, Rect::new(row.x, cy - 19.0, tw, 19.0), TextStyle::body().weight(Weight::Semibold));
-    ui.c.text(&rel.headline, Rect::new(row.x, cy + 1.0, tw, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
-    if let Some(c) = picked {
-        st.cmd(c);
-    }
+    let _ = (st, view);
 }
 
 /// How tall the theme cards are together: as many rows as they fill.

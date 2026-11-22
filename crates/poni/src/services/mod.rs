@@ -28,7 +28,6 @@ mod romanize_compare;
 pub mod secret;
 pub mod sound;
 pub mod notifications;
-pub mod update;
 
 use crate::commands::MediaCmd;
 use crate::events::EventSink;
@@ -88,12 +87,6 @@ impl Services {
         if let Some(f) = self.fullscreen {
             f.stop();
         }
-    }
-
-    /// Run a one-off download on the add-on thread (the update file).
-    /// False when that thread couldn't start.
-    pub fn run_job(&self, job: addons::Job) -> bool {
-        self.addons.as_ref().map(|a| a.run(job)).is_some()
     }
 
     /// Run yt-dlp for `req` (the Downloader add-on's tools are in place).

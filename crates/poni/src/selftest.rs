@@ -512,16 +512,6 @@ enum Scene {
     AsideHud,
     /// Settings with Step aside off (no row for it since 0.2.6).
     SettingsAsideStay,
-    /// A new version is out: the island tells once, with Update.
-    UpdateNotice,
-    /// The first start after an update: "Updated to", with What's new.
-    UpdatedNotice,
-    /// Settings while a new version is offered: Update to it in the version's row.
-    SettingsUpdate,
-    /// The Update sheet (the notice or the menu's "Update to" line opens it).
-    UpdateSheet,
-    /// The Update sheet once Windows has the Setup: Install now, or on next start.
-    UpdateReady,
     /// The Downloads page before anything was downloaded (`Page(Downloads)`
     /// shows one downloading, one waiting, one done and one failed).
     DownloadsEmpty,
@@ -561,24 +551,6 @@ enum Scene {
     /// The open island where it was dragged to the screen's right edge: it
     /// grows away from the edge, whole on the screen.
     IslandOpenAtEdge,
-}
-
-/// A later release than this build, as the update file describes one.
-fn fake_release() -> poni_core::update::Release {
-    let mut parts: Vec<u64> = crate::version::VERSION.split('.').filter_map(|p| p.parse().ok()).collect();
-    if let Some(last) = parts.last_mut() {
-        *last += 1;
-    }
-    let version = parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".");
-    let repo = "https://github.com/lucacadalora/oyenza-studio/releases";
-    poni_core::update::Release {
-        date: "2026-10-26".into(),
-        headline: "A smoother island, and fixes".into(),
-        notes: format!("{repo}/tag/v{version}"),
-        windows: Some(poni_core::update::Download { url: format!("{repo}/download/v{version}/Oyenza-Studio-Setup-{version}.exe"), size: 2_500_000, sha256: "0".repeat(64) }),
-        mac: None,
-        version,
-    }
 }
 
 /// How far the self-test drags the island to the right (DIPs).
@@ -641,7 +613,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 69] = [
+const SCENES: [Scene; 64] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -701,13 +673,6 @@ const SCENES: [Scene; 69] = [
     Scene::AsidePeek,
     Scene::AsideHud,
     Scene::SettingsAsideStay,
-    // New versions: the island's notice, "Updated to", Settings offering
-    // one, and the Update sheet before and after the Setup is in.
-    Scene::UpdateNotice,
-    Scene::UpdatedNotice,
-    Scene::SettingsUpdate,
-    Scene::UpdateSheet,
-    Scene::UpdateReady,
     // The Today page signed in: the day, no app switched on, and a server
     // without the day (signed out, `Page(Today)` above shows the sign-in card).
     // The Downloader: the Downloads page with a download running, one
@@ -788,11 +753,6 @@ impl Scene {
             Scene::AsidePeek => "aside-new-song".into(),
             Scene::AsideHud => "aside-volume-hud".into(),
             Scene::SettingsAsideStay => "page-settings-maximized-stay".into(),
-            Scene::UpdateNotice => "update-notice".into(),
-            Scene::UpdatedNotice => "updated-notice".into(),
-            Scene::SettingsUpdate => "page-settings-update".into(),
-            Scene::UpdateSheet => "page-update-sheet".into(),
-            Scene::UpdateReady => "page-update-ready".into(),
             Scene::DownloadsEmpty => "page-downloads-empty".into(),
             Scene::AddonsDownloader => "page-addons-downloader".into(),
             Scene::DownloadActivity => "download-activity".into(),
@@ -818,10 +778,7 @@ impl Scene {
             | Scene::SettingsStayOnTop
             | Scene::SettingsTabs
             | Scene::SettingsTabsStore
-            | Scene::SettingsAsideStay
-            | Scene::SettingsUpdate
-            | Scene::UpdateSheet
-            | Scene::UpdateReady => Some(PageKind::Settings),
+            | Scene::SettingsAsideStay => Some(PageKind::Settings),
             Scene::ShelfPairing | Scene::ShelfPaired | Scene::ShelfPairedPhones => Some(PageKind::Shelf),
             Scene::AddonsDownloading | Scene::AddonsOn | Scene::AddonsOffline | Scene::AddonsFailed => Some(PageKind::Addons),
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
@@ -1369,7 +1326,7 @@ const ANIMS: [(&str, Scene, Scene); 5] = [
     ("page", Scene::Page(PageKind::Media), Scene::Page(PageKind::Focus)),
     ("collapse", Scene::Page(PageKind::Media), Scene::Media),
     ("hud", Scene::Media, Scene::VolumeHud),
-    ("notice", Scene::IdleClock, Scene::UpdateNotice),
+    ("notice", Scene::IdleClock, Scene::PairedNotice),
 ];
 /// Frames recorded per transition (~16 ms apart).
 const ANIM_FRAMES: usize = 40;
@@ -2205,18 +2162,6 @@ impl SelfTest {
             Scene::IslandOpenAtEdge => Some(1.0),
             _ => None,
         };
-        // A later version offered, only where Settings shows it. A copy from
-        // GitHub reads the update file itself, so Settings has Check now.
-        let looks = crate::state::UpdateView { looks: true, ..Default::default() };
-        st.update = match scene {
-            Scene::SettingsUpdate | Scene::UpdateSheet | Scene::UpdateReady => crate::state::UpdateView {
-                offer: Some(fake_release()),
-                sheet: scene != Scene::SettingsUpdate,
-                ready: scene == Scene::UpdateReady,
-                ..looks
-            },
-            _ => looks,
-        };
         // A new song's title shows for its few seconds (held here).
         st.ui.peek_until = if scene == Scene::AsidePeek { now + 30.0 } else { 0.0 };
         st.phone = fake_phone(scene, now);
@@ -2260,8 +2205,6 @@ impl SelfTest {
             _ => None,
         };
         st.notice = match scene {
-            Scene::UpdateNotice => Some(crate::updates::new_version_notice(&fake_release(), st.accent, until)),
-            Scene::UpdatedNotice => Some(crate::updates::updated_notice(Some(fake_release().headline), until)),
             Scene::PairedNotice => Some(Notice {
                 icon: Icon::Phone,
                 color: palette::GREEN,

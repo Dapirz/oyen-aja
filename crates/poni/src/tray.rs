@@ -1,7 +1,6 @@
 //! Notification-area icon and its menu (also shown on right-click of the island).
 
 use crate::events::WM_APP_TRAY;
-use crate::updates::UpdateLine;
 use poni_core::settings::{IdleStyle, Settings, Theme};
 use windows::core::{Result, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
@@ -75,10 +74,6 @@ pub enum MenuCmd {
     AppleMusicToken,
     AppleMusicHelp,
     AppleMusicForget,
-    /// "Update to Hihu Island 0.2.5…" (`crate::updates`).
-    Update,
-    /// "Check for updates…": read the update file now (`crate::updates`).
-    CheckForUpdates,
     Quit,
 }
 
@@ -104,9 +99,7 @@ fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
     }
 }
 
-/// `update`: a later version the update file offers, or Check for updates…
-/// (`crate::updates::menu_line`).
-pub fn menu_items(s: &Settings, pinned: bool, update: UpdateLine) -> Vec<MenuItem> {
+pub fn menu_items(s: &Settings, pinned: bool) -> Vec<MenuItem> {
     // The look the theme draws is the one checked: outside Pill, Status shows the clock.
     let shown = crate::pill::status::shown(s.theme, s.idle_style);
     let style = |st: IdleStyle| item(idle_label(st, s.theme), MenuCmd::ToggleIdleStyle(st), shown == st);
@@ -150,18 +143,6 @@ pub fn menu_items(s: &Settings, pinned: bool, update: UpdateLine) -> Vec<MenuIte
     if s.island_x.is_some() {
         let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::TogglePinned, .. })).map_or(items.len(), |i| i + 1);
         items.insert(at, item("Move island to the centre", MenuCmd::CentreIsland, false));
-    }
-    match update {
-        // A new version first, until it is installed.
-        UpdateLine::Offer(v) => {
-            items.splice(0..0, [item(&format!("Update to {} {v}…", crate::version::APP_NAME), MenuCmd::Update, false), MenuItem::Separator]);
-        }
-        // Otherwise a look on request, under the version line.
-        UpdateLine::Check => {
-            let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::About, .. })).map_or(items.len(), |i| i + 1);
-            items.insert(at, item("Check for updates…", MenuCmd::CheckForUpdates, false));
-        }
-        UpdateLine::None => {}
     }
     items
 }
@@ -237,7 +218,7 @@ mod tests {
     use super::*;
 
     fn fullscreen_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, UpdateLine::None);
+        let items = menu_items(s, false);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")) else {
             panic!("no full-screen submenu");
         };
@@ -252,7 +233,7 @@ mod tests {
 
     #[test]
     fn the_menu_says_which_version_this_is() {
-        let items = menu_items(&Settings::default(), false, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false);
         let labels: Vec<(String, MenuCmd)> = items
             .into_iter()
             .filter_map(|i| match i {
@@ -269,40 +250,9 @@ mod tests {
     }
 
     #[test]
-    fn a_new_version_comes_first_until_it_is_installed() {
-        let s = Settings::default();
-        let first = |update: UpdateLine| match menu_items(&s, false, update).into_iter().next() {
-            Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
-            _ => None,
-        };
-        assert_eq!(first(UpdateLine::Offer("0.2.5".into())), Some(("Update to Hihu Island 0.2.5…".to_string(), MenuCmd::Update)));
-        assert_ne!(first(UpdateLine::None).map(|(_, cmd)| cmd), Some(MenuCmd::Update));
-        assert_ne!(first(UpdateLine::Check).map(|(_, cmd)| cmd), Some(MenuCmd::Update));
-    }
-
-    #[test]
-    fn check_for_updates_sits_under_the_version_line() {
-        let cmds = |update: UpdateLine| -> Vec<MenuCmd> {
-            menu_items(&Settings::default(), false, update)
-                .into_iter()
-                .filter_map(|i| match i {
-                    MenuItem::Item { cmd, .. } => Some(cmd),
-                    _ => None,
-                })
-                .collect()
-        };
-        let items = cmds(UpdateLine::Check);
-        let about = items.iter().position(|c| *c == MenuCmd::About).expect("no About line");
-        assert_eq!(&items[about..], &[MenuCmd::About, MenuCmd::CheckForUpdates, MenuCmd::Quit]);
-        // Not while a version is on offer (its line comes first), nor with the checks off.
-        assert!(!cmds(UpdateLine::Offer("0.2.5".into())).contains(&MenuCmd::CheckForUpdates));
-        assert!(!cmds(UpdateLine::None).contains(&MenuCmd::CheckForUpdates));
-    }
-
-    #[test]
     fn the_way_back_to_the_centre_shows_once_the_island_moved() {
         let cmds = |s: &Settings| -> Vec<MenuCmd> {
-            menu_items(s, false, UpdateLine::None)
+            menu_items(s, false)
                 .into_iter()
                 .filter_map(|i| match i {
                     MenuItem::Item { cmd, .. } => Some(cmd),
@@ -317,7 +267,7 @@ mod tests {
     }
 
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {
-        let items = menu_items(s, false, UpdateLine::None);
+        let items = menu_items(s, false);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Idle look")) else {
             panic!("no idle look submenu");
         };
@@ -369,7 +319,7 @@ mod tests {
     }
 
     fn theme_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, UpdateLine::None);
+        let items = menu_items(s, false);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Theme")) else {
             panic!("no theme submenu");
         };
@@ -399,7 +349,7 @@ mod tests {
     #[test]
     fn start_with_windows_follows_the_full_screen_submenu() {
         // Over maximized windows (Step aside) is gone: nothing sits between them.
-        let items = menu_items(&Settings::default(), false, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false);
         let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")).expect("full-screen submenu");
         assert!(matches!(items.get(fs + 1), Some(MenuItem::Item { cmd: MenuCmd::ToggleAutostart, .. })));
     }
