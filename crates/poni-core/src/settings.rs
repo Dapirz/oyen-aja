@@ -24,12 +24,11 @@ pub enum IdleStyle {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
-    /// The plain black island.
+    /// The plain black island. Files from before the fork dropped the Oyen
+    /// theme (`"oyen"`) open as Classic.
     #[default]
+    #[serde(alias = "oyen")]
     Classic,
-    /// Oyen, the Oyenza cat, lives in the island: he peeks over its edge
-    /// while it rests, bobs to the music and takes Oyen's orange as accent.
-    Oyen,
     /// Liquid glass: the island bends, frosts and tints what's under it.
     Glass,
     /// Pill: the island floats a little below the top edge as a black
@@ -346,7 +345,7 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"idle_style":"eyes"}"#).unwrap();
         assert_eq!(s.theme, Theme::Classic);
         let s: Settings = serde_json::from_str(r#"{"theme":"oyen"}"#).unwrap();
-        assert_eq!(s.theme, Theme::Oyen);
+        assert_eq!(s.theme, Theme::Classic, "the Oyen theme is gone; its files open as Classic");
         let s: Settings = serde_json::from_str(r#"{"theme":"glass"}"#).unwrap();
         assert_eq!(s.theme, Theme::Glass);
         let s: Settings = serde_json::from_str(r#"{"theme":"pill"}"#).unwrap();
@@ -361,12 +360,11 @@ mod tests {
         // it has its name here, and then the loop below asks for it.
         let name = |t: Theme| match t {
             Theme::Classic => "classic",
-            Theme::Oyen => "oyen",
             Theme::Glass => "glass",
             Theme::Pill => "pill",
             Theme::Diorama => "diorama",
         };
-        for theme in [Theme::Classic, Theme::Oyen, Theme::Glass, Theme::Pill, Theme::Diorama] {
+        for theme in [Theme::Classic, Theme::Glass, Theme::Pill, Theme::Diorama] {
             let s = Settings { theme, ..Settings::default() };
             let j = serde_json::to_string(&s).unwrap();
             assert!(j.contains(&format!(r#""theme":"{}""#, name(theme))), "{theme:?}: {j}");
@@ -405,7 +403,7 @@ mod tests {
     fn files_with_clipboard_history_still_load_and_drop_it() {
         // Files from 0.2.8 and before hold the key: it's ignored, and gone after a save.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"clipboard_history":true,"theme":"oyen"}"#).unwrap().sanitized();
-        assert_eq!(s.theme, Theme::Oyen);
+        assert_eq!(s.theme, Theme::Classic);
         assert!(!serde_json::to_string(&s).unwrap().contains("clipboard"));
         // A Clipboard start page from before 0.2.7 opens Music.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#).unwrap().sanitized();

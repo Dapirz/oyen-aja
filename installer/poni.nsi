@@ -64,8 +64,8 @@ VIAddVersionKey "LegalCopyright" "Copyright (C) 2026 ${PUBLISHER}"
   nsExec::Exec '"$SYSDIR\taskkill.exe" /IM poni.exe /F'
   Sleep 200
 !macroend
-!define MUI_ICON "../crates/poni/res/poni.ico"
-!define MUI_UNICON "../crates/poni/res/poni.ico"
+!define MUI_ICON "../crates/poni/res/hihu.ico"
+!define MUI_UNICON "../crates/poni/res/hihu.ico"
 ; Oyen hanging from the island on the welcome and finish pages, Poni's logo in the header (tools/make_brand.py).
 !define MUI_WELCOMEFINISHPAGE_BITMAP "art/nsis-welcome.bmp"
 !define MUI_HEADERIMAGE

@@ -1288,7 +1288,7 @@ pub struct SelfTest {
     /// the next line on a held clock, one frame per refresh at that rate.
     scroll_hz: Option<f64>,
     dpi_applied: bool,
-    /// PONI_SELFTEST_THEME=oyen|glass|pill|diorama: run every scene in that theme.
+    /// PONI_SELFTEST_THEME=glass|pill|diorama: run every scene in that theme.
     theme: Theme,
     /// PONI_SELFTEST_DIORAMA=only, in the Diorama theme: its own pictures
     /// (`RESTS`) and no scene.
@@ -1347,7 +1347,6 @@ impl SelfTest {
     pub fn new(dir: String) -> Self {
         let track_key = MediaSession::make_track_key(TITLE, ARTIST, ALBUM);
         let theme = match std::env::var("PONI_SELFTEST_THEME").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
-            Ok("oyen") => Theme::Oyen,
             Ok("glass") => Theme::Glass,
             Ok("pill") => Theme::Pill,
             Ok("diorama") => Theme::Diorama,
@@ -1631,8 +1630,8 @@ impl SelfTest {
                 let steps = steps + 1;
                 let waited = now - since;
                 let timed_out = waited > self.settle_limit(app);
-                // No picture mid-blink: the eyes, and Oyen beside the pin in his theme.
-                let blinking = (scene == Scene::IdleEyes && mid_blink()) || (scene.expanded() && crate::oyen::mid_rest_move(clock::mono(), 0.3));
+                // No picture mid-blink.
+                let blinking = scene == Scene::IdleEyes && mid_blink();
                 let ready = steps >= MIN_STEPS && stable >= STABLE_STEPS && !blinking;
                 if ready || timed_out {
                     self.capture(app, Shot::Scene(i), !timed_out || settled, waited);
@@ -2108,7 +2107,6 @@ impl SelfTest {
         if st.settings.theme != self.theme {
             st.settings.theme = self.theme;
             st.accent = match self.theme {
-                Theme::Oyen => crate::oyen::ORANGE,
                 // Diorama's own, as the app keeps it (`theme_accent`).
                 Theme::Diorama => poni_core::look::DIORAMA_ACCENT,
                 _ => palette::BLUE,

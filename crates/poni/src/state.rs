@@ -129,8 +129,7 @@ pub enum NoticeAction {
 pub enum InlineAction {
     /// Start the idle Pomodoro phase.
     StartFocus,
-    /// Put the notice's hidden words in place: an Oyenza sum (and sender),
-    /// or a message and who it's from (Notifications).
+    /// Put the notice's hidden words in place: a message and who it's from (Notifications).
     ShowAmount,
     /// Stop the adzan (Prayer times).
     StopAdzan,
@@ -158,7 +157,7 @@ pub enum NotifyAccess {
     /// Asked, and Windows came back without an answer (the question was
     /// closed, or never showed): ask again, or turn it on in Windows' settings.
     Unanswered,
-    /// Turned off for Oyenza Studio in Windows' settings.
+    /// Turned off for this app in Windows' settings.
     Denied,
     /// Windows lets it read them: new ones show on the island.
     Allowed,
@@ -294,8 +293,6 @@ pub struct PageUiState {
     pub before_settings: Option<PageKind>,
     /// Start with Windows, as last read off the UI thread (None until Settings first opens).
     pub autostart: Option<bool>,
-    /// Oyen theme: the music notes floating up in the media pill.
-    pub notes: crate::oyen::Notes,
     /// The Eyes look on a MacBook's notch: the pointer the eyes follow and
     /// the side of the camera they peek out from (`mac/notch.rs`).
     #[cfg(target_os = "macos")]
@@ -318,7 +315,7 @@ pub enum Locate {
     /// Away from Kemenag's places, and the cities around couldn't be looked
     /// up (offline): the place stays as it was.
     Offline,
-    /// Windows' location is off, or not allowed for Oyenza Studio.
+    /// Windows' location is off, or not allowed for this app.
     Denied,
     /// Windows couldn't tell where the PC is.
     Unknown,
@@ -636,11 +633,7 @@ impl AppState {
     }
 
     /// Accent for media UI: art colour when available, else the system accent.
-    /// The Oyen theme keeps to Oyen's orange.
     pub fn media_accent(&self) -> Color {
-        if self.settings.theme == poni_core::settings::Theme::Oyen {
-            return self.accent;
-        }
         self.media.as_ref().and_then(|m| m.art_color).unwrap_or(self.accent)
     }
 }

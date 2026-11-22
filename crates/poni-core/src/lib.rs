@@ -22,7 +22,6 @@ pub mod lrclib;
 pub mod mediaremote;
 pub mod notifications;
 pub mod nowplaying;
-pub mod oyen;
 pub mod pairdrop;
 pub mod peek;
 pub mod phonedrop;

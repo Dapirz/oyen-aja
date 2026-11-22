@@ -42,8 +42,8 @@ mod glass;
 mod icons;
 #[cfg(any(windows, target_os = "macos"))]
 mod island;
+mod logo;
 #[cfg(any(windows, target_os = "macos"))]
-mod oyen;
 #[cfg(any(windows, target_os = "macos"))]
 mod pages;
 #[cfg(any(windows, target_os = "macos"))]

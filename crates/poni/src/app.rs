@@ -8,7 +8,6 @@ use crate::events::{AppEvent, AppleMusicStatus, EventSink, SendHwnd, WM_APP_APPB
 use crate::gfx::{px_rect, px_union, scale_about, union_rect, Canvas, Gfx, HitMask};
 use crate::icons::Icon;
 use crate::island::{Geom, Island, SHOULDER};
-use crate::oyen;
 use crate::pages::{self, PageKind};
 use crate::paths;
 use crate::pill;
@@ -70,7 +69,7 @@ const WTS_SESSION_LOCK_: usize = 7;
 const WTS_SESSION_UNLOCK_: usize = 8;
 
 /// Steps for copying the Apple Music token (README).
-const APPLE_MUSIC_HELP_URL: &str = "https://github.com/lucacadalora/oyenza-studio#apple-music-lyrics";
+const APPLE_MUSIC_HELP_URL: &str = "https://github.com/Dapirz/oyen-aja#apple-music-lyrics";
 /// Phone drop closes itself after this long without a request from a phone.
 const PHONE_IDLE_S: f64 = 600.0;
 
@@ -820,7 +819,7 @@ impl App {
     /// (a theme switch into or out of Pill, the self-test picking its theme
     /// after start, or the outline docking at the edge after rising back to
     /// it): lay the window out again for the new room, grown for the gap and
-    /// the shadow or given back, so Classic, Oyen and Glass keep exactly the
+    /// the shadow or given back, so Classic and Glass keep exactly the
     /// window they start with and Pill gets its own. Called every frame
     /// after the island steps; a layout only on that change.
     fn sync_room(&mut self) {
@@ -1230,7 +1229,7 @@ impl App {
                 }
                 if msg == WM_SETTINGCHANGE && self.st.settings.theme == Theme::Glass {
                     self.st.accent = theme_accent(Theme::Glass);
-                } else if msg == WM_SETTINGCHANGE && !oyen::on(self.st.settings.theme) && self.st.settings.theme != Theme::Diorama {
+                } else if msg == WM_SETTINGCHANGE && self.st.settings.theme != Theme::Diorama {
                     if let Some(a) = services::system_accent() {
                         self.st.accent = a;
                     }
@@ -4019,12 +4018,10 @@ impl App {
     }
 }
 
-/// Oyen's orange in his theme, Diorama's own (which its day and night looks
-/// paint as theirs), Windows' accent colour otherwise.
+/// Diorama's own accent (which its day and night looks paint as theirs),
+/// Windows' accent colour otherwise.
 fn theme_accent(theme: Theme) -> Color {
-    if oyen::on(theme) {
-        oyen::ORANGE
-    } else if theme == Theme::Diorama {
+    if theme == Theme::Diorama {
         poni_core::look::DIORAMA_ACCENT
     } else if theme == Theme::Glass {
         services::system_accent_base().unwrap_or(palette::BLUE)

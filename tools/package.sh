@@ -28,7 +28,7 @@ if [[ -n "${NSIS_HOST:-}" ]]; then
   ssh -o BatchMode=yes "$NSIS_HOST" "rm -rf ~/$REMOTE_DIR && mkdir -p ~/$REMOTE_DIR/installer/art ~/$REMOTE_DIR/crates/poni/res ~/$REMOTE_DIR/dist"
   scp -q -o BatchMode=yes "$ROOT/installer/poni.nsi" "$NSIS_HOST:$REMOTE_DIR/installer/"
   scp -q -o BatchMode=yes "$ROOT/installer/art/nsis-welcome.bmp" "$ROOT/installer/art/nsis-header.bmp" "$NSIS_HOST:$REMOTE_DIR/installer/art/"
-  scp -q -o BatchMode=yes "$ROOT/crates/poni/res/poni.ico" "$NSIS_HOST:$REMOTE_DIR/crates/poni/res/"
+  scp -q -o BatchMode=yes "$ROOT/crates/poni/res/hihu.ico" "$NSIS_HOST:$REMOTE_DIR/crates/poni/res/"
   scp -q -o BatchMode=yes "$ROOT/THIRD-PARTY-NOTICES.txt" "$NSIS_HOST:$REMOTE_DIR/"
   scp -q -o BatchMode=yes "$EXE" "$NSIS_HOST:$REMOTE_DIR/poni.exe"
   ssh -o BatchMode=yes "$NSIS_HOST" "cd ~/$REMOTE_DIR && makensis -V2 -DEXE=\$HOME/$REMOTE_DIR/poni.exe -DOUTDIR=\$HOME/$REMOTE_DIR/dist installer/poni.nsi"
