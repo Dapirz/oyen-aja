@@ -288,6 +288,16 @@ unsafe fn frame_touches(dup: &IDXGIOutputDuplication, meta: u32, area: &RECT, mo
 /// Interruptions are waited out with a growing pause; a display that never
 /// once let itself be copied gives up after this long.
 const NEVER_WORKED: Duration = Duration::from_secs(10);
+/// The gap between copies. Every frame the island draws marks its own patch
+/// of the desktop as changed, so without a gap the thread read the window's
+/// pixels back from the GPU for each of them (72 times a second while music
+/// plays) to find them the same: about two thirds of the app's CPU with the
+/// equalizer moving. Windows keeps collecting changes during a gap, so none
+/// is lost. While what's behind the island really changes (a page
+/// scrolling, a window dragged) the glass follows at up to 30 fps; after a
+/// copy that changed nothing, at up to 10.
+const GAP_CHANGING: Duration = Duration::from_millis(33);
+const GAP_STILL: Duration = Duration::from_millis(100);
 
 /// Pause before trying again after an interruption (`tries` so far).
 fn backoff(s: &Shared, tries: u32) -> bool {
@@ -398,7 +408,12 @@ fn run(s: &Shared, sink: &EventSink, monitor: isize) -> std::result::Result<(), 
             let ddesc = dup.GetDesc();
             let (ow, oh) = (ddesc.ModeDesc.Width as i32, ddesc.ModeDesc.Height as i32);
             let mut fresh = true; // a new duplication starts with the whole screen
+            let mut last_copy: Option<Instant> = None;
+            let mut gap_for = GAP_CHANGING;
             loop {
+                if let Some(gap) = last_copy.and_then(|t| gap_for.checked_sub(t.elapsed())) {
+                    std::thread::sleep(gap);
+                }
                 if s.stop.load(Ordering::Relaxed) {
                     return Ok(());
                 }
@@ -439,6 +454,7 @@ fn run(s: &Shared, sink: &EventSink, monitor: isize) -> std::result::Result<(), 
                             return Err(format!("the display sends {:?} pixels", tdesc.Format));
                         }
                         let convert = if half { to_srgb.as_ref() } else { None };
+                        last_copy = Some(Instant::now());
                         match copy_area(&dev, &ctx, &tex, tdesc.Format, convert, &mut staging, area, rect, origin, w, h) {
                             Ok(px) => copied = Some(px),
                             Err(e) => crate::pwarn!("glass: copying the screen failed ({e})"),
@@ -451,6 +467,7 @@ fn run(s: &Shared, sink: &EventSink, monitor: isize) -> std::result::Result<(), 
                     fresh = false;
                     // Dirty rectangles also cover redraws that changed nothing.
                     let same = last.as_ref().is_some_and(|l| l.w == w && l.h == h && l.left == rect.left && l.top == rect.top && l.px == px);
+                    gap_for = if same { GAP_STILL } else { GAP_CHANGING };
                     if !same {
                         let generation = s.generation.load(Ordering::Relaxed) + 1;
                         let f = Arc::new(Frame { w, h, px, left: rect.left, top: rect.top, generation });
