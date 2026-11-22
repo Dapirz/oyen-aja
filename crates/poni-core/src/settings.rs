@@ -131,33 +131,9 @@ pub struct Settings {
     /// front. Its own name: the corner test build wrote `game_readout`
     /// ("peek" as its default) into the files of the people who tried it.
     pub game_peek: bool,
-    /// The Record page's choices (Oyenza Studio Recorder).
-    pub record: RecordSettings,
     /// Notifications' choices: which apps the island shows, and
     /// whether who it's from and the message show at once.
     pub notifications: crate::notifications::NotificationSettings,
-}
-
-/// What the Record page records next: its last picks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct RecordSettings {
-    pub target: crate::recorder::Target,
-    pub camera: bool,
-    pub microphone: bool,
-    pub system_audio: bool,
-}
-
-impl Default for RecordSettings {
-    fn default() -> Self {
-        Self { target: crate::recorder::Target::Screen, camera: false, microphone: true, system_audio: false }
-    }
-}
-
-impl RecordSettings {
-    pub fn inputs(&self) -> crate::recorder::Inputs {
-        crate::recorder::Inputs { camera: self.camera, microphone: self.microphone, system_audio: self.system_audio }
-    }
 }
 
 /// What plays when a prayer's time comes.
@@ -260,7 +236,6 @@ impl Default for Settings {
             prayer: PrayerSettings::default(),
             game_stats: false,
             game_peek: false,
-            record: RecordSettings::default(),
             notifications: crate::notifications::NotificationSettings::default(),
         }
     }
@@ -307,12 +282,6 @@ impl Settings {
     /// only then: one switched off by hand stays off.
     pub fn addon_unset(&self, id: &str) -> bool {
         !self.addons.contains_key(id)
-    }
-
-    /// Screen recorder: on once Oyenza Studio Recorder is `installed`, unless
-    /// the person switched it off (installing the recorder is the switch).
-    pub fn recorder_on(&self, installed: bool) -> bool {
-        installed && self.addons.get(crate::addons::SCREEN_RECORDER.id).copied().unwrap_or(true)
     }
 
     /// Clamp values a user may have hand-edited into nonsense.
@@ -623,19 +592,5 @@ mod tests {
         let j = serde_json::to_string_pretty(&s).unwrap();
         let back: Settings = serde_json::from_str(&j).unwrap();
         assert_eq!(s, back);
-    }
-
-    #[test]
-    fn record_choices_default_and_round_trip() {
-        // Files from before the Record page get its defaults: this screen, the microphone.
-        let s: Settings = serde_json::from_str("{}").unwrap();
-        assert_eq!(s.record, RecordSettings::default());
-        assert_eq!(s.record.inputs(), crate::recorder::Inputs { camera: false, microphone: true, system_audio: false });
-        let mut s = Settings::default();
-        s.record = RecordSettings { target: crate::recorder::Target::Area, camera: true, microphone: false, system_audio: true };
-        let j = serde_json::to_string(&s).unwrap();
-        assert!(j.contains(r#""record":{"target":"area","camera":true,"microphone":false,"system_audio":true}"#), "{j}");
-        let back: Settings = serde_json::from_str(&j).unwrap();
-        assert_eq!(back.record, s.record);
     }
 }

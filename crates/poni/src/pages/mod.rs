@@ -18,7 +18,6 @@ pub mod media;
 pub mod notifications;
 pub mod oyenza;
 pub mod prayer;
-pub mod record;
 pub mod script;
 pub mod settings;
 pub mod shelf;
@@ -63,9 +62,6 @@ pub enum PageKind {
     System,
     /// The teleprompter: a script read under the webcam.
     Script,
-    /// Screen recording with Oyenza Studio Recorder, while its add-on is on
-    /// ([`tabs`]): what to record, then the recording under way.
-    Record,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
     /// Links to save as video or sound, while the Downloader add-on is on ([`tabs`]).
@@ -83,7 +79,7 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, Oyenza, then the
     /// add-ons' pages and the "+".
-    pub const ALL: [PageKind; 14] = [
+    pub const ALL: [PageKind; 13] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -92,7 +88,6 @@ impl PageKind {
         PageKind::Oyenza,
         PageKind::System,
         PageKind::Script,
-        PageKind::Record,
         PageKind::Prayer,
         PageKind::Downloads,
         PageKind::Notifications,
@@ -109,7 +104,6 @@ impl PageKind {
             PageKind::Today => "today",
             PageKind::System => "system",
             PageKind::Script => "script",
-            PageKind::Record => "record",
             PageKind::Oyenza => "oyenza",
             PageKind::Prayer => "prayer",
             PageKind::Downloads => "downloads",
@@ -133,7 +127,6 @@ impl PageKind {
             PageKind::Today => "Today",
             PageKind::System => "System",
             PageKind::Script => "Script",
-            PageKind::Record => "Record",
             PageKind::Oyenza => "Oyenza",
             PageKind::Prayer => "Prayer",
             PageKind::Downloads => "Downloads",
@@ -152,7 +145,6 @@ impl PageKind {
             PageKind::Today => Icon::Calendar,
             PageKind::System => Icon::Gauge,
             PageKind::Script => Icon::Script,
-            PageKind::Record => Icon::Recorder,
             PageKind::Oyenza => Icon::Wallet,
             PageKind::Prayer => Icon::Moon,
             PageKind::Downloads => Icon::Download,
@@ -188,7 +180,7 @@ impl PageKind {
     }
 }
 
-/// The tabs in the header: every page but Settings, with System, Script, Record and Prayer only while their add-ons are on.
+/// The tabs in the header: every page but Settings, with System, Script and Prayer only while their add-ons are on.
 /// Music, Today, Shelf, Tasks and Focus unless Settings took them off the
 /// row; one of those still shows while its page is open (a file dropped on
 /// the island opens the Shelf). Notifications wherever the copy can read
@@ -226,7 +218,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::Prayer => st.prayer_on(),
             PageKind::Script => st.script_on(),
             PageKind::Downloads => st.downloader_on(),
-            PageKind::Record => st.record_on(),
             PageKind::Notifications => st.notifications_on(),
             p if p.hideable() => !st.tab_hidden(p) || open == Some(p),
             p => p.tabbed(),
@@ -251,7 +242,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Today => today::height(st),
         PageKind::System => system::height(st),
         PageKind::Script => script::height(st),
-        PageKind::Record => record::height(st),
         PageKind::Oyenza => oyenza::height(st),
         PageKind::Prayer => prayer::height(st),
         PageKind::Downloads => downloads::height(st),
@@ -272,7 +262,6 @@ pub fn next_wake(page: PageKind, st: &AppState) -> Option<f64> {
         PageKind::Oyenza => oyenza::next_wake(st),
         PageKind::Settings => settings::next_wake(st),
         PageKind::Script => script::next_wake(st),
-        PageKind::Record => record::next_wake(st),
         PageKind::Prayer => prayer::next_wake(st),
         PageKind::Today => today::next_wake(st),
         PageKind::Downloads => downloads::next_wake(st),
@@ -385,7 +374,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Today => today::draw(ui, st, area),
         PageKind::System => system::draw(ui, st, area),
         PageKind::Script => script::draw(ui, st, area),
-        PageKind::Record => record::draw(ui, st, area),
         PageKind::Oyenza => oyenza::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
         PageKind::Downloads => downloads::draw(ui, st, area),
@@ -892,35 +880,9 @@ mod tests {
     }
 
     #[test]
-    fn record_has_a_tab_once_the_recorder_is_installed() {
-        let mut st = state();
-        assert!(!tabs(&st).contains(&PageKind::Record), "no recorder: no tab");
-        st.recorder = true;
-        assert!(!tabs(&st).contains(&PageKind::Record), "a recorder that never wrote (1.0.0) can't read Record's links");
-        st.store.recorder_island = true;
-        let row = tabs(&st);
-        if cfg!(target_os = "macos") {
-            assert!(!row.contains(&PageKind::Record), "Windows only for now");
-            return;
-        }
-        assert!(row.contains(&PageKind::Record), "installing the recorder is the switch");
-        assert_eq!(row.last(), Some(&PageKind::Addons));
-        st.settings.set_addon("recorder", false);
-        assert!(!tabs(&st).contains(&PageKind::Record), "switched off: gone");
-        st.settings.set_addon("recorder", true);
-        st.addons.insert("script", poni_core::addons::Status::Ready);
-        let row = tabs(&st);
-        let at = |p| row.iter().position(|t| *t == p).unwrap();
-        assert_eq!(at(PageKind::Record), at(PageKind::Script) + 1, "beside the Script page");
-    }
-
-    #[test]
-    fn neither_the_record_page_nor_six_add_ons_make_the_window_taller() {
-        let mut st = state();
-        st.recorder = true;
-        st.store.recorder_island = true;
+    fn the_add_ons_never_make_the_window_taller() {
+        let st = state();
         let tallest = content_height(PageKind::System, &st);
-        assert!(content_height(PageKind::Record, &st) <= tallest);
         assert!(content_height(PageKind::Addons, &st) <= tallest, "{} > {tallest}", content_height(PageKind::Addons, &st));
     }
 

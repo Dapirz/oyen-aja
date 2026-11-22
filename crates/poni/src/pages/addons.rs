@@ -11,9 +11,8 @@
 //! (`Command::SaveSettings`; the app passes the change to `services::addons`).
 //! One whose files this build can't get yet stays off and says so
 //! (`Status::Unpinned`).
-//! Both apps list every add-on ([`OFFERED`]) but Screen recorder, which shows
-//! once Oyenza Studio Recorder is installed ([`rows`]). From seven rows each
-//! is one line: the name, then the line after it.
+//! Every add-on offered is listed ([`OFFERED`], [`rows`]). From seven rows
+//! each is one line: the name, then the line after it.
 //!
 //! A Studio Pro add-on's row says Pro where its size was, for everyone, so
 //! people know what Pro brings before they buy it. Without Pro its switch
@@ -64,15 +63,12 @@ pub fn height(st: &AppState) -> f32 {
     ROWS_Y + n as f32 * row_h(n)
 }
 
-/// The page's rows: every add-on offered, Screen recorder only once Oyenza
-/// Studio Recorder is installed and has spoken to the island
-/// (`AppState::recorder_ready`), Downloader only where it's offered
-/// (`AppState::downloader_offered`).
+/// The page's rows: every add-on offered, Downloader only where it's
+/// offered (`AppState::downloader_offered`).
 fn rows(st: &AppState) -> Vec<&'static Addon> {
     OFFERED
         .iter()
         .copied()
-        .filter(|a| a.id != addons::SCREEN_RECORDER.id || st.recorder_ready())
         .filter(|a| a.id != addons::DOWNLOADER.id || st.downloader_offered)
         .collect()
 }
@@ -101,17 +97,10 @@ fn row_h(n: usize) -> f32 {
     ((MAX_H - ROWS_Y) / n.max(1) as f32).floor().min(ROW_H)
 }
 
-/// Where `a` stands: Screen recorder follows the recorder's install
-/// (`Settings::recorder_on`); the Downloader is off without Pro, even
-/// switched on before; the others, their own switch and download.
+/// Where `a` stands: the Downloader is off without Pro, even switched on
+/// before; the others, their own switch and download.
 fn status(st: &AppState, a: &Addon) -> Status {
-    if a.id == addons::SCREEN_RECORDER.id {
-        if st.record_on() {
-            Status::Ready
-        } else {
-            Status::Off
-        }
-    } else if needs_pro(a) && st.studio_pro() != Some(true) {
+    if needs_pro(a) && st.studio_pro() != Some(true) {
         Status::Off
     } else {
         st.addon(a.id)
@@ -126,7 +115,6 @@ fn icon(a: &Addon) -> Icon {
         "script" => Icon::Script,
         "system" => Icon::Gauge,
         "notifications" => Icon::Bell,
-        "recorder" => Icon::Recorder,
         "downloader" => Icon::Download,
         _ => Icon::Addons,
     }
@@ -248,12 +236,7 @@ fn addon_row(ui: &mut Ui, st: &AppState, r: Rect, i: usize, a: &Addon, card: Opt
     let x = r.x + TEXT_X;
     let w = (text_right - x).max(0.0);
     let line_color = if status == Status::Failed { palette::ORANGE } else { palette::TEXT_DIM };
-    // Screen recorder came on with the recorder, not by a click here: say so.
-    let line = if a.id == addons::SCREEN_RECORDER.id && status == Status::Ready {
-        "On, since Oyenza Studio Recorder is installed".to_string()
-    } else {
-        status.line(a, MAC)
-    };
+    let line = status.line(a, MAC);
     let bar_y = if one_line {
         // The name, then the line after it while there is room.
         let title_w = ui.c.measure(a.title, &TextStyle::headline(), w.max(1.0)).0.ceil().min(w);
@@ -289,14 +272,11 @@ mod tests {
     fn every_row_offered_fits_the_page() {
         let mut st = AppState::new(Settings::default(), Store::default());
         let without = rows(&st).len();
-        // Oyenza Studio Recorder installed, and signed in with Pro where the
-        // Downloader is offered: the recorder and the Downloader join.
-        st.recorder = true;
-        st.store.recorder_island = true;
+        // Signed in with Pro where the Downloader is offered: it joins.
         st.downloader_offered = true;
         st.oyenza.link = OyenzaLink::Connected { account: "a•••@example.com".into() };
         st.oyenza.pro = Some(true);
-        assert_eq!(rows(&st).len(), without + 2);
+        assert_eq!(rows(&st).len(), without + 1);
         assert!(height(&st) <= MAX_H, "the window never grows for this page");
         // Six rows at most now: each has room for its two lines; past seven
         // they'd be a line each, with the badges kept apart.

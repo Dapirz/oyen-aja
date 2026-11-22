@@ -1023,8 +1023,6 @@ enum Scene {
     LowBatteryHud,
     /// The Script page partway through a reading (paused, so the shot holds still).
     ScriptReading,
-    /// The same reading with Oyenza Studio Recorder installed: Record shows.
-    ScriptRecorder,
     /// System page on a desktop, Power: its power supply reports over USB.
     SystemPower,
     /// ...and a desktop whose power supply doesn't: the estimate.
@@ -1062,20 +1060,11 @@ enum Scene {
     TodayOff,
     /// Today with a date ten days on clicked in the grid: the list starts there.
     TodayPicked,
-    /// A recording with Oyenza Studio Recorder: the Record page while it
-    /// records (`Page(Record)` shows its choices), then the closed island's
-    /// recording pill, recording and paused.
-    RecordLive,
-    RecordActivity,
-    RecordPaused,
-    /// The Add-ons page with the recorder installed: Screen recorder's row
-    /// (a line each, the window no taller).
-    AddonsRecorder,
     /// The Downloads page before anything was downloaded (`Page(Downloads)`
     /// shows one downloading, one waiting, one done and one failed).
     DownloadsEmpty,
     /// The Add-ons page where the Downloader is offered (Windows outside the
-    /// Store build): its row, off, with its size (seven rows, as with the recorder).
+    /// Store build): its row, off, with its size.
     AddonsDownloader,
     /// The closed island while a download runs: its pill.
     DownloadActivity,
@@ -1196,7 +1185,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 107] = [
+const SCENES: [Scene; 101] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1272,8 +1261,6 @@ const SCENES: [Scene; 107] = [
     // The Script page: empty, then partway through a reading.
     Scene::Page(PageKind::Script),
     Scene::ScriptReading,
-    // ...and with the recorder installed (Record by Paste).
-    Scene::ScriptRecorder,
     // The whole PC's power: read from the power supply, then estimated.
     Scene::SystemPower,
     Scene::SystemPowerEstimate,
@@ -1298,14 +1285,6 @@ const SCENES: [Scene; 107] = [
     Scene::TodayTiles,
     Scene::TodayOff,
     Scene::TodayPicked,
-    // Oyenza Studio Recorder installed: the Record page's choices and the
-    // recording, the closed island while it records and while paused, and
-    // the Add-ons page with Screen recorder's row.
-    Scene::Page(PageKind::Record),
-    Scene::RecordLive,
-    Scene::RecordActivity,
-    Scene::RecordPaused,
-    Scene::AddonsRecorder,
     // The Downloader: the Downloads page with a download running, one
     // waiting, one done and one failed, then empty; the Add-ons page with
     // its row; and the closed island while it downloads.
@@ -1402,7 +1381,6 @@ impl Scene {
             Scene::MediaLyric => "media-lyric".into(),
             Scene::LowBatteryHud => "low-battery-hud".into(),
             Scene::ScriptReading => "page-script-reading".into(),
-            Scene::ScriptRecorder => "page-script-recorder".into(),
             Scene::SystemPower => "page-system-power".into(),
             Scene::SystemPowerEstimate => "page-system-power-estimate".into(),
             Scene::AsideIdle => "aside-idle".into(),
@@ -1420,10 +1398,6 @@ impl Scene {
             Scene::TodayTiles => "page-today-tiles".into(),
             Scene::TodayOff => "page-today-off".into(),
             Scene::TodayPicked => "page-today-picked".into(),
-            Scene::RecordLive => "page-record-live".into(),
-            Scene::RecordActivity => "record-activity".into(),
-            Scene::RecordPaused => "record-paused-activity".into(),
-            Scene::AddonsRecorder => "page-addons-recorder".into(),
             Scene::DownloadsEmpty => "page-downloads-empty".into(),
             Scene::AddonsDownloader => "page-addons-downloader".into(),
             Scene::DownloadActivity => "download-activity".into(),
@@ -1472,10 +1446,9 @@ impl Scene {
             Scene::AddonsDownloading | Scene::AddonsOn | Scene::AddonsOffline | Scene::AddonsFailed => Some(PageKind::Addons),
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
             Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld | Scene::PrayerMuhammadiyah | Scene::PrayerPickerFollow => Some(PageKind::Prayer),
-            Scene::ScriptReading | Scene::ScriptRecorder => Some(PageKind::Script),
+            Scene::ScriptReading => Some(PageKind::Script),
             Scene::TodayDay | Scene::TodayNoApps | Scene::TodayTiles | Scene::TodayOff | Scene::TodayPicked => Some(PageKind::Today),
-            Scene::RecordLive => Some(PageKind::Record),
-            Scene::AddonsRecorder | Scene::AddonsDownloader | Scene::AddonsPro | Scene::AddonsAbout => Some(PageKind::Addons),
+            Scene::AddonsDownloader | Scene::AddonsPro | Scene::AddonsAbout => Some(PageKind::Addons),
             Scene::DownloadsEmpty => Some(PageKind::Downloads),
             Scene::NotifyAsk | Scene::NotifyNoPackage => Some(PageKind::Notifications),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
@@ -1499,29 +1472,6 @@ impl Scene {
                 | Scene::AddonsDownloader
                 | Scene::DownloadActivity
         )
-    }
-
-    /// Oyenza Studio Recorder is installed (Record by the Script page's Paste,
-    /// the Record tab, Screen recorder's row).
-    fn recorder(self) -> bool {
-        matches!(
-            self,
-            Scene::ScriptRecorder | Scene::Page(PageKind::Record) | Scene::RecordLive | Scene::RecordActivity | Scene::RecordPaused | Scene::AddonsRecorder
-        )
-    }
-
-    /// What the recorder last told the island: recording (0:42 on the page,
-    /// 12:34 on the closed island) or paused, held still for the pictures.
-    fn recording(self, now: f64) -> crate::state::RecView {
-        use poni_core::recorder::Phase;
-        let (phase, elapsed_ms) = match self {
-            Scene::RecordLive => (Phase::Recording, 42_000),
-            Scene::RecordActivity => (Phase::Recording, 754_000),
-            Scene::RecordPaused => (Phase::Paused, 754_000),
-            _ => return crate::state::RecView::default(),
-        };
-        // Sent "later" than now, so the time doesn't count on while the scene settles.
-        crate::state::RecView { phase: Some(phase), elapsed_ms, at: now + 3600.0, ..Default::default() }
     }
 
     /// Scenes that show something from Oyenza (every other one is signed out,
@@ -3103,17 +3053,13 @@ impl SelfTest {
         seed_prayer(st, scene, until);
         // The Script page: empty, or partway through the sample script.
         st.script = poni_core::script::Reader::default();
-        if matches!(scene, Scene::ScriptReading | Scene::ScriptRecorder) {
+        if scene == Scene::ScriptReading {
             st.store.script.text = SAMPLE_SCRIPT.into();
             st.script.word = 22;
             st.script.active = true;
         } else {
             st.store.script.text.clear();
         }
-        st.recorder = scene.recorder();
-        st.store.recorder_island = scene.recorder() && scene != Scene::ScriptRecorder;
-        st.rec = scene.recording(now);
-        st.settings.record = poni_core::settings::RecordSettings::default();
         st.system = fake_system(scene);
         st.settings.game_stats = scene.game();
         st.game = fake_game(scene, &mut st.system);
@@ -3612,20 +3558,6 @@ impl SelfTest {
             let wine = under_wine();
             let note = if wine { " (Wine, which can't leave a window out)" } else { "" };
             checks.push(check("script-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {said}, Windows build {build:?}{note}")));
-        }
-        if matches!(scene, Scene::RecordActivity | Scene::RecordPaused) {
-            // The recording rests on the closed island, ahead of everything else.
-            let (mode, _) = app.selftest_mode();
-            let want = Mode::Activity(crate::activities::Activity::Recording);
-            checks.push(check("recording-pill", mode == want, format!("{mode:?}, want {want:?}")));
-        }
-        if matches!(scene, Scene::RecordLive | Scene::RecordActivity | Scene::RecordPaused) {
-            // The island stays out of the recorder's video: ask Windows.
-            let build = crate::window::windows_build();
-            let can = build.is_some_and(|b| b >= crate::glass::EXCLUDE_FROM_CAPTURE_BUILD);
-            let hidden = crate::window::capture_excluded(app.hwnd());
-            let wine = under_wine();
-            checks.push(check("recording-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {}, Windows build {build:?}", if hidden { "left out of capture" } else { "in capture" })));
         }
         if scene.downloader() {
             // The Downloads tab shows once the Downloader is on, not while

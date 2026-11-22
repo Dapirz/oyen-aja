@@ -86,7 +86,6 @@ pub enum MenuCmd {
     OyenzaDisconnect,
     OyenzaOpen,
     ToggleOyenzaAmounts,
-    RecordScreen,
     /// "Update to Hihu Island 0.2.5…" (`crate::updates`).
     Update,
     /// "Check for updates…": read the update file now (`crate::updates`).
@@ -120,7 +119,7 @@ fn idle_label(s: IdleStyle, theme: Theme) -> &'static str {
 
 /// `update`: a later version the update file offers, or Check for updates…
 /// (`crate::updates::menu_line`).
-pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: bool, update: UpdateLine) -> Vec<MenuItem> {
+pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, update: UpdateLine) -> Vec<MenuItem> {
     // The look the theme draws is the one checked: outside Pill, Status shows the clock.
     let shown = crate::pill::status::shown(s.theme, s.idle_style);
     let style = |st: IdleStyle| item(idle_label(st, s.theme), MenuCmd::ToggleIdleStyle(st), shown == st);
@@ -173,11 +172,6 @@ pub fn menu_items(s: &Settings, pinned: bool, oyenza: &OyenzaLink, recorder: boo
     if s.system_on() {
         let at = items.iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. })).unwrap_or(items.len());
         items.insert(at, item("Keep System page history", MenuCmd::ToggleSystemHistory, s.system_history));
-    }
-    // Only once the separate recorder app is installed: until then the
-    // island doesn't mention recording at all.
-    if recorder {
-        items.splice(0..0, [item("Record this screen", MenuCmd::RecordScreen, false), MenuItem::Separator]);
     }
     match update {
         // A new version first, until it is installed.
@@ -286,7 +280,7 @@ mod tests {
     use super::*;
 
     fn fullscreen_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")) else {
             panic!("no full-screen submenu");
         };
@@ -301,7 +295,7 @@ mod tests {
 
     #[test]
     fn the_menu_says_which_version_this_is() {
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, UpdateLine::None);
         let labels: Vec<(String, MenuCmd)> = items
             .into_iter()
             .filter_map(|i| match i {
@@ -320,19 +314,19 @@ mod tests {
     #[test]
     fn a_new_version_comes_first_until_it_is_installed() {
         let s = Settings::default();
-        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, true, update).into_iter().next() {
+        let first = |update: UpdateLine| match menu_items(&s, false, &OyenzaLink::Off, update).into_iter().next() {
             Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
             _ => None,
         };
         assert_eq!(first(UpdateLine::Offer("0.2.5".into())), Some(("Update to Hihu Island 0.2.5…".to_string(), MenuCmd::Update)));
-        assert_eq!(first(UpdateLine::None).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
-        assert_eq!(first(UpdateLine::Check).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
+        assert_ne!(first(UpdateLine::None).map(|(_, cmd)| cmd), Some(MenuCmd::Update));
+        assert_ne!(first(UpdateLine::Check).map(|(_, cmd)| cmd), Some(MenuCmd::Update));
     }
 
     #[test]
     fn check_for_updates_sits_under_the_version_line() {
         let cmds = |update: UpdateLine| -> Vec<MenuCmd> {
-            menu_items(&Settings::default(), false, &OyenzaLink::Off, false, update)
+            menu_items(&Settings::default(), false, &OyenzaLink::Off, update)
                 .into_iter()
                 .filter_map(|i| match i {
                     MenuItem::Item { cmd, .. } => Some(cmd),
@@ -351,7 +345,7 @@ mod tests {
     #[test]
     fn the_way_back_to_the_centre_shows_once_the_island_moved() {
         let cmds = |s: &Settings| -> Vec<MenuCmd> {
-            menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None)
+            menu_items(s, false, &OyenzaLink::Off, UpdateLine::None)
                 .into_iter()
                 .filter_map(|i| match i {
                     MenuItem::Item { cmd, .. } => Some(cmd),
@@ -367,29 +361,18 @@ mod tests {
 
     #[test]
     fn system_history_is_in_the_menu_only_while_system_is_on() {
-        let has = |s: &Settings| menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None).iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSystemHistory, .. }));
+        let has = |s: &Settings| menu_items(s, false, &OyenzaLink::Off, UpdateLine::None).iter().position(|i| matches!(i, MenuItem::Item { cmd: MenuCmd::ToggleSystemHistory, .. }));
         let mut s = Settings::default();
         assert_eq!(has(&s), None, "System is off by default");
         s.set_addon(poni_core::addons::SYSTEM.id, true);
         let at = has(&s).expect("no System history item");
         // Right above Sounds, where it always was.
-        let items = menu_items(&s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(&s, false, &OyenzaLink::Off, UpdateLine::None);
         assert!(matches!(&items[at + 1], MenuItem::Item { cmd: MenuCmd::ToggleSounds, .. }));
     }
 
-    #[test]
-    fn record_this_screen_shows_only_with_the_recorder() {
-        let s = Settings::default();
-        let first = |recorder: bool| match menu_items(&s, false, &OyenzaLink::Off, recorder, UpdateLine::None).into_iter().next() {
-            Some(MenuItem::Item { label, cmd, .. }) => Some((label, cmd)),
-            _ => None,
-        };
-        assert_eq!(first(true), Some(("Record this screen".to_string(), MenuCmd::RecordScreen)));
-        assert_ne!(first(false).map(|(_, cmd)| cmd), Some(MenuCmd::RecordScreen));
-    }
-
     fn idle_choices(s: &Settings) -> Vec<(String, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Idle look")) else {
             panic!("no idle look submenu");
         };
@@ -441,7 +424,7 @@ mod tests {
     }
 
     fn theme_choices(s: &Settings) -> Vec<(String, MenuCmd, bool)> {
-        let items = menu_items(s, false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(s, false, &OyenzaLink::Off, UpdateLine::None);
         let Some(MenuItem::Sub { items, .. }) = items.into_iter().find(|i| matches!(i, MenuItem::Sub { label, .. } if label == "Theme")) else {
             panic!("no theme submenu");
         };
@@ -471,7 +454,7 @@ mod tests {
     #[test]
     fn start_with_windows_follows_the_full_screen_submenu() {
         // Over maximized windows (Step aside) is gone: nothing sits between them.
-        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, false, UpdateLine::None);
+        let items = menu_items(&Settings::default(), false, &OyenzaLink::Off, UpdateLine::None);
         let fs = items.iter().position(|i| matches!(i, MenuItem::Sub { label, .. } if label == "In full-screen apps")).expect("full-screen submenu");
         assert!(matches!(items.get(fs + 1), Some(MenuItem::Item { cmd: MenuCmd::ToggleAutostart, .. })));
     }

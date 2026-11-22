@@ -186,22 +186,6 @@ pub const SYSTEM: Addon = Addon {
     pro: false,
 };
 
-/// Screen recorder: the Record page and the recording pill, the face of
-/// Oyenza Studio Recorder (its own install, about 120 MB). Its code is in the
-/// island, so there is nothing to download. It shows on the Add-ons page once
-/// the recorder is installed, and is on from then until switched off
-/// (`Settings::recorder_on`). Off, there is no Record tab, and the recorder
-/// shows its own bar and controls.
-pub const SCREEN_RECORDER: Addon = Addon {
-    id: "recorder",
-    title: "Screen recorder",
-    blurb: "Record your screen from the island, with Oyenza Studio Recorder.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: false,
-};
-
 /// Downloader: the Downloads page, which saves the video or sound of a link
 /// with yt-dlp (`ytdlp`, `downloads`). yt-dlp and QuickJS (which yt-dlp needs
 /// for YouTube) come from their own releases, unchanged; FFmpeg, which joins
@@ -277,7 +261,7 @@ pub fn is_downloader_tool(name: &str) -> bool {
 }
 
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 6] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &DOWNLOADER];
+pub const ALL: [&Addon; 5] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -407,19 +391,6 @@ mod tests {
     }
 
     #[test]
-    fn screen_recorder_is_on_once_the_recorder_is_installed() {
-        assert!(!SCREEN_RECORDER.downloads() && SCREEN_RECORDER.size() == 0);
-        assert_eq!(Addon::find("recorder"), Some(&SCREEN_RECORDER));
-        let mut s = Settings::default();
-        assert!(!s.recorder_on(false), "no recorder: nothing to show");
-        assert!(s.recorder_on(true), "installing the recorder is the switch");
-        s.set_addon(SCREEN_RECORDER.id, false);
-        assert!(!s.recorder_on(true), "switched off by hand: stays off");
-        s.set_addon(SCREEN_RECORDER.id, true);
-        assert!(s.recorder_on(true) && !s.recorder_on(false));
-    }
-
-    #[test]
     fn prayer_times_files_are_the_ones_in_the_repo() {
         // The pinned fingerprints must match addons/sholat/, which is what the release holds.
         let repo: [(&str, &[u8]); 3] = [
@@ -497,7 +468,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "system", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

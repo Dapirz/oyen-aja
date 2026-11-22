@@ -30,8 +30,6 @@ pub enum Activity {
     Prayer,
     /// Show over games: frame rate, GPU and CPU while a full-screen app is in front.
     Game,
-    /// A screen recording with Oyenza Studio Recorder: its dot and time.
-    Recording,
     /// The Downloader add-on: how far its downloads are.
     Download,
 }
@@ -102,9 +100,6 @@ pub(crate) const PRAYER_OK_ROOM: f32 = 12.0 + PRAYER_OK_W + PRAYER_OK_INSET;
 const GAME_W: f32 = 276.0;
 const GAME_NO_TEMP_W: f32 = 236.0;
 const GAME_DIVIDER: Color = Color::white(0.18);
-/// The recording: its dot, then "12:34" (the timer's width) or "1:02:03".
-const RECORDING_W: f32 = 96.0;
-const RECORDING_LONG_W: f32 = 112.0;
 /// Downloads: the ring with the arrow in it, then "37%" (the timer's
 /// width); the long timer's while the count sits beside the ring.
 const DOWNLOAD_W: f32 = 96.0;
@@ -121,7 +116,6 @@ pub fn content_key(m: &Mode) -> u32 {
         Mode::Activity(Activity::MediaTimer) => 4,
         Mode::Activity(Activity::Prayer) => 5,
         Mode::Activity(Activity::Game) => 6,
-        Mode::Activity(Activity::Recording) => 7,
         Mode::Activity(Activity::Download) => 8,
         Mode::Hud(t) => 10 + *t as u32,
         Mode::Notice => 20,
@@ -162,11 +156,7 @@ pub fn prayer_countdown(st: &AppState) -> Option<(poni_core::prayer::Prayer, i64
 }
 
 pub fn current_activity(st: &AppState) -> Option<Activity> {
-    // A recording comes first: its Stop must be one click away.
-    if st.rec_live() && st.record_on() {
-        return Some(Activity::Recording);
-    }
-    // The few minutes before a prayer come next: they don't come back.
+    // The few minutes before a prayer come first: they don't come back.
     if prayer_countdown(st).is_some() {
         return Some(Activity::Prayer);
     }
@@ -196,10 +186,8 @@ fn downloading(st: &AppState) -> bool {
 
 pub fn collapsed_mode(st: &AppState) -> Mode {
     // A notice that stays (a new version's) waits under a volume or
-    // brightness change, a game's readout and a recording (its Stop stays
-    // one click away), and shows again after.
-    let recording = st.rec_live() && st.record_on();
-    let waits = st.notice.as_ref().is_some_and(|n| n.stays()) && (st.hud.is_some() || st.game.active || recording);
+    // brightness change and a game's readout, and shows again after.
+    let waits = st.notice.as_ref().is_some_and(|n| n.stays()) && (st.hud.is_some() || st.game.active);
     if st.notice.is_some() && !waits {
         Mode::Notice
     } else if let Some(h) = &st.hud {
@@ -293,7 +281,6 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
         Mode::Activity(Activity::MediaTimer) => Geom::new(132.0, 32.0, 15.0),
         Mode::Activity(Activity::Prayer) => Geom::new(PRAYER_W, 32.0, 15.0),
         Mode::Activity(Activity::Game) => Geom::new(if game_temp(st).is_some() { GAME_W } else { GAME_NO_TEMP_W }, 32.0, 15.0),
-        Mode::Activity(Activity::Recording) => Geom::new(recording_w(st), 32.0, 15.0),
         Mode::Activity(Activity::Download) => Geom::new(if download_many(st) { DOWNLOAD_MANY_W } else { DOWNLOAD_W }, 32.0, 15.0),
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
@@ -614,7 +601,6 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             ui.c.text(&text, Rect::new(body.x + 36.0, body.y, end - body.x - 36.0, body.h), &ts);
         }
         Activity::Game => draw_game(ui, st, body),
-        Activity::Recording => draw_recording(ui, st, body),
         Activity::Download => draw_download(ui, st, body),
         Activity::MediaTimer => {
             // Art on the left; the ring sits right next to its countdown.
@@ -640,41 +626,6 @@ pub(crate) fn draw_prayer_ok(ui: &mut Ui, body: Rect) -> f32 {
     let r = Rect::new(body.right() - PRAYER_OK_INSET - PRAYER_OK_W, body.center().y - PRAYER_OK_H / 2.0, PRAYER_OK_W, PRAYER_OK_H);
     ui.pill(wid(PRAYER_OK_ID), r, "OK", None, PillStyle::Utility);
     body.right() - PRAYER_OK_ROOM
-}
-
-/// The recording pill: "0:42" fits the timer's width; an hour needs more.
-fn recording_w(st: &AppState) -> f32 {
-    if st.rec_elapsed() >= 3600.0 {
-        RECORDING_LONG_W
-    } else {
-        RECORDING_W
-    }
-}
-
-/// The red dot, then the time right-aligned as the timer's countdown.
-fn draw_recording(ui: &mut Ui, st: &AppState, body: Rect) {
-    recording_mark(ui, st, Point::new(body.x + 12.0 + 6.0, body.center().y));
-    let (text, ts) = recording_time(st);
-    ui.c.text(&text, Rect::new(body.x + 30.0, body.y, body.w - 30.0 - 14.0, body.h), &ts.right());
-}
-
-/// The recording's mark at `c`: the red dot; a solid pause mark while
-/// paused, so the dimmed time still reads on the light Oyen ground; a ring
-/// while it starts or saves. Shared with the notch's left ear.
-pub(crate) fn recording_mark(ui: &mut Ui, st: &AppState, c: Point) {
-    match st.rec.phase {
-        Some(poni_core::recorder::Phase::Recording) => ui.c.fill_circle(c, 5.0, palette::RED),
-        Some(poni_core::recorder::Phase::Paused) => ui.c.icon(Icon::Pause, Rect::from_center(c, 11.0, 11.0), palette::TEXT),
-        _ => ui.c.stroke_circle(c, 4.4, palette::TEXT_DIM, 1.4),
-    }
-}
-
-/// The recording's time and its style (dimmed unless it records), for the
-/// caller to align. Shared with the notch's right ear.
-pub(crate) fn recording_time(st: &AppState) -> (String, TextStyle) {
-    let recording = st.rec.phase == Some(poni_core::recorder::Phase::Recording);
-    let ts = TextStyle::body().weight(Weight::Semibold).tabular().color(if recording { palette::TEXT } else { palette::TEXT_DIM });
-    (poni_core::recorder::fmt_length(st.rec_elapsed()), ts)
 }
 
 /// What the download pill shows (`Activity::Download`, every theme): how far
@@ -1128,24 +1079,6 @@ mod tests {
     }
 
     #[test]
-    fn a_notice_that_stays_waits_under_a_recording() {
-        let mut st = AppState::new(Settings::default(), Store::default());
-        st.recorder = true;
-        st.store.recorder_island = true;
-        st.notify(Icon::Download, palette::GREEN, "Update available", "", f64::INFINITY, None);
-        st.rec.phase = Some(poni_core::recorder::Phase::Recording);
-        assert_eq!(collapsed_mode(&st), Mode::Activity(Activity::Recording), "Stop stays one click away");
-        st.rec.phase = Some(poni_core::recorder::Phase::Paused);
-        assert_eq!(collapsed_mode(&st), Mode::Activity(Activity::Recording));
-        st.rec.phase = None;
-        assert_eq!(collapsed_mode(&st), Mode::Notice, "and back once the recording ends");
-        // A notice with a time limit still shows over it.
-        st.rec.phase = Some(poni_core::recorder::Phase::Recording);
-        st.notify(Icon::Download, palette::GREEN, "Saved", "", 5.0, None);
-        assert_eq!(collapsed_mode(&st), Mode::Notice);
-    }
-
-    #[test]
     fn stepped_aside_what_rests_waits_and_what_happens_still_shows() {
         let media = Mode::Activity(Activity::Media);
         let mut idle = AppState::new(Settings::default(), Store::default());
@@ -1204,12 +1137,7 @@ mod tests {
         assert_eq!(current_activity(&song), Some(Activity::Media));
         st.pomodoro.start(st.now);
         assert_eq!(current_activity(&st), Some(Activity::Timer));
-        // So do a recording and a game's readout.
-        st.recorder = true;
-        st.store.recorder_island = true;
-        st.rec.phase = Some(poni_core::recorder::Phase::Recording);
-        assert_eq!(current_activity(&st), Some(Activity::Recording));
-        st.rec.phase = None;
+        // So does a game's readout.
         st.game.active = true;
         assert_eq!(current_activity(&st), Some(Activity::Game));
         // Where the Downloader isn't offered (the Mac, for now): never.

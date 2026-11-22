@@ -99,9 +99,15 @@ pub fn quality_label(height: u32) -> String {
     }
 }
 
-/// "9:56", "1:02:03": whole seconds, like a recording's length.
-pub fn duration_label(s: f64) -> String {
-    crate::recorder::fmt_length(s)
+/// "9:56", "1:02:03": whole seconds gone by, so it never shows a second early.
+pub fn duration_label(secs: f64) -> String {
+    let s = secs.max(0.0).floor() as u64;
+    let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 /// The site's name as people know it, from yt-dlp's `extractor`
