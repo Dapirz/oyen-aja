@@ -640,7 +640,7 @@ mod cache_tests {
     #[test]
     fn a_repeated_get_answered_with_no_store_reaches_the_server() {
         // The headers api.oyenza.app sends on every /island route
-        // (catat-server's requirePc), so Today's bills, Health steps and
+        // (catat-server's requirePc), so Today's bills and
         // money are asked for every time.
         let (bodies, hits) = ask_twice("Cache-Control: no-store\r\nVary: Origin\r\n");
         assert_eq!((hits, bodies[1].as_str()), (2, r#"{"hit":2}"#), "answers {bodies:?}");

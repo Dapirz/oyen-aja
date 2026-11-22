@@ -10,7 +10,6 @@ use crate::pages::PageKind;
 use poni_core::addons::Status as AddonStatus;
 use poni_core::datetime::LocalDateTime;
 use poni_core::geom::{palette, Color};
-use poni_core::health::HealthSnapshot;
 use poni_core::lrc::Lyrics;
 use poni_core::oyenza::{Activity, Bill, DayPick, Saved, Seen};
 use poni_core::phonedrop::QrMatrix;
@@ -728,8 +727,6 @@ pub struct AppState {
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
     pub accent: Color,
-    /// Steps from the person's phone, sent by Oyenza (None until connected).
-    pub health: Option<HealthSnapshot>,
     /// The page currently shown when expanded.
     pub page: PageKind,
     /// When playback went from playing to paused (the pill lingers 30 s).
@@ -843,7 +840,6 @@ impl AppState {
             app_icons: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,
-            health: None,
             page,
             media_paused_at: None,
             pinned: false,
@@ -876,13 +872,12 @@ impl AppState {
             let on = st.settings.addon_on(a.id);
             st.addons.insert(a.id, if !on { AddonStatus::Off } else if a.downloads() { AddonStatus::Checking } else { AddonStatus::Ready });
         }
-        // Last open on the Script, System, Health, IELTS or Notes
+        // Last open on the Script, System, IELTS or Notes
         // page, since switched off, or on a tab since hidden: open on the
         // first tab.
         let off = match st.page {
             PageKind::Script => !st.script_on(),
             PageKind::System => !st.system_on(),
-            PageKind::Health => !st.health_on(),
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Record => !st.record_on(),
             PageKind::Notifications => !st.notifications_on(),
@@ -943,11 +938,6 @@ impl AppState {
     /// The System add-on is on: the System tab shows.
     pub fn system_on(&self) -> bool {
         self.addon(poni_core::addons::SYSTEM.id) == AddonStatus::Ready
-    }
-
-    /// The Health add-on is on: the Health tab shows and the steps are asked for.
-    pub fn health_on(&self) -> bool {
-        self.addon(poni_core::addons::HEALTH.id) == AddonStatus::Ready
     }
 
     /// The Downloader add-on is on, with its tools in place, for an account
@@ -1020,17 +1010,6 @@ impl AppState {
         let (m, _) = poni_core::prayer::countdown(&site, self.prayer_now(), self.settings.prayer.remind_before_min)?;
         self.prayer.countdown_ok = Some(m.at);
         Some(m)
-    }
-
-    /// New steps from the phone (`None`: none to show), kept in memory only,
-    /// never in data.json. Returns today's steps when they just passed the
-    /// goal; the first numbers after start or sign-in only set the baseline
-    /// (`poni_core::health::goal_notice`).
-    pub fn take_health(&mut self, next: Option<HealthSnapshot>) -> Option<u32> {
-        let today = self.local.day_key();
-        let reached = next.as_ref().filter(|n| poni_core::health::goal_notice(self.health.as_ref(), n, &today)).map(|n| n.steps_on(&today));
-        self.health = next;
-        reached
     }
 
     /// Show `n` now or, while a full-screen app hides the island (`hidden`), keep
@@ -1202,33 +1181,11 @@ mod tests {
     }
 
     #[test]
-    fn the_goal_notice_is_only_for_steps_seen_passing_it() {
-        use poni_core::health::{HealthDay, HealthSource};
-        let mut st = AppState::new(Settings::default(), Store::default());
-        st.local = LocalDateTime { year: 2026, month: 10, day: 24, hour: 15, minute: 20, second: 0 };
-        let snap = |steps: u32| HealthSnapshot {
-            goal: 8000,
-            source: HealthSource::AppleHealth,
-            updated_at: 0,
-            days: vec![HealthDay { date: "2026-10-24".into(), steps, distance_m: None, active_kcal: None }],
-        };
-        // Over the goal in the first numbers after start: a baseline, no notice (a restart never repeats it).
-        assert_eq!(st.take_health(Some(snap(9000))), None);
-        assert_eq!(st.health.as_ref().map(|h| h.steps_on("2026-10-24")), Some(9000));
-        // Off in Oyenza: nothing kept; the numbers after it are a baseline again.
-        assert_eq!(st.take_health(None), None);
-        assert!(st.health.is_none());
-        assert_eq!(st.take_health(Some(snap(7900))), None);
-        assert_eq!(st.take_health(Some(snap(8010))), Some(8010));
-        assert_eq!(st.take_health(Some(snap(8500))), None);
-    }
-
-    #[test]
-    fn the_goal_notice_waits_while_a_full_screen_app_hides_the_island() {
+    fn a_notice_waits_while_a_full_screen_app_hides_the_island() {
         let mut st = AppState::new(Settings::default(), Store::default());
         st.now = 100.0;
         let notice = |title: &str| Notice {
-            icon: Icon::Steps,
+            icon: Icon::Bell,
             color: palette::GREEN,
             title: title.into(),
             title_dim: String::new(),

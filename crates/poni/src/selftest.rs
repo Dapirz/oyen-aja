@@ -62,11 +62,10 @@ use crate::state::{
     OyenzaState, PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, SysStats, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, DOWNLOADER, HEALTH, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
+use poni_core::addons::{Status as AddonStatus, DOWNLOADER, IELTS, JAPANESE_READINGS, MEETING_NOTES, PRAYER_TIMES, SCRIPT_READER, SYSTEM};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
-use poni_core::health::{HealthDay, HealthSnapshot, HealthSource};
 use poni_core::lrc::{parse_lrc, Lyrics};
 use poni_core::oyenza::{Activity, Bill, Day, DayPick, Saved, Seen, Txn, WalletRef};
 use poni_core::phonedrop::QrMatrix;
@@ -1012,7 +1011,6 @@ enum Scene {
     VolumeHud,
     ChargingHud,
     BluetoothHud,
-    HealthNotice,
     Page(PageKind),
     /// The shelf while files are dragged over the island.
     ShelfDrop,
@@ -1026,8 +1024,6 @@ enum Scene {
     ShelfPhoneReceive,
     /// Click the first header tab on the Today page; expect the Music page.
     TabClick,
-    /// The Health page before the person signs in with Oyenza: no numbers yet.
-    HealthSignedOut,
     /// Oyenza: money arrived, its sum hidden behind Show.
     OyenzaMoney,
     /// ...and after Show.
@@ -1040,9 +1036,7 @@ enum Scene {
     OyenzaSignIn,
     /// The Oyenza tab right after a spend was saved (Undo showing).
     OyenzaSaved,
-    /// The Health page signed in to Oyenza, no steps from the phone (its switch is off).
-    HealthSignedIn,
-    /// Click the gear in the header on the Health page; expect Settings.
+    /// Click the gear in the header on the Oyenza page; expect Settings.
     GearClick,
     /// Settings while a sign-in code waits for approval.
     SettingsSigningIn,
@@ -1116,8 +1110,6 @@ enum Scene {
     LowBatteryHud,
     /// The Script page partway through a reading (paused, so the shot holds still).
     ScriptReading,
-    /// The Health page with steps the phone last sent three days ago.
-    HealthStale,
     /// The same reading with Oyenza Studio Recorder installed: Record shows.
     ScriptRecorder,
     /// System page on a desktop, Power: its power supply reports over USB.
@@ -1335,7 +1327,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 135] = [
+const SCENES: [Scene; 130] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -1344,10 +1336,8 @@ const SCENES: [Scene; 135] = [
     Scene::VolumeHud,
     Scene::ChargingHud,
     Scene::BluetoothHud,
-    Scene::HealthNotice,
     Scene::Page(PageKind::Media),
     Scene::Page(PageKind::Focus),
-    Scene::Page(PageKind::Health),
     Scene::Page(PageKind::Shelf),
     Scene::ShelfDrop,
     Scene::ShelfPhone,
@@ -1360,14 +1350,12 @@ const SCENES: [Scene; 135] = [
     Scene::OyenzaSignedOut,
     Scene::Page(PageKind::Today),
     Scene::TabClick,
-    Scene::HealthSignedOut,
     Scene::OyenzaMoney,
     Scene::OyenzaMoneyShown,
     Scene::OyenzaBill,
     Scene::Page(PageKind::Oyenza),
     Scene::OyenzaSignIn,
     Scene::OyenzaSaved,
-    Scene::HealthSignedIn,
     Scene::GearClick,
     Scene::SettingsSigningIn,
     Scene::SettingsSignedIn,
@@ -1415,7 +1403,6 @@ const SCENES: [Scene; 135] = [
     // The Script page: empty, then partway through a reading.
     Scene::Page(PageKind::Script),
     Scene::ScriptReading,
-    Scene::HealthStale,
     // ...and with the recorder installed (Record by Paste).
     Scene::ScriptRecorder,
     // The whole PC's power: read from the power supply, then estimated.
@@ -1528,7 +1515,6 @@ impl Scene {
             Scene::VolumeHud => "volume-hud".into(),
             Scene::ChargingHud => "charging-hud".into(),
             Scene::BluetoothHud => "bluetooth-hud".into(),
-            Scene::HealthNotice => "health-notice".into(),
             Scene::Page(p) => format!("page-{}", p.key()),
             Scene::ShelfDrop => "page-shelf-drop".into(),
             Scene::ShelfEmpty => "page-shelf-empty".into(),
@@ -1536,14 +1522,12 @@ impl Scene {
             Scene::ShelfPhoneAsk => "page-shelf-phone-ask".into(),
             Scene::ShelfPhoneReceive => "page-shelf-phone-receive".into(),
             Scene::TabClick => "tab-click-media".into(),
-            Scene::HealthSignedOut => "page-health-signed-out".into(),
             Scene::OyenzaMoney => "oyenza-money".into(),
             Scene::OyenzaMoneyShown => "oyenza-money-shown".into(),
             Scene::OyenzaBill => "oyenza-bill".into(),
             Scene::OyenzaSignedOut => "page-oyenza-signed-out".into(),
             Scene::OyenzaSignIn => "page-oyenza-signin".into(),
             Scene::OyenzaSaved => "page-oyenza-saved".into(),
-            Scene::HealthSignedIn => "page-health-signed-in".into(),
             // Reached by clicking the gear: the signed-out Settings page.
             Scene::GearClick => "page-settings".into(),
             Scene::SettingsSigningIn => "page-settings-signing-in".into(),
@@ -1583,7 +1567,6 @@ impl Scene {
             Scene::MediaLyric => "media-lyric".into(),
             Scene::LowBatteryHud => "low-battery-hud".into(),
             Scene::ScriptReading => "page-script-reading".into(),
-            Scene::HealthStale => "page-health-stale".into(),
             Scene::ScriptRecorder => "page-script-recorder".into(),
             Scene::SystemPower => "page-system-power".into(),
             Scene::SystemPowerEstimate => "page-system-power-estimate".into(),
@@ -1643,9 +1626,7 @@ impl Scene {
             Scene::Page(p) => Some(p),
             Scene::ShelfDrop | Scene::ShelfEmpty | Scene::ShelfPhone | Scene::ShelfPhoneAsk | Scene::ShelfPhoneReceive => Some(PageKind::Shelf),
             Scene::TabClick => Some(PageKind::ALL[0]),
-            Scene::HealthSignedOut => Some(PageKind::Health),
             Scene::OyenzaSignedOut | Scene::OyenzaSignIn | Scene::OyenzaSaved | Scene::OyenzaYesterday | Scene::OyenzaTomorrow => Some(PageKind::Oyenza),
-            Scene::HealthSignedIn | Scene::HealthStale => Some(PageKind::Health),
             Scene::GearClick
             | Scene::SettingsSigningIn
             | Scene::SettingsSignedIn
@@ -1742,8 +1723,6 @@ impl Scene {
                 | Scene::OyenzaTomorrow
                 | Scene::OyenzaMoneyOut
                 | Scene::Page(PageKind::Oyenza)
-                | Scene::HealthSignedIn
-                | Scene::HealthStale
                 | Scene::SettingsSigningIn
                 | Scene::SettingsSignedIn
                 | Scene::TodayDay
@@ -2680,8 +2659,6 @@ pub struct SelfTest {
     track_key: String,
     /// Where the media-lyric scene holds the song: inside a sung line.
     lyric_pos: f64,
-    /// The sample week every scene shows, except the signed-out Health page.
-    health: Option<HealthSnapshot>,
     states: Vec<StateReport>,
     checks: Vec<Check>,
     writes: Vec<(String, JoinHandle<Vec<String>>)>,
@@ -2744,7 +2721,7 @@ const ANIMS: [(&str, Scene, Scene); 5] = [
     ("page", Scene::Page(PageKind::Media), Scene::Page(PageKind::Focus)),
     ("collapse", Scene::Page(PageKind::Media), Scene::Media),
     ("hud", Scene::Media, Scene::VolumeHud),
-    ("notice", Scene::IdleClock, Scene::HealthNotice),
+    ("notice", Scene::IdleClock, Scene::UpdateNotice),
 ];
 /// Frames recorded per transition (~16 ms apart).
 const ANIM_FRAMES: usize = 40;
@@ -2787,7 +2764,6 @@ impl SelfTest {
             lyrics: LyricsState { track_key: track_key.clone(), ..Default::default() },
             track_key,
             lyric_pos: TRACK_POS_S,
-            health: None,
             states: Vec::new(),
             checks: Vec::new(),
             writes: Vec::new(),
@@ -2955,7 +2931,6 @@ impl SelfTest {
         self.lyrics = LyricsState { track_key: self.track_key.clone(), status: LyricsStatus::Found, lyrics: Some(parsed), source: "Sample".into(), ruby, wants_ja_readings };
 
         seed_tasks(st);
-        self.health = Some(sample_health(st));
         let today = st.day_key();
         st.store.focus_sessions.insert(today, 2);
         self.seed_shelf(st);
@@ -3620,11 +3595,6 @@ impl SelfTest {
         st.volume = VolumeState { level: 0.64, muted: false, known: true };
         st.pinned = false;
         st.drag_hover = scene == Scene::ShelfDrop;
-        st.health = match scene {
-            Scene::HealthSignedOut | Scene::HealthSignedIn => None,
-            Scene::HealthStale => Some(sample_week(st, 3)),
-            _ => self.health.clone(),
-        };
         // Start with Windows as Settings shows it once read (it's read off the UI thread).
         st.ui.autostart = Some(true);
         // Hide in full-screen apps (the default), except in the Stay on top scene.
@@ -3696,10 +3666,6 @@ impl SelfTest {
         st.notice = match scene {
             Scene::UpdateNotice => Some(crate::updates::new_version_notice(&fake_release(), st.accent, until)),
             Scene::UpdatedNotice => Some(crate::updates::updated_notice(Some(fake_release().headline), until)),
-            Scene::HealthNotice => {
-                let steps = st.health.as_ref().map_or(0, |h| h.steps_on(&st.local.day_key()));
-                Some(crate::pages::health::goal_notice(steps, until))
-            }
             Scene::OyenzaMoney | Scene::OyenzaMoneyShown => {
                 let hidden = scene == Scene::OyenzaMoney;
                 Some(Notice {
@@ -3777,10 +3743,8 @@ impl SelfTest {
         // Script reader: on for the Script page's scenes, off (no tab) elsewhere.
         let script = scene.page() == Some(PageKind::Script);
         st.addons.insert(SCRIPT_READER.id, if script { AddonStatus::Ready } else { AddonStatus::Off });
-        // System and Health (add-ons, off by default): on for their own
-        // pages' scenes only (and Health for its goal notice).
+        // System (an add-on, off by default): on for its own page's scenes only.
         let system = scene.page() == Some(PageKind::System);
-        let health = scene.page() == Some(PageKind::Health) || scene == Scene::HealthNotice;
         // Notifications (on by default, but only in the Store copy: the self-test
         // runs the download): as the Store copy for its page, its notices and
         // the Settings scene with its chip.
@@ -3788,7 +3752,7 @@ impl SelfTest {
         let ielts = scene.page() == Some(PageKind::Ielts);
         // Meeting notes: on for its page and its pill.
         let notes = scene.page() == Some(PageKind::Notes) || scene == Scene::NotesActivity;
-        for (id, on) in [(SYSTEM.id, system), (HEALTH.id, health), (IELTS.id, ielts), (MEETING_NOTES.id, notes)] {
+        for (id, on) in [(SYSTEM.id, system), (IELTS.id, ielts), (MEETING_NOTES.id, notes)] {
             st.settings.set_addon(id, on);
             st.addons.insert(id, if on { AddonStatus::Ready } else { AddonStatus::Off });
         }
@@ -4605,31 +4569,6 @@ fn seed_tasks(st: &mut AppState) {
     if let Some(id) = done {
         tasks.toggle(id, (unix - 1800).max(day_start + 60));
     }
-}
-
-/// A week of steps as Oyenza would send it: today just over the goal.
-fn sample_health(st: &AppState) -> HealthSnapshot {
-    sample_week(st, 0)
-}
-
-/// The sample week as the phone read it `days_ago` days back, its last day then.
-fn sample_week(st: &AppState, days_ago: i64) -> HealthSnapshot {
-    let today = st.local.add_days(-days_ago);
-    let week = [5210u32, 9120, 7480, 3960, 10230, 6840, 8412];
-    let days = week
-        .iter()
-        .enumerate()
-        .map(|(i, &steps)| {
-            let last = i + 1 == week.len();
-            HealthDay {
-                date: today.add_days(i as i64 + 1 - week.len() as i64).day_key(),
-                steps,
-                distance_m: last.then_some(6140),
-                active_kcal: last.then_some(342),
-            }
-        })
-        .collect();
-    HealthSnapshot { goal: 8000, source: HealthSource::AppleHealth, updated_at: st.unix - days_ago * 86_400 - 8 * 60, days }
 }
 
 /// Where the media-lyric scene holds the song: 1.5 s into the first sung line

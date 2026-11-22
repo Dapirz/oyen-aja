@@ -5,7 +5,6 @@
 
 use crate::gfx::Image;
 use crate::state::{MediaSession, PowerState, SysStats};
-use poni_core::health::HealthSnapshot;
 use poni_core::lrc::Lyrics;
 use poni_core::agenda;
 use poni_core::oyenza::{Activity, Arrival, Bill, Saved};
@@ -103,9 +102,6 @@ pub enum OyenzaEvent {
     ActivityChecked,
     /// Bills due in the next 30 days, and the server's today (YYYY-MM-DD).
     Bills { today: String, bills: Vec<Bill> },
-    /// The steps the phone sent, for the Health page; None: none to show (off in
-    /// Oyenza on the phone, or a server from before steps).
-    Health(Option<HealthSnapshot>),
     /// The day for the Today page, from the apps switched on in oyenza.app (asked
     /// while the page is on screen).
     Day(agenda::Answer),

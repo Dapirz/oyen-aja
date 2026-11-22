@@ -186,22 +186,6 @@ pub const SYSTEM: Addon = Addon {
     pro: false,
 };
 
-/// Health: the Health page, today's steps against the goal and the week,
-/// which Oyenza on the phone sends once signed in (Apple Health or Health
-/// Connect). A tab for everyone up to 0.2.8; an add-on, off, in the versions
-/// after it, like System. Its code is in the app, so there is nothing to
-/// download. Off, there is no Health tab and the Oyenza worker never asks
-/// for the steps.
-pub const HEALTH: Addon = Addon {
-    id: "health",
-    title: "Health",
-    blurb: "Your steps from Oyenza on your phone: today against your goal, and your week.",
-    mac_blurb: None,
-    tag: "",
-    files: &[],
-    pro: false,
-};
-
 /// Screen recorder: the Record page and the recording pill, the face of
 /// Oyenza Studio Recorder (its own install, about 120 MB). Its code is in the
 /// island, so there is nothing to download. It shows on the Add-ons page once
@@ -344,7 +328,7 @@ pub const MEETING_NOTES: Addon = Addon {
 };
 
 /// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 10] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &HEALTH, &SCREEN_RECORDER, &AI_USAGE, &MEETING_NOTES, &IELTS, &DOWNLOADER];
+pub const ALL: [&Addon; 9] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &SYSTEM, &SCREEN_RECORDER, &AI_USAGE, &MEETING_NOTES, &IELTS, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -473,7 +457,7 @@ mod tests {
 
     #[test]
     fn built_in_add_ons_are_off_until_switched_on() {
-        for a in [&SYSTEM, &HEALTH, &IELTS, &MEETING_NOTES] {
+        for a in [&SYSTEM, &IELTS, &MEETING_NOTES] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
             assert_eq!(Addon::find(a.id), Some(a));
             assert_eq!(Status::Ready.line(a, false), "On");
@@ -577,7 +561,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the free ones, then Studio Pro's.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "system", "health", "recorder", "ai", "notes", "ielts", "downloader"]);
+        assert_eq!(ids, ["sholat", "ja", "script", "system", "recorder", "ai", "notes", "ielts", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

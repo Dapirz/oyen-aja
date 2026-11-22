@@ -62,8 +62,6 @@ pub enum OyenzaCmd {
     Undo(String),
     /// The Oyenza tab opened: today's money and the bills, now.
     Refresh,
-    /// The Health tab opened: the steps from the phone, now (unless just asked for).
-    RefreshHealth,
     /// Today's Try again: the day, now (unless just asked for).
     RefreshDay,
     /// A Pro add-on's page, or Add-ons, opened: whether the account has

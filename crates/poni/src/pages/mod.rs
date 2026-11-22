@@ -14,7 +14,6 @@ pub mod card;
 pub mod downloads;
 pub mod downloads_offer;
 pub mod focus;
-pub mod health;
 pub mod ielts;
 pub mod media;
 pub mod notes;
@@ -66,12 +65,9 @@ pub enum PageKind {
     /// Oyenza, with Oyen himself as its tab (`oyen::tab`): signed out, the
     /// way to sign in; signed in, the money by day.
     Oyenza,
-    /// The Health add-on's page, while it is on ([`tabs`]): the steps
-    /// Oyenza sends, so its tab sits beside Oyenza's.
-    Health,
     /// The IELTS add-on's page, while it is on ([`tabs`]): Oyen as an IELTS
     /// Speaking examiner, through the Oyenza account, so its tab follows
-    /// Oyenza's and Health's.
+    /// Oyenza's.
     Ielts,
     /// The Meeting notes add-on's page, while it is on ([`tabs`]; Windows):
     /// Oyen listens to a meeting and the Oyenza account writes its notes, so
@@ -101,7 +97,7 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, Oyenza, then the
     /// add-ons' pages and the "+".
-    pub const ALL: [PageKind; 18] = [
+    pub const ALL: [PageKind; 17] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -109,7 +105,6 @@ impl PageKind {
         PageKind::Focus,
         PageKind::Ai,
         PageKind::Oyenza,
-        PageKind::Health,
         PageKind::Ielts,
         PageKind::Notes,
         PageKind::System,
@@ -127,7 +122,6 @@ impl PageKind {
             PageKind::Media => "media",
             PageKind::Focus => "focus",
             PageKind::Ai => "ai",
-            PageKind::Health => "health",
             PageKind::Ielts => "ielts",
             PageKind::Notes => "notes",
             PageKind::Shelf => "shelf",
@@ -146,8 +140,7 @@ impl PageKind {
     }
 
     pub fn from_key(s: &str) -> PageKind {
-        // Health took the Water page's place in the tab row.
-        let s = if s.trim().eq_ignore_ascii_case("water") { "health" } else { s.trim() };
+        let s = s.trim();
         Self::ALL.into_iter().find(|p| p.key().eq_ignore_ascii_case(s)).unwrap_or(PageKind::Media)
     }
 
@@ -156,7 +149,6 @@ impl PageKind {
             PageKind::Media => "Music",
             PageKind::Focus => "Focus",
             PageKind::Ai => "AI",
-            PageKind::Health => "Health",
             PageKind::Ielts => "IELTS",
             PageKind::Notes => "Notes",
             PageKind::Shelf => "Shelf",
@@ -179,7 +171,6 @@ impl PageKind {
             PageKind::Media => Icon::Music,
             PageKind::Focus => Icon::Timer,
             PageKind::Ai => Icon::Ai,
-            PageKind::Health => Icon::Steps,
             PageKind::Ielts => Icon::Mic,
             PageKind::Notes => Icon::Notes,
             PageKind::Shelf => Icon::Tray,
@@ -224,7 +215,7 @@ impl PageKind {
 }
 
 /// The tabs in the header: every page but Settings, AI only with Studio Pro,
-/// and Health, IELTS, Notes,
+/// and IELTS, Notes,
 /// System, Script, Record and Prayer only while their add-ons are on.
 /// Music, Today, Shelf, Tasks and Focus unless Settings took them off the
 /// row; one of those still shows while its page is open (a file dropped on
@@ -259,7 +250,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
     PageKind::ALL
         .into_iter()
         .filter(|&p| match p {
-            PageKind::Health => st.health_on(),
             PageKind::Ielts => st.ielts_on(),
             PageKind::Notes => st.notes_on(),
             PageKind::Ai => st.ai_usage_on(),
@@ -288,7 +278,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Media => media::height(st),
         PageKind::Focus => focus::height(st),
         PageKind::Ai => usage::height(st),
-        PageKind::Health => health::height(st),
         PageKind::Ielts => ielts::height(st),
         PageKind::Notes => notes::height(st),
         PageKind::Shelf => shelf::height(st),
@@ -428,7 +417,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Media => media::draw(ui, st, area),
         PageKind::Focus => focus::draw(ui, st, area),
         PageKind::Ai => usage::draw(ui, st, area),
-        PageKind::Health => health::draw(ui, st, area),
         PageKind::Ielts => ielts::draw(ui, st, area),
         PageKind::Notes => notes::draw(ui, st, area),
         PageKind::Shelf => shelf::draw(ui, st, area),
@@ -757,11 +745,11 @@ mod tests {
         assert_eq!(tabs(&st), [Media, Today, Shelf, Tasks, Focus, Oyenza, Addons]);
         st.oyenza.pro = Some(true);
         assert_eq!(tabs(&st), [Media, Today, Shelf, Tasks, Focus, Ai, Oyenza, Addons]);
-        // The add-ons' pages come after Oyenza (Health, Oyenza's steps, first), before the "+".
-        for id in ["system", "script", "health"] {
+        // The add-ons' pages come after Oyenza, before the "+".
+        for id in ["system", "script"] {
             st.addons.insert(id, poni_core::addons::Status::Ready);
         }
-        assert_eq!(&tabs(&st)[6..], [Oyenza, Health, System, Script, Addons]);
+        assert_eq!(&tabs(&st)[6..], [Oyenza, System, Script, Addons]);
         // Clipboard left the app: an island last open there opens on Music.
         assert_eq!(PageKind::from_key("clipboard"), Media);
     }
@@ -860,11 +848,8 @@ mod tests {
     }
 
     #[test]
-    fn system_and_health_have_a_tab_only_while_their_add_ons_are_on() {
-        for (page, addon) in [
-            (PageKind::System, poni_core::addons::SYSTEM),
-            (PageKind::Health, poni_core::addons::HEALTH),
-        ] {
+    fn system_has_a_tab_only_while_its_add_on_is_on() {
+        for (page, addon) in [(PageKind::System, poni_core::addons::SYSTEM)] {
             let mut st = state();
             assert!(!tabs(&st).contains(&page), "{} is off for everyone until switched on", addon.id);
             st.settings.set_addon(addon.id, true);
@@ -956,13 +941,12 @@ mod tests {
     }
 
     #[test]
-    fn ielts_has_a_tab_only_while_its_add_on_is_on_after_health() {
-        use PageKind::{Addons, Health, Ielts, Oyenza};
+    fn ielts_has_a_tab_only_while_its_add_on_is_on_after_oyenza() {
+        use PageKind::{Addons, Ielts, Oyenza};
         let mut st = state();
         assert!(!tabs(&st).contains(&Ielts), "off for everyone until switched on");
         st.addons.insert("ielts", poni_core::addons::Status::Ready);
-        st.addons.insert("health", poni_core::addons::Status::Ready);
-        assert_eq!(&tabs(&st)[5..], [Oyenza, Health, Ielts, Addons]);
+        assert_eq!(&tabs(&st)[5..], [Oyenza, Ielts, Addons]);
         // Signed out it shows the sign-in card; signed in, every state is as
         // tall, and never taller than System: the window keeps its size.
         let signed_out = content_height(Ielts, &st);

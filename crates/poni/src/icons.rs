@@ -21,7 +21,6 @@ pub enum Icon {
     Lyrics,
     Timer,
     Coffee,
-    Steps,
     Tray,
     ListChecks,
     Check,
@@ -203,14 +202,6 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16"),
             s("M8.5 3.5V6"),
             s("M12 3.5V6"),
-        ],
-        // Two shoe prints. Each outline starts at a corner of its flat bottom:
-        // closing in the middle of a curve leaves a tiny segment whose join spikes.
-        Steps => p![
-            s("M5.2 12.5C4.8 11.1 4 9.7 4 7.6C4 4.8 5.5 2.5 7.5 2.5C9.5 2.5 11 4.8 11 7.6C11 9.7 10.2 11.1 9.8 12.5Z"),
-            s("M5.5 15H9.5V15.6A2 2 0 0 1 5.5 15.6Z"),
-            s("M14.2 17C13.8 15.6 13 14.2 13 12.1C13 9.3 14.5 7 16.5 7C18.5 7 20 9.3 20 12.1C20 14.2 19.2 15.6 18.8 17Z"),
-            s("M14.5 19.5H18.5V20.1A2 2 0 0 1 14.5 20.1Z"),
         ],
         Tray => p![
             s("M4 13l2.4-7.2a1.6 1.6 0 0 1 1.5-1.1h8.2a1.6 1.6 0 0 1 1.5 1.1L20 13"),
@@ -475,7 +466,7 @@ mod tests {
     use super::*;
 
     const ALL: &[Icon] = &[
-        Icon::Play, Icon::Pause, Icon::Next, Icon::Prev, Icon::Music, Icon::Lyrics, Icon::Timer, Icon::Coffee, Icon::Steps,
+        Icon::Play, Icon::Pause, Icon::Next, Icon::Prev, Icon::Music, Icon::Lyrics, Icon::Timer, Icon::Coffee,
         Icon::Tray, Icon::ListChecks, Icon::Check, Icon::CheckCircle, Icon::Circle, Icon::Plus, Icon::Minus,
         Icon::Close, Icon::Clipboard, Icon::Copy, Icon::Calendar, Icon::Clock, Icon::Cpu, Icon::Memory, Icon::Disk,
         Icon::Battery, Icon::Bolt, Icon::Bluetooth, Icon::Headphones, Icon::Volume, Icon::VolumeLow, Icon::VolumeMute,

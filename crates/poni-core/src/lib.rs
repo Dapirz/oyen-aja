@@ -17,7 +17,6 @@ pub mod frametime;
 pub mod geom;
 pub mod glass;
 pub mod hdr;
-pub mod health;
 pub mod hijri;
 pub mod ielts;
 pub mod look;

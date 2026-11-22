@@ -1962,7 +1962,6 @@ impl App {
             saver: p.saver,
             watching: self.oyenza_watch,
             today: self.today_watch,
-            health: self.st.health_on(),
         }
     }
 
@@ -2075,13 +2074,6 @@ impl App {
             }
             OyenzaEvent::DayFailed => self.st.oyenza.agenda_state = crate::state::AgendaState::Failed,
             OyenzaEvent::Pro(pro) => self.st.oyenza.pro = Some(pro),
-            // Steps asked for before Health was switched off stay out.
-            OyenzaEvent::Health(next) if self.st.health_on() => {
-                if let Some(steps) = self.st.take_health(next) {
-                    self.steps_notice(steps);
-                }
-            }
-            OyenzaEvent::Health(_) => {}
             OyenzaEvent::NoteSaved(saved) => {
                 let o = &mut self.st.oyenza;
                 o.saving = false;
@@ -2105,7 +2097,6 @@ impl App {
             OyenzaEvent::Disconnected { by_server } => {
                 self.end_sign_in();
                 self.st.oyenza = crate::state::OyenzaState::default();
-                self.st.health = None;
                 // Signed out: an IELTS session ends, and the ladder was the account's.
                 self.ielts_off();
                 let (title, subtitle) =
@@ -2179,14 +2170,6 @@ impl App {
         } else {
             self.st.notice = Some(notice);
         }
-    }
-
-    /// The step goal notice. While a full-screen app hides the island it waits
-    /// like a money notice (`AppState::show_or_hold`), and shows when the island
-    /// is back if it isn't old by then.
-    fn steps_notice(&mut self, steps: u32) {
-        let notice = pages::health::goal_notice(steps, self.st.now + oyenza::NOTICE_S);
-        self.st.show_or_hold(notice, self.fullscreen_hidden);
     }
 
     fn show_held_notice(&mut self, now: f64) {
@@ -2301,15 +2284,6 @@ impl App {
         let notes_id = poni_core::addons::MEETING_NOTES.id;
         if before.addon_on(notes_id) && !self.st.settings.addon_on(notes_id) {
             self.notes_off();
-        }
-        // Health on or off: the Oyenza worker asks for the steps only while
-        // it's on, and off forgets the ones it had.
-        let health_id = poni_core::addons::HEALTH.id;
-        if before.addon_on(health_id) != self.st.settings.addon_on(health_id) {
-            if !self.st.settings.addon_on(health_id) {
-                self.st.health = None;
-            }
-            self.tell_oyenza_activity();
         }
         if before.game_stats != self.st.settings.game_stats {
             if self.st.settings.game_stats && self.st.game.access == FpsAccess::Unknown {
@@ -2785,8 +2759,6 @@ impl App {
             }
             if self.st.page == PageKind::Oyenza {
                 self.oyenza(OyenzaCmd::Refresh);
-            } else if self.st.page == PageKind::Health {
-                self.oyenza(OyenzaCmd::RefreshHealth);
             } else if self.st.page == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
             } else if matches!(self.st.page, PageKind::Notes | PageKind::Ielts | PageKind::Addons | PageKind::Ai) {
@@ -3561,11 +3533,10 @@ impl App {
         self.ielts_tick();
         self.notes_tick();
         self.script_tick();
-        // Prayer times, System, Health, AI usage, IELTS or Downloader switched off: its tab is gone.
+        // Prayer times, System, AI usage, IELTS or Downloader switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
             PageKind::System => !self.st.system_on(),
-            PageKind::Health => !self.st.health_on(),
             PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
             PageKind::Ielts => !self.st.ielts_on(),
@@ -4722,8 +4693,6 @@ impl App {
             }
             if p == PageKind::Oyenza {
                 self.oyenza(OyenzaCmd::Refresh);
-            } else if p == PageKind::Health {
-                self.oyenza(OyenzaCmd::RefreshHealth);
             } else if p == PageKind::Notifications {
                 self.notify_cmd(NotifyCmd::Check);
             } else if matches!(p, PageKind::Notes | PageKind::Ielts | PageKind::Addons | PageKind::Ai) {

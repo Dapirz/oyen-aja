@@ -1,8 +1,8 @@
 //! Add-ons page, the "+" at the end of the tab row: features only the people
 //! who switch them on get (`poni_core::addons`). Most download then; Script
-//! reader, System, Health, IELTS and Meeting notes are already in
-//! the app and only show their pages (System's readings and Health's steps
-//! also run only while they are on; IELTS only while a
+//! reader, System, IELTS and Meeting notes are already in
+//! the app and only show their pages (System's readings
+//! also run only while it is on; IELTS only while a
 //! session runs, Meeting notes only while it records).
 //!
 //! One row per add-on: its icon, its name, what it does (or where its
@@ -129,7 +129,6 @@ fn icon(a: &Addon) -> Icon {
         "ja" => Icon::Lyrics,
         "script" => Icon::Script,
         "system" => Icon::Gauge,
-        "health" => Icon::Steps,
         "notifications" => Icon::Bell,
         "recorder" => Icon::Recorder,
         "downloader" => Icon::Download,

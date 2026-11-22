@@ -99,7 +99,7 @@ pub struct Settings {
     pub hud_power: bool,
     pub hud_bluetooth: bool,
     pub sounds: bool,
-    /// Page shown first when expanding ("media", "today", "health", "shelf", "tasks", "focus", "ai", "oyenza").
+    /// Page shown first when expanding ("media", "today", "shelf", "tasks", "focus", "ai", "oyenza").
     pub start_page: String,
     /// Remember the last page instead of `start_page`.
     pub remember_page: bool,
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn partial_json_fills_defaults() {
-        // An old file's "water" block (the page Health replaced) is ignored.
+        // An old file's "water" block (from the old Water page) is ignored.
         let s: Settings = serde_json::from_str(r#"{"idle_style":"eyes","water":{"goal_ml":1500}}"#).unwrap();
         assert_eq!(s.idle_style, IdleStyle::Eyes);
         assert_eq!(s.pomodoro.focus_min, 25);

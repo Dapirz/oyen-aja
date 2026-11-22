@@ -33,7 +33,7 @@ pub const STORE_VERSION: u32 = 1;
 pub struct Store {
     pub version: u32,
     pub tasks: TaskList,
-    /// Drinks logged by the old Water page, which Health replaced. Kept
+    /// Drinks logged by the old Water page. Kept
     /// exactly as it was, so an update never throws a person's history away.
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     pub water: serde_json::Value,
