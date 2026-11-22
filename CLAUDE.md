@@ -54,7 +54,7 @@ Identitas sendiri sudah selesai (`1790ee2`): nama app Hihu Island, ikon, folder 
 
 Nanti (belum dikerjakan):
 - Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
-- RAM saat jalan sekitar 85–105 MB working set (Glass lebih tinggi), jauh dari target 15–30 MB. Cari penyebabnya.
+- RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
 - Clipboard history: jumlah item dan lama simpan bisa diatur.
 - Screentime.
 - Island menyingkir saat didekati mouse (supaya tab browser tidak tertutup), dan baru terbuka kalau mouse didorong mentok ke tepi atas layar. Seperti di Poni.
