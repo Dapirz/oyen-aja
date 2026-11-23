@@ -82,6 +82,8 @@ pub enum LyricsResult {
 }
 
 pub enum AppEvent {
+    /// Text copied in another app (the Clipboard add-on's listener).
+    ClipboardText(String),
     /// The current media session changed (None = nothing playing / no session).
     Media(Option<MediaSession>),
     /// Only the timeline/playback state of the current track changed.

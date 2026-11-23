@@ -61,6 +61,9 @@ pub enum NotifyCmd {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Media(MediaCmd),
+    /// Put this text on the clipboard (a Clipboard page row), without
+    /// recording it again.
+    CopyText(String),
     /// Open a file/folder with its default handler.
     OpenPath(String),
     /// Show a file in Explorer.

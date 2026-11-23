@@ -56,7 +56,7 @@ pub enum MonitorChoice {
 }
 
 /// Bumped when defaults change in a way existing files should pick up.
-pub const SETTINGS_VERSION: u32 = 6;
+pub const SETTINGS_VERSION: u32 = 7;
 
 fn version_zero() -> u32 {
     0
@@ -115,6 +115,10 @@ pub struct Settings {
     /// The Smoke theme's closed music island shows how far the song has
     /// played along its bottom.
     pub music_progress: bool,
+    /// The Clipboard add-on: how many entries it keeps (pinned ones aside,
+    /// 5..=500) and for how long (seconds; None: until removed or pushed out).
+    pub clipboard_max: u32,
+    pub clipboard_keep_s: Option<u32>,
     /// A song without synced lyrics keeps its title on the closed island
     /// for as long as it plays (true), or shows it only for the moment a
     /// new track starts (false). Where the theme shows the song there
@@ -250,6 +254,8 @@ impl Default for Settings {
             show_media_activity: true,
             music_fps: 60,
             music_progress: true,
+            clipboard_max: 25,
+            clipboard_keep_s: Some(86_400),
             song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,
@@ -331,12 +337,20 @@ impl Settings {
                 }
             }
         }
+        // v7: Clipboard history is an add-on again (off by default). Files
+        // from the 0.2.7/0.2.8 add-on may still say "clipboard": that key
+        // went unread since and doesn't switch it on.
+        if self.settings_version < 7 {
+            self.addons.remove("clipboard");
+        }
         self.settings_version = self.settings_version.max(SETTINGS_VERSION);
         // Step aside is no longer offered: the island stays over maximized windows.
         self.step_aside = false;
         self.hover_delay_ms = self.hover_delay_ms.min(2000);
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
         self.lyrics_size = self.lyrics_size.clamp(11, 18);
+        self.clipboard_max = self.clipboard_max.clamp(5, 500);
+        self.clipboard_keep_s = self.clipboard_keep_s.map(|s| s.clamp(60, 365 * 86_400));
         self.island_scale_pct = self.island_scale_pct.clamp(80, 150);
         self.smoke_opacity_pct = self.smoke_opacity_pct.clamp(30, 95);
         self.paused_linger_s = self.paused_linger_s.map(|s| s.min(3600));
@@ -517,7 +531,11 @@ mod tests {
         // Files from 0.2.8 and before hold the key: it's ignored, and gone after a save.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"clipboard_history":true,"theme":"oyen"}"#).unwrap().sanitized();
         assert_eq!(s.theme, Theme::Classic);
-        assert!(!serde_json::to_string(&s).unwrap().contains("clipboard"));
+        assert!(!serde_json::to_string(&s).unwrap().contains("clipboard_history"));
+        // Nor does an old add-on key switch today's Clipboard on.
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":6,"addons":{"clipboard":true}}"#).unwrap().sanitized();
+        assert!(!s.addon_on("clipboard"));
+        assert_eq!((s.clipboard_max, s.clipboard_keep_s), (25, Some(86_400)));
         // A Clipboard start page from before 0.2.7 opens Music.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":3,"start_page":"clipboard"}"#).unwrap().sanitized();
         assert_eq!((s.start_page.as_str(), s.settings_version), ("media", SETTINGS_VERSION));

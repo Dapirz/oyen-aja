@@ -293,6 +293,10 @@ pub struct PageUiState {
     pub before_settings: Option<PageKind>,
     /// Start with Windows, as last read off the UI thread (None until Settings first opens).
     pub autostart: Option<bool>,
+    /// The Clipboard page's scroll, and the row that just got copied (index,
+    /// mono time) for its "Copied" flash.
+    pub clip_scroll: f32,
+    pub clip_flash: Option<(usize, f64)>,
     /// The Eyes look on a MacBook's notch: the pointer the eyes follow and
     /// the side of the camera they peek out from (`mac/notch.rs`).
     #[cfg(target_os = "macos")]
@@ -384,6 +388,8 @@ pub struct AppState {
     pub power: PowerState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
+    /// The Clipboard add-on's history.
+    pub clip: poni_core::cliphist::ClipHistory,
     /// Apps' logos for the notification card, by AppUserModelID (each
     /// fetched once, the first time that app sends a notification).
     pub notify_logos: std::collections::HashMap<String, crate::gfx::Image>,
@@ -459,6 +465,7 @@ impl AppState {
     }
 
     pub fn new(settings: Settings, store: Store) -> Self {
+        let clip_cap = settings.clipboard_max as usize;
         let pomodoro = Pomodoro::new(settings.pomodoro.clone());
         let page = PageKind::from_key(if settings.remember_page && !store.last_page.is_empty() {
             &store.last_page
@@ -478,6 +485,7 @@ impl AppState {
             power: PowerState::default(),
             hud: None,
             notice: None,
+            clip: poni_core::cliphist::ClipHistory::new(clip_cap),
             notify_logos: std::collections::HashMap::new(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
@@ -516,6 +524,7 @@ impl AppState {
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Notifications => !st.notifications_on(),
             PageKind::Tasks => !st.tasks_on(),
+            PageKind::Clipboard => !st.clipboard_on(),
             PageKind::Focus => !st.focus_on(),
             p => st.tab_hidden(p),
         };
@@ -546,6 +555,11 @@ impl AppState {
     /// switched off, where this copy can read them (`notify_can`).
     pub fn notifications_on(&self) -> bool {
         self.notify_can && self.addon(poni_core::addons::NOTIFICATIONS.id) == AddonStatus::Ready
+    }
+
+    /// The Clipboard add-on is on: its listener runs and its tab shows.
+    pub fn clipboard_on(&self) -> bool {
+        self.addon(poni_core::addons::CLIPBOARD.id) == AddonStatus::Ready
     }
 
     /// The Tasks add-on is on (built in, on until switched off): its tab shows.

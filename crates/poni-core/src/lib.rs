@@ -9,6 +9,7 @@
 
 pub mod addons;
 pub mod applemusic;
+pub mod cliphist;
 pub mod datetime;
 pub mod downloads;
 pub mod frametime;

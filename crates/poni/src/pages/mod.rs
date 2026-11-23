@@ -11,6 +11,7 @@
 
 pub mod addons;
 pub mod card;
+pub mod clipboard;
 pub mod downloads;
 pub mod downloads_offer;
 pub mod focus;
@@ -54,6 +55,8 @@ pub enum PageKind {
     Tasks,
     Focus,
     /// The teleprompter: a script read under the webcam.
+    /// The text copied lately, while the Clipboard add-on is on ([`tabs`]).
+    Clipboard,
     Script,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
@@ -72,12 +75,13 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, then the add-ons'
     /// pages and the "+".
-    pub const ALL: [PageKind; 11] = [
+    pub const ALL: [PageKind; 12] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
         PageKind::Tasks,
         PageKind::Focus,
+        PageKind::Clipboard,
         PageKind::Script,
         PageKind::Prayer,
         PageKind::Downloads,
@@ -93,6 +97,7 @@ impl PageKind {
             PageKind::Shelf => "shelf",
             PageKind::Tasks => "tasks",
             PageKind::Today => "today",
+            PageKind::Clipboard => "clipboard",
             PageKind::Script => "script",
             PageKind::Prayer => "prayer",
             PageKind::Downloads => "downloads",
@@ -114,6 +119,7 @@ impl PageKind {
             PageKind::Shelf => "Shelf",
             PageKind::Tasks => "Tasks",
             PageKind::Today => "Today",
+            PageKind::Clipboard => "Clipboard",
             PageKind::Script => "Script",
             PageKind::Prayer => "Prayer",
             PageKind::Downloads => "Downloads",
@@ -130,6 +136,7 @@ impl PageKind {
             PageKind::Shelf => Icon::Tray,
             PageKind::Tasks => Icon::ListChecks,
             PageKind::Today => Icon::Calendar,
+            PageKind::Clipboard => Icon::Clipboard,
             PageKind::Script => Icon::Script,
             PageKind::Prayer => Icon::Moon,
             PageKind::Downloads => Icon::Download,
@@ -194,6 +201,7 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
         .into_iter()
         .filter(|&p| match p {
             PageKind::Prayer => st.prayer_on(),
+            PageKind::Clipboard => st.clipboard_on(),
             PageKind::Script => st.script_on(),
             PageKind::Downloads => st.downloader_on(),
             PageKind::Notifications => st.notifications_on(),
@@ -225,6 +233,7 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Shelf => shelf::height(st),
         PageKind::Tasks => tasks::height(st),
         PageKind::Today => today::height(st),
+        PageKind::Clipboard => clipboard::height(st),
         PageKind::Script => script::height(st),
         PageKind::Prayer => prayer::height(st),
         PageKind::Downloads => downloads::height(st),
@@ -242,6 +251,7 @@ pub fn next_wake(page: PageKind, st: &AppState) -> Option<f64> {
     match page {
         PageKind::Tasks => tasks::next_wake(st),
         PageKind::Shelf => shelf::next_wake(st),
+        PageKind::Clipboard => clipboard::next_wake(st),
         PageKind::Script => script::next_wake(st),
         PageKind::Prayer => prayer::next_wake(st),
         PageKind::Today => today::next_wake(st),
@@ -346,6 +356,7 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Shelf => shelf::draw(ui, st, area),
         PageKind::Tasks => tasks::draw(ui, st, area),
         PageKind::Today => today::draw(ui, st, area),
+        PageKind::Clipboard => clipboard::draw(ui, st, area),
         PageKind::Script => script::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
         PageKind::Downloads => downloads::draw(ui, st, area),
@@ -625,8 +636,8 @@ mod tests {
         assert_eq!(&tabs(&st)[5..], [Script, Addons]);
         // The Oyenza tab left the app: an island last open there opens on Music.
         assert_eq!(PageKind::from_key("oyenza"), Media);
-        // Clipboard left the app: an island last open there opens on Music.
-        assert_eq!(PageKind::from_key("clipboard"), Media);
+        // Clipboard is back, as an add-on's page.
+        assert_eq!(PageKind::from_key("clipboard"), Clipboard);
     }
 
     #[test]

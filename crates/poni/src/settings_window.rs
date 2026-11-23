@@ -153,12 +153,13 @@ pub enum Section {
     Tabs,
     Addons,
     Focus,
+    Clipboard,
     Prayer,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 10] = [
+    pub const ALL: [Section; 11] = [
         Section::General,
         Section::Appearance,
         Section::Island,
@@ -167,6 +168,7 @@ impl Section {
         Section::Tabs,
         Section::Addons,
         Section::Focus,
+        Section::Clipboard,
         Section::Prayer,
         Section::About,
     ];
@@ -181,6 +183,7 @@ impl Section {
             Section::Tabs => "Tabs",
             Section::Addons => "Add-ons",
             Section::Focus => "Focus",
+            Section::Clipboard => "Clipboard",
             Section::Prayer => "Prayer times",
             Section::About => "About",
         }
@@ -197,6 +200,7 @@ impl Section {
             Section::Tabs => "tabs",
             Section::Addons => "addons",
             Section::Focus => "focus",
+            Section::Clipboard => "clipboard",
             Section::Prayer => "prayer",
             Section::About => "about",
         }
@@ -212,6 +216,7 @@ impl Section {
             Section::Tabs => Icon::App,
             Section::Addons => Icon::Addons,
             Section::Focus => Icon::Timer,
+            Section::Clipboard => Icon::Clipboard,
             Section::Prayer => Icon::Moon,
             Section::About => Icon::Gear,
         }
@@ -228,6 +233,7 @@ impl Section {
             Section::Tabs => palette::GREEN,
             Section::Addons => Color::hex(0x0A84FF),
             Section::Focus => palette::ORANGE,
+            Section::Clipboard => palette::PURPLE,
             Section::Prayer => Color::hex(0x30B0A0),
             Section::About => Color::hex(0x8E8E93),
         }
@@ -238,6 +244,7 @@ impl Section {
         match self {
             Section::Prayer => st.prayer_on(),
             Section::Focus => st.focus_on(),
+            Section::Clipboard => st.clipboard_on(),
             _ => true,
         }
     }
@@ -272,6 +279,8 @@ pub enum Key {
     Pronunciation,
     MediaActivity,
     MusicFps,
+    ClipMax,
+    ClipKeep,
     MusicProgress,
     PausedLinger,
     SongTitle,
@@ -361,6 +370,10 @@ const CLOSE: [(u32, &str); 3] = [(0, "At once"), (400, "Short"), (1000, "Long")]
 const DISPLAYS: [(MonitorChoice, &str); 2] = [(MonitorChoice::Primary, "Main display"), (MonitorChoice::Cursor, "Under the pointer")];
 const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
 /// Frames a second for the playing island; 0 = the display's own rate.
+/// The Clipboard add-on: how many entries it keeps, and for how long (s;
+/// None: until removed or pushed out).
+const CLIP_MAX: [(u32, &str); 4] = [(10, "10"), (25, "25"), (50, "50"), (100, "100")];
+const CLIP_KEEP: [(Option<u32>, &str); 4] = [(Some(3_600), "1 hour"), (Some(86_400), "1 day"), (Some(7 * 86_400), "7 days"), (None, "Forever")];
 /// How long a paused song stays on the closed island (s; None: while paused).
 /// A song without lyrics: its title on the closed island all song long, or
 /// only for the moment a new track starts.
@@ -539,6 +552,16 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             ]
         }
         Section::Addons => vec![Block::Addons],
+        Section::Clipboard => vec![
+            Block::Group(
+                Some("History"),
+                vec![
+                    item(Key::ClipMax, "Keeps", Some("How many copies it remembers (pinned ones aside)"), Ctl::Choice(names(&CLIP_MAX), chosen(&CLIP_MAX, s.clipboard_max))),
+                    item(Key::ClipKeep, "For", Some("Older copies go (pinned ones stay)"), Ctl::Choice(names(&CLIP_KEEP), chosen(&CLIP_KEEP, s.clipboard_keep_s))),
+                ],
+            ),
+            Block::Note("Saved on this PC for your Windows account only. Copies from password managers that ask not to be recorded are skipped."),
+        ],
         Section::Focus => {
             let p = &s.pomodoro;
             let every = match p.long_every {
@@ -697,6 +720,14 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::LyricsBold => s.lyrics_bold = !s.lyrics_bold,
         Key::LyricsSize => match act {
             Act::Pick(i) if i < LYRICS_SIZE.len() => s.lyrics_size = LYRICS_SIZE[i].0,
+            _ => return,
+        },
+        Key::ClipMax => match act {
+            Act::Pick(i) if i < CLIP_MAX.len() => s.clipboard_max = CLIP_MAX[i].0,
+            _ => return,
+        },
+        Key::ClipKeep => match act {
+            Act::Pick(i) if i < CLIP_KEEP.len() => s.clipboard_keep_s = CLIP_KEEP[i].0,
             _ => return,
         },
         Key::MusicFps => match act {

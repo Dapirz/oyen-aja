@@ -47,6 +47,12 @@ pub fn lyrics_cache_dir() -> PathBuf {
 
 /// The user's Apple Music token, sealed with DPAPI (never roams; uninstalling
 /// removes it with the cache).
+/// The Clipboard add-on's history, sealed for the Windows account
+/// (`services::secret`); deleted when the add-on goes off.
+pub fn clipboard_path() -> PathBuf {
+    cache_dir().join("clipboard.bin")
+}
+
 pub fn apple_music_token_path() -> PathBuf {
     cache_dir().join("apple-music-token.bin")
 }

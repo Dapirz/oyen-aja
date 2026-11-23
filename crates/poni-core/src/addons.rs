@@ -168,6 +168,20 @@ pub const SCRIPT_READER: Addon = Addon {
     on_by_default: false,
 };
 
+/// Clipboard: the text you copy, kept for the Clipboard page (as many and as
+/// long as Settings > Clipboard says, sealed on disk for your Windows
+/// account). Built in and off until switched on; off, nothing watches the
+/// clipboard and the saved history is deleted.
+pub const CLIPBOARD: Addon = Addon {
+    id: "clipboard",
+    title: "Clipboard history",
+    blurb: "The text you copy lately, one click from copying again.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+    on_by_default: false,
+};
+
 /// Tasks: the Tasks page, a short to-do list. Built in and on until
 /// switched off; off, it has no tab (the list stays saved).
 pub const TASKS: Addon = Addon {
@@ -282,7 +296,7 @@ pub fn is_downloader_tool(name: &str) -> bool {
 
 /// Every add-on, in the order the Add-ons page lists them: the built-in
 /// pages first, then the ones that download.
-pub const ALL: [&Addon; 7] = [&TASKS, &FOCUS, &NOTIFICATIONS, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS, &DOWNLOADER];
+pub const ALL: [&Addon; 8] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -398,8 +412,8 @@ mod tests {
             assert_eq!(Status::Ready.line(a, false), "On");
             assert!(!Settings::default().addon_on(a.id), "{} is off for everyone until they switch it on", a.id);
         }
-        // Clipboard history left the app after 0.2.8: no add-on by that id.
-        assert_eq!(Addon::find("clipboard"), None);
+        // Clipboard history is built in again, off until switched on.
+        assert!(!CLIPBOARD.downloads() && !Settings::default().addon_on(CLIPBOARD.id));
         // The pages that were tabs are built in too, and on until switched off.
         for a in [&TASKS, &FOCUS, &NOTIFICATIONS] {
             assert!(!a.downloads() && a.size() == 0, "{}", a.id);
@@ -486,7 +500,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["tasks", "focus", "notifications", "script", "sholat", "ja", "downloader"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "script", "sholat", "ja", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);

@@ -381,6 +381,12 @@ pub struct App {
     /// Make way for the pointer: the island stepped aside because the
     /// pointer came onto it (`Settings::make_way`), until it leaves.
     making_way: bool,
+    /// The Clipboard add-on's listener (its own thread; None while it's off).
+    clip_listener: Option<services::clipboard::ClipboardHistory>,
+    /// Text we put on the clipboard ourselves, not to record it again.
+    own_clip: Option<String>,
+    /// The history's change counter when it was last saved.
+    clip_saved: u64,
     /// Show in screenshots off: what Windows was last asked (None: not yet).
     capture_hidden: Option<bool>,
     /// Follow-up raises still due (TIMER_RAISE).
@@ -589,6 +595,9 @@ impl App {
             fullscreen_on: false,
             top_windows: Vec::new(),
             making_way: false,
+            clip_listener: None,
+            own_clip: None,
+            clip_saved: 0,
             capture_hidden: None,
             raises_left: 0,
             covered_by: HashSet::new(),
@@ -642,6 +651,9 @@ impl App {
             // question waits for the page's Allow).
             if self.st.notifications_on() {
                 self.start_notify(false);
+            }
+            if self.st.clipboard_on() {
+                self.clipboard_on();
             }
             self.try_add_tray();
             services::power::register_session(self.helper);
@@ -1671,6 +1683,8 @@ impl App {
             return;
         }
         pinfo!("apple music: token saved");
+        self.st.clip.forget(&token);
+        self.own_clip = Some(String::new());
         services::clipboard::set_text(self.helper, "");
         if let Some(s) = self.services.as_ref() {
             s.apple_music_token_changed();
@@ -1777,6 +1791,24 @@ impl App {
                     s.set_addon(a.id, on);
                 }
             }
+        }
+        // Clipboard history switched on: its history back and its listener
+        // on; off: nothing watches, and the history goes. Its size and its
+        // time apply at once.
+        let clip_id = poni_core::addons::CLIPBOARD.id;
+        let clip_on = self.st.settings.addon_on(clip_id);
+        if before.addon_on(clip_id) != clip_on && self.selftest.is_none() {
+            if clip_on {
+                self.clipboard_on();
+            } else {
+                self.clipboard_off();
+            }
+        }
+        if before.clipboard_max != self.st.settings.clipboard_max {
+            self.st.clip.set_cap(self.st.settings.clipboard_max as usize);
+        }
+        if before.clipboard_keep_s != self.st.settings.clipboard_keep_s {
+            self.st.clip.prune(self.st.unix, self.st.settings.clipboard_keep_s);
         }
         // Focus switched off: no timer keeps running without its page.
         let focus_id = poni_core::addons::FOCUS.id;
@@ -1897,6 +1929,16 @@ impl App {
         // pill catches up then, as nothing else of it moves on its own.
         let unseen = matches!(ev, AppEvent::Download { line: poni_core::ytdlp::Line::Progress { .. }, .. }) && (self.locked || self.display_off);
         match ev {
+            AppEvent::ClipboardText(t) => {
+                if self.own_clip.as_deref() == Some(t.as_str()) {
+                    self.own_clip = None;
+                } else if self.st.clipboard_on() {
+                    self.st.clip.prune(self.st.unix, self.st.settings.clipboard_keep_s);
+                    self.st.clip.push(&t, self.st.unix);
+                    self.st.ui.clip_flash = None;
+                    self.request_frame();
+                }
+            }
             AppEvent::Backdrop => {
                 if self.glass.on_backdrop(self.hwnd, &mut self.gfx) {
                     self.request_frame();
@@ -2334,6 +2376,65 @@ impl App {
         self.script_held = held;
         let can_read = self.st.page == PageKind::Script && !self.st.store.script.is_empty() && (self.expanded || self.st.script.active);
         self.set_script_hotkey(can_read && self.selftest.is_none());
+    }
+
+    /// The Clipboard add-on came on (or was on at start): its saved history
+    /// back, and its listener on a thread of its own.
+    fn clipboard_on(&mut self) {
+        let s = &self.st.settings;
+        let items: Vec<poni_core::cliphist::ClipItem> = services::secret::load(&paths::clipboard_path()).and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        self.st.clip = poni_core::cliphist::ClipHistory::from_items(items, s.clipboard_max as usize);
+        self.st.clip.prune(self.st.unix, s.clipboard_keep_s);
+        self.clip_saved = self.st.clip.rev();
+        if self.clip_listener.is_none() {
+            self.clip_listener = match services::clipboard::ClipboardHistory::start(self.sink.clone(), true) {
+                Ok(l) => {
+                    pinfo!("clipboard: watching for copies ({} kept)", self.st.clip.len());
+                    Some(l)
+                }
+                Err(e) => {
+                    pwarn!("clipboard: can't watch for copies: {e}");
+                    None
+                }
+            };
+        }
+    }
+
+    /// The Clipboard add-on went off: nothing watches the clipboard, and
+    /// the history goes, in memory and on disk.
+    fn clipboard_off(&mut self) {
+        if let Some(l) = self.clip_listener.take() {
+            l.stop();
+            pinfo!("clipboard: stopped watching");
+        }
+        self.st.clip = poni_core::cliphist::ClipHistory::new(self.st.settings.clipboard_max as usize);
+        self.clip_saved = self.st.clip.rev();
+        self.st.ui.clip_flash = None;
+        self.st.ui.clip_scroll = 0.0;
+        if let Err(e) = services::secret::delete(&paths::clipboard_path()) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                pwarn!("clipboard: couldn't delete the saved history ({e})");
+            }
+        }
+    }
+
+    /// Save the history (sealed) when it changed since the last save, off
+    /// the UI thread. Each frame; a write only after a copy, a pin, a removal.
+    fn save_clipboard_if_changed(&mut self) {
+        if !self.st.clipboard_on() || self.st.clip.rev() == self.clip_saved || self.selftest.is_some() {
+            return;
+        }
+        self.clip_saved = self.st.clip.rev();
+        let Ok(json) = serde_json::to_string(&self.st.clip.items()) else { return };
+        let path = paths::clipboard_path();
+        let spawned = std::thread::Builder::new().name("poni-clip-save".into()).spawn(move || {
+            if let Err(e) = services::secret::save(&path, &json) {
+                pwarn!("clipboard: couldn't save the history ({e})");
+            }
+        });
+        if let Err(e) = spawned {
+            pwarn!("clipboard: no thread to save on: {e}");
+        }
     }
 
     /// Out of screenshots, recordings and screen shares while Show in
@@ -2812,6 +2913,7 @@ impl App {
         self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, window_px, &mut self.gfx);
         self.sync_script_capture(self.st.page == PageKind::Script && (self.expanded || !self.island.settled()));
         self.sync_capture_setting();
+        self.save_clipboard_if_changed();
         let mut glass_moving = false;
         let glass = if glass_theme && !hidden_idle {
             let small = !matches!(mode, Mode::Expanded(_));
@@ -3402,6 +3504,10 @@ impl App {
         let cmds = std::mem::take(&mut self.st.cmds);
         for c in cmds {
             match c {
+                Command::CopyText(t) => {
+                    self.own_clip = Some(t.clone());
+                    services::clipboard::set_text(self.helper, &t);
+                }
                 Command::Media(m) => {
                     if let Some(s) = self.services.as_ref() {
                         s.media_cmd(m.clone());
