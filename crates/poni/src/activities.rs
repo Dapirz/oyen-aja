@@ -240,6 +240,8 @@ pub fn stacks(m: &Mode, st: &AppState) -> bool {
     let top = match m {
         Mode::Notice => !notice_card(st),
         Mode::Activity(Activity::Prayer) => true,
+        // Volume and brightness too, as Poni stacks them over the music.
+        Mode::Hud(HudTag::Volume | HudTag::Brightness) => true,
         _ => false,
     };
     top && !crate::pill::on(st.settings.theme)
@@ -474,7 +476,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
     match m {
         Mode::Idle => draw_idle(ui, st, body),
         Mode::Activity(a) => draw_activity(ui, st, *a, top),
-        Mode::Hud(_) => draw_hud(ui, st, body),
+        Mode::Hud(_) => draw_hud(ui, st, top),
         Mode::Notice => draw_notice(ui, st, top),
         Mode::Expanded(_) | Mode::Aside => {}
     }
@@ -746,30 +748,8 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             } else {
                 Icon::Volume
             };
-            ui.c.icon(icon, icon_r, palette::TEXT);
-            // The bar stops 62 DIPs short so "100%" and "Muted" keep a gap.
-            let bar = Rect::new(body.x + 48.0, cy - 3.0, body.w - 48.0 - 62.0, 6.0);
-            // The bar glides to new levels; the number is exact immediately.
-            let target = if muted { 0.0 } else { level };
-            let cur = st.ui.hud_level;
-            let shown = if (cur - target).abs() > 0.002 {
-                ui.request_anim();
-                cur + (target - cur) * 0.32
-            } else {
-                target
-            };
-            st.ui.hud_level = shown;
-            ui.c.fill_rrect(bar, 3.0, palette::TRACK);
-            if shown > 0.0 {
-                // Classic fills the level in white; a look with its own accent in it.
-                let level = match ui.c.look().accent {
-                    Some(a) => a,
-                    None => Color::white(0.95),
-                };
-                ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h), 3.0, level);
-            }
-            let pct = if muted { "Muted".to_string() } else { format!("{}%", (level * 100.0).round() as i32) };
-            ui.c.text(&pct, Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.tabular().right());
+            let value = if muted { "Muted".to_string() } else { format!("{}", (level * 100.0).round() as i32) };
+            level_row(ui, st, body, icon, "Volume", if muted { 0.0 } else { level }, &value);
         }
         HudKind::Lock { key, on } => {
             ui.c.icon(Icon::Keyboard, icon_r, palette::TEXT);
@@ -782,26 +762,7 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             ui.c.text(&name, Rect::new(body.x + 46.0, body.y, body.w - 46.0 - HUD_PAD, body.h), &label_st);
         }
         HudKind::Brightness { percent } => {
-            ui.c.icon(Icon::Sun, icon_r, palette::TEXT);
-            let bar = Rect::new(body.x + 48.0, cy - 3.0, body.w - 48.0 - 62.0, 6.0);
-            let target = percent as f32 / 100.0;
-            let cur = st.ui.hud_level;
-            let shown = if (cur - target).abs() > 0.002 {
-                ui.request_anim();
-                cur + (target - cur) * 0.32
-            } else {
-                target
-            };
-            st.ui.hud_level = shown;
-            ui.c.fill_rrect(bar, 3.0, palette::TRACK);
-            if shown > 0.0 {
-                let fill = match ui.c.look().accent {
-                    Some(a) => a,
-                    None => Color::white(0.95),
-                };
-                ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h), 3.0, fill);
-            }
-            ui.c.text(&format!("{percent}%"), Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.tabular().right());
+            level_row(ui, st, body, Icon::Sun, "Brightness", percent as f32 / 100.0, &percent.to_string());
         }
         HudKind::Charging { percent, plugged } => {
             let (icon, color, label) = if plugged { (Icon::Bolt, palette::GREEN, "Charging") } else { (Icon::Battery, palette::TEXT, "On battery") };
@@ -833,6 +794,39 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             );
         }
     }
+}
+
+/// A level pop-up's row, as Poni lays it out: the glyph and its name on the
+/// left (dim), a short bar on the right that glides to the new level, and
+/// the value at the end.
+fn level_row(ui: &mut Ui, st: &mut AppState, body: Rect, icon: Icon, name: &str, target: f32, value: &str) {
+    const BAR_W: f32 = 128.0;
+    const VALUE_W: f32 = 44.0;
+    let cy = body.center().y;
+    ui.c.icon(icon, Rect::new(body.x + HUD_PAD, cy - 9.0, 18.0, 18.0), palette::TEXT_DIM);
+    let value_r = Rect::new(body.right() - HUD_PAD - VALUE_W, body.y, VALUE_W, body.h);
+    let bar = Rect::new(value_r.x - 10.0 - BAR_W, cy - 3.0, BAR_W, 6.0);
+    let name_x = body.x + HUD_PAD + 28.0;
+    ui.c.text(name, Rect::new(name_x, body.y, (bar.x - 12.0 - name_x).max(0.0), body.h), &TextStyle::body().weight(Weight::Medium).color(palette::TEXT_DIM));
+    // The bar glides to new levels; the number is exact at once.
+    let cur = st.ui.hud_level;
+    let shown = if (cur - target).abs() > 0.002 {
+        ui.request_anim();
+        cur + (target - cur) * 0.32
+    } else {
+        target
+    };
+    st.ui.hud_level = shown;
+    ui.c.fill_rrect(bar, 3.0, palette::TRACK);
+    if shown > 0.0 {
+        // Classic fills the level in white; a look with its own accent in it.
+        let fill = match ui.c.look().accent {
+            Some(a) => a,
+            None => Color::white(0.95),
+        };
+        ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h), 3.0, fill);
+    }
+    ui.c.text(value, value_r, &TextStyle::body().weight(Weight::Semibold).tabular().right());
 }
 
 /// A small drawn battery and the percentage, right-aligned to `right` and
