@@ -320,6 +320,8 @@ pub enum Key {
     DataFolder,
     ReleaseNotes,
     LyricsCredit,
+    AppleMusicToken,
+    AppleMusicHelp,
 }
 
 /// A row's control, at its right end.
@@ -532,6 +534,17 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     item(Key::LyricsSize, "Size", Some("The line on the closed island"), Ctl::Choice(names(&LYRICS_SIZE), chosen(&LYRICS_SIZE, s.lyrics_size))),
                     switch(Key::LyricsBold, "Bold", Some("The line on the closed island in bold"), s.lyrics_bold),
                 ],
+            ),
+            Block::Group(
+                Some("Apple Music lyrics"),
+                if crate::paths::apple_music_token_path().exists() {
+                    vec![item(Key::AppleMusicToken, "Your token", Some("Saved on this PC; lyrics come from Apple Music first"), Ctl::Button("Remove"))]
+                } else {
+                    vec![
+                        item(Key::AppleMusicToken, "Your token", Some("Copy your Apple Music token, then paste it here"), Ctl::Button("Paste")),
+                        item(Key::AppleMusicHelp, "How to get the token", None, Ctl::Button("Open")),
+                    ]
+                },
             ),
             Block::Group(
                 Some("Closed island"),
@@ -858,6 +871,15 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         }
         Key::ReleaseNotes => {
             st.cmd(Command::OpenUrl(crate::version::notes_url()));
+            return;
+        }
+        Key::AppleMusicToken => {
+            let c = if crate::paths::apple_music_token_path().exists() { crate::tray::MenuCmd::AppleMusicForget } else { crate::tray::MenuCmd::AppleMusicToken };
+            st.cmd(Command::Menu(c));
+            return;
+        }
+        Key::AppleMusicHelp => {
+            st.cmd(Command::Menu(crate::tray::MenuCmd::AppleMusicHelp));
             return;
         }
         Key::LyricsCredit => {
@@ -2033,6 +2055,7 @@ mod tests {
                     Key::Autostart => assert!(st.cmds.is_empty()),
                     Key::SettingsFile | Key::DataFolder | Key::ReleaseNotes | Key::LyricsCredit | Key::NotesGetKey | Key::NotesFolder => assert!(opens, "{:?}", it.key),
                     Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
+                    Key::AppleMusicToken | Key::AppleMusicHelp => assert!(st.cmds.iter().any(|c| matches!(c, Command::Menu(_)))),
                     _ => assert!(saved, "{:?} didn't save", it.key),
                 }
             }

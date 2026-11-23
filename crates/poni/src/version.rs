@@ -9,27 +9,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const KIND: &str = env!("PONI_BUILD_KIND");
 /// The commit a CI build was made from, 7 characters; empty for a local build.
 const COMMIT: &str = env!("PONI_BUILD_COMMIT");
-/// The UTC day a CI build was made, "25 Oct 2026"; empty for a local build.
-const DAY: &str = env!("PONI_BUILD_DAY");
-
-/// "About Hihu Island 0.2.3 (25 Oct 2026)"; a test build adds its commit.
-pub fn about_label() -> String {
-    label(VERSION, KIND, COMMIT, DAY)
-}
 
 /// The page the About line opens: this release's notes, a test build's commit.
 pub fn notes_url() -> String {
     url(VERSION, KIND, COMMIT)
-}
-
-fn label(version: &str, kind: &str, commit: &str, day: &str) -> String {
-    let detail = match kind {
-        "release" => day.to_string(),
-        "test" if day.is_empty() => format!("test build {commit}"),
-        "test" => format!("test build {commit}, {day}"),
-        _ => "local build".to_string(),
-    };
-    if detail.is_empty() { format!("About {APP_NAME} {version}") } else { format!("About {APP_NAME} {version} ({detail})") }
 }
 
 fn url(version: &str, kind: &str, commit: &str) -> String {
@@ -43,14 +26,6 @@ fn url(version: &str, kind: &str, commit: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_about_line_says_which_build_this_is() {
-        assert_eq!(label("0.2.3", "release", "c7d77c8", "25 Oct 2026"), "About Hihu Island 0.2.3 (25 Oct 2026)");
-        assert_eq!(label("0.2.3", "test", "c7d77c8", "25 Oct 2026"), "About Hihu Island 0.2.3 (test build c7d77c8, 25 Oct 2026)");
-        assert_eq!(label("0.2.3", "local", "", ""), "About Hihu Island 0.2.3 (local build)");
-        assert!(about_label().starts_with(&format!("About Hihu Island {VERSION}")));
-    }
 
     #[test]
     fn a_release_opens_its_notes_and_a_test_build_its_commit() {

@@ -32,7 +32,7 @@ use poni_core::phonedrop::{Event as PhoneEvent, QrMatrix};
 use poni_core::prayer::{Due, PlaceList, Prayer, PrayerMoment};
 use poni_core::settings::{IdleStyle, PrayerSound, Settings, Theme};
 use poni_core::settings::MonitorChoice;
-use poni_core::store::{load_json, parse_json, save_json_atomic, LoadOutcome, Store};
+use poni_core::store::{load_json, save_json_atomic, LoadOutcome, Store};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -1896,17 +1896,8 @@ impl App {
     fn on_menu(&mut self, cmd: tray::MenuCmd) {
         use tray::MenuCmd::*;
         let before = self.st.settings.clone();
-        let s = &mut self.st.settings;
         match cmd {
-            ToggleIdleStyle(style) => s.idle_style = style,
-            SetTheme(theme) => s.theme = theme,
-            ToggleLyrics => s.lyrics = !s.lyrics,
-            TogglePronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
-            SetHideFullscreen(hide) => s.hide_in_fullscreen = hide,
-            ToggleSounds => s.sounds = !s.sounds,
             TogglePinned => self.st.pinned = !self.st.pinned,
-            CentreIsland => s.island_x = None,
-            ToggleLockPosition => s.lock_position = !s.lock_position,
             ShowSettings => self.show_settings(&mut Vec::new()),
             ToggleAutostart => {
                 let on = crate::autostart::is_enabled();
@@ -1916,41 +1907,6 @@ impl App {
                 // The Settings page's switch follows.
                 crate::autostart::report(self.sink.clone(), None);
             }
-            OpenSettings => {
-                if !paths::settings_path().exists() {
-                    let _ = save_json_atomic(&paths::settings_path(), &self.st.settings);
-                }
-                shell::open(&paths::settings_path().to_string_lossy());
-            }
-            ReloadSettings => {
-                // Never move the user's file aside or reset on a typo: keep the
-                // current settings and say what's wrong.
-                let path = paths::settings_path();
-                match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| parse_json::<Settings>(&t)) {
-                    Ok(s2) => {
-                        let s2 = s2.sanitized();
-                        let monitor_changed = s2.monitor != self.st.settings.monitor;
-                        self.st.settings = s2.clone();
-                        self.saved_settings = s2;
-                        self.settings_writable = true;
-                        if monitor_changed {
-                            self.monitor = window::pick_monitor(self.st.settings.monitor);
-                            self.set_dpi(self.monitor.dpi);
-                        } else {
-                            // The expanded width may have changed.
-                            self.layout_surface();
-                        }
-                        self.refresh_monitor();
-                    }
-                    Err(e) => {
-                        pwarn!("settings.json not reloaded: {e}");
-                        self.st.notify(crate::icons::Icon::Sliders, palette::ORANGE, "Settings not reloaded", "settings.json has an error; see hihu.log", 5.0, None);
-                    }
-                }
-            }
-            OpenDataFolder => shell::open(&paths::data_dir().to_string_lossy()),
-            About => shell::open(&crate::version::notes_url()),
-            LyricsCredit => shell::open("https://lrclib.net"),
             AppleMusicToken => self.use_apple_music_token(),
             AppleMusicHelp => shell::open(APPLE_MUSIC_HELP_URL),
             AppleMusicForget => self.forget_apple_music_token(),
@@ -4025,6 +3981,7 @@ impl App {
                 }
                 Command::Notify(c) => self.notify_cmd(c),
                 Command::Notes(c) => self.notes_cmd(c),
+                Command::Menu(c) => self.on_menu(c),
             }
         }
         self.sync_phone_offer();
