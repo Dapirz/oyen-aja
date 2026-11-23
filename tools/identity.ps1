@@ -47,10 +47,21 @@ switch ($Action) {
         $stage = Join-Path $root 'target\identity'
         New-Item -ItemType Directory -Force (Join-Path $stage 'Assets') | Out-Null
         Copy-Item (Join-Path $root 'installer\identity\AppxManifest.xml') $stage -Force
-        # The logos the manifest names, from the Hihu icon.
+        # The logos the manifest names, from the Hihu icon, in the sizes the
+        # taskbar, Task Manager and Start ask for (scale-* and targetsize-*,
+        # plated and unplated), indexed in resources.pri so Windows finds them.
+        # Without them a packaged exe shows a blank icon there.
         Add-Type -AssemblyName System.Drawing
         $src = [System.Drawing.Image]::FromFile((Join-Path $root 'design\hihu\hihu-1024.png'))
-        foreach ($l in @(@('StoreLogo.png', 50), @('Square150x150Logo.png', 150), @('Square44x44Logo.png', 44))) {
+        $logos = @(@('StoreLogo.png', 50), @('Square150x150Logo.png', 150), @('Square44x44Logo.png', 44),
+            @('StoreLogo.scale-100.png', 50), @('StoreLogo.scale-200.png', 100),
+            @('Square150x150Logo.scale-100.png', 150), @('Square150x150Logo.scale-200.png', 300),
+            @('Square44x44Logo.scale-100.png', 44), @('Square44x44Logo.scale-200.png', 88))
+        foreach ($n in 16, 24, 32, 48, 256) {
+            $logos += , @("Square44x44Logo.targetsize-$n.png", $n)
+            $logos += , @("Square44x44Logo.targetsize-${n}_altform-unplated.png", $n)
+        }
+        foreach ($l in $logos) {
             $bmp = New-Object System.Drawing.Bitmap $l[1], $l[1]
             $g = [System.Drawing.Graphics]::FromImage($bmp)
             $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -59,6 +70,17 @@ switch ($Action) {
             $g.Dispose(); $bmp.Dispose()
         }
         $src.Dispose()
+        # resources.pri, with the Windows SDK's makepri (newest one found).
+        $makepri = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makepri.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+        if ($makepri) {
+            $cfg = Join-Path $stage 'priconfig.xml'
+            & $makepri.FullName createconfig /cf $cfg /dq en-US /o | Out-Null
+            & $makepri.FullName new /pr $stage /cf $cfg /of (Join-Path $stage 'resources.pri') /o | Out-Null
+            Remove-Item $cfg -ErrorAction SilentlyContinue
+            if (-not (Test-Path (Join-Path $stage 'resources.pri'))) { 'makepri made no resources.pri: the icon may stay blank in the taskbar' }
+        } else {
+            'No Windows SDK makepri.exe: the icon may stay blank in the taskbar and Task Manager'
+        }
         if (Get-Registered) { Remove-AppxPackage -Package (Get-Registered).PackageFullName }
         Add-AppxPackage -Register (Join-Path $stage 'AppxManifest.xml') -ExternalLocation $ExeDir
         "registered: $((Get-Registered).PackageFullName)"
