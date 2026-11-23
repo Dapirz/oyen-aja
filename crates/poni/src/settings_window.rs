@@ -269,6 +269,7 @@ pub enum Key {
     MediaActivity,
     MusicFps,
     MusicProgress,
+    PausedLinger,
     LyricsSize,
     LyricsBold,
     LyricsOffset,
@@ -355,6 +356,8 @@ const CLOSE: [(u32, &str); 3] = [(0, "At once"), (400, "Short"), (1000, "Long")]
 const DISPLAYS: [(MonitorChoice, &str); 2] = [(MonitorChoice::Primary, "Main display"), (MonitorChoice::Cursor, "Under the pointer")];
 const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
 /// Frames a second for the playing island; 0 = the display's own rate.
+/// How long a paused song stays on the closed island (s; None: while paused).
+const PAUSED_LINGER: [(Option<u32>, &str); 5] = [(Some(0), "At once"), (Some(5), "5 s"), (Some(10), "10 s"), (Some(30), "30 s"), (None, "Keep")];
 /// The sung line's size (DIPs): the footnote, body and headline sizes.
 const LYRICS_SIZE: [(u32, &str); 3] = [(12, "Small"), (13, "Normal"), (15, "Large")];
 const MUSIC_FPS: [(u32, &str); 3] = [(30, "30 fps"), (60, "60 fps"), (0, "Display rate")];
@@ -485,6 +488,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 Some("Closed island"),
                 vec![
                     switch(Key::MediaActivity, "Show what's playing", Some("The song and its cover on the closed island"), s.show_media_activity),
+                    item(Key::PausedLinger, "After pausing", Some("How long the paused song stays"), Ctl::Choice(names(&PAUSED_LINGER), chosen(&PAUSED_LINGER, s.paused_linger_s))),
                     switch(Key::MusicProgress, "Progress bar", Some("How far the song has played (Smoke theme)"), s.music_progress),
                     item(Key::MusicFps, "Frame rate", Some("While music plays; lower uses less CPU"), Ctl::Choice(names(&MUSIC_FPS), chosen(&MUSIC_FPS, s.music_fps))),
                 ],
@@ -655,6 +659,10 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::Pronunciation => s.lyrics_pronunciation = !s.lyrics_pronunciation,
         Key::MediaActivity => s.show_media_activity = !s.show_media_activity,
         Key::MusicProgress => s.music_progress = !s.music_progress,
+        Key::PausedLinger => match act {
+            Act::Pick(i) if i < PAUSED_LINGER.len() => s.paused_linger_s = PAUSED_LINGER[i].0,
+            _ => return,
+        },
         Key::LyricsBold => s.lyrics_bold = !s.lyrics_bold,
         Key::LyricsSize => match act {
             Act::Pick(i) if i < LYRICS_SIZE.len() => s.lyrics_size = LYRICS_SIZE[i].0,

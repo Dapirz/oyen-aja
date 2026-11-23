@@ -52,7 +52,6 @@ pub enum Mode {
 
 /// A paused player keeps its pill this long before the island goes idle, so
 /// a short pause doesn't morph the island away and back.
-const MEDIA_GRACE: f64 = 30.0;
 /// The media pill, and its width while it peeks at a new track's title.
 const MEDIA_W: f32 = 120.0;
 const MEDIA_PEEK_W: f32 = 300.0;
@@ -114,14 +113,22 @@ fn hud_tag(k: &HudKind) -> HudTag {
     }
 }
 
-/// When a paused session's lingering pill ends (`None` while playing or
-/// when nothing is lingering).
+/// When a paused session's lingering pill ends (`None` while playing,
+/// when nothing is lingering, or when it lingers for as long as the song
+/// stays paused: Settings > Music and lyrics > After pausing).
 fn media_grace_end(st: &AppState) -> Option<f64> {
     let m = st.media.as_ref()?;
     if m.is_playing() {
         return None;
     }
-    st.media_paused_at.map(|t| t + MEDIA_GRACE)
+    let linger = st.settings.paused_linger_s?;
+    st.media_paused_at.map(|t| t + f64::from(linger))
+}
+
+/// A song paused while the island watched stays on it for as long as it
+/// stays paused (the After pausing setting's Keep).
+fn paused_keeps(st: &AppState) -> bool {
+    st.settings.paused_linger_s.is_none() && st.media_paused_at.is_some()
 }
 
 /// The prayer coming up and the minutes left, while its countdown runs and
@@ -142,7 +149,7 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
         return Some(Activity::Prayer);
     }
     let media = st.settings.show_media_activity
-        && st.media.as_ref().is_some_and(|m| m.is_playing() || media_grace_end(st).is_some_and(|end| st.now < end));
+        && st.media.as_ref().is_some_and(|m| m.is_playing() || paused_keeps(st) || media_grace_end(st).is_some_and(|end| st.now < end));
     let timer = st.pomodoro.is_active();
     match (media, timer) {
         (true, true) => Some(Activity::MediaTimer),

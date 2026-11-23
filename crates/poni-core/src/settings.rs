@@ -109,6 +109,10 @@ pub struct Settings {
     /// The Smoke theme's closed music island shows how far the song has
     /// played along its bottom.
     pub music_progress: bool,
+    /// How long (seconds) the closed island keeps showing a paused song
+    /// before it rests as if nothing played: 0 at once, `None` for as long
+    /// as the song stays paused. At most an hour.
+    pub paused_linger_s: Option<u32>,
     /// The sung line on the closed island: its size (DIPs, 11..=18; 13 is
     /// the body text's) and whether it's bold (semibold) or regular.
     pub lyrics_size: u32,
@@ -229,6 +233,7 @@ impl Default for Settings {
             show_media_activity: true,
             music_fps: 60,
             music_progress: true,
+            paused_linger_s: Some(30),
             lyrics_size: 13,
             lyrics_bold: true,
             lyrics: true,
@@ -299,6 +304,7 @@ impl Settings {
         self.hover_delay_ms = self.hover_delay_ms.min(2000);
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
         self.lyrics_size = self.lyrics_size.clamp(11, 18);
+        self.paused_linger_s = self.paused_linger_s.map(|s| s.min(3600));
         if self.music_fps != 0 {
             self.music_fps = self.music_fps.clamp(15, 240);
         }
@@ -431,6 +437,16 @@ mod tests {
         assert_eq!((s.music_progress, s.lyrics_size, s.lyrics_bold), (true, 13, true));
         let big = Settings { lyrics_size: 40, ..Default::default() }.sanitized();
         assert_eq!(big.lyrics_size, 18);
+    }
+
+    #[test]
+    fn a_paused_song_lingers_30_s_unless_told_otherwise() {
+        let s: Settings = serde_json::from_str(r#"{"lyrics":true}"#).unwrap();
+        assert_eq!(s.sanitized().paused_linger_s, Some(30));
+        let keep: Settings = serde_json::from_str(r#"{"paused_linger_s":null}"#).unwrap();
+        assert_eq!(keep.sanitized().paused_linger_s, None);
+        let long = Settings { paused_linger_s: Some(99999), ..Default::default() }.sanitized();
+        assert_eq!(long.paused_linger_s, Some(3600));
     }
 
     #[test]
