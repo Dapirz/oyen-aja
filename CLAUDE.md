@@ -51,7 +51,7 @@ Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 17
 - Ukuran poni.exe: 9,55 MB (sebelum Stocks) → 6,61 MB.
 - Kalau butuh kode yang sudah dihapus (misalnya perekaman Meeting notes untuk versi sendiri), ambil dari commit sebelum penghapusannya, contoh `git show 0800e50:crates/poni/src/services/notes.rs`.
 
-Sisa brand Oyenza/Oyen di app sudah dibersihkan (`2e062b5`): tema Oyen, `oyen::app_icon` diganti ikon Hihu (`logo.rs`), `docs/brand`, `res/poni.ico`, User-Agent, README dan PRIVACY. Yang masih ada: `installer/art`, `site/` dan tools rilis/website milik Oyenza (tidak dipakai fork ini), komentar kode yang menyebut asal kode, dan ARCHITECTURE.md.
+Sisa brand Oyenza/Oyen di app sudah dibersihkan (`2e062b5`): tema Oyen, `oyen::app_icon` diganti ikon Hihu (`logo.rs`), `docs/brand`, `res/poni.ico`, User-Agent, README dan PRIVACY. Tools rilis, website, CI, installer dan aset brand Oyenza juga sudah dihapus (23 Nov 2026); yang tersisa: `site/places` (data kota dunia, dipakai tes sholat), `server/` (kode drop.oyenza.com), komentar kode yang menyebut asal kode, dan ARCHITECTURE.md.
 
 Fork ini masih memakai server Oyenza: `drop.oyenza.com` (pairing HP), `studio.oyenza.com/places` (kota sholat di luar Indonesia), release GitHub `lucacadalora/oyenza-studio` (file add-on), `quran.oyenza.com` (link).
 
@@ -63,7 +63,6 @@ Nanti (belum dikerjakan):
 - Meeting notes versi sendiri.
 - Foto profil pengirim di kartu notifikasi: baca `wpndatabase.db` dan folder `wpnidm` seperti Poni (Poni portable memakai SQLite, tanpa API resmi). Exe sekitar +1 MB.
 - Ganti `poni.exe` jadi `hihu.exe` (`[[bin]] name` di `crates/poni/Cargo.toml`; perbaiki Run value autostart, `<msix>` Executable di `installer\identity`, skrip yang menyebut `poni.exe`).
-- Bersih-bersih: hapus `installer/art`, `site/` dan tools rilis/website Oyenza yang tidak dipakai; `HANDOFF-oyenza.md` (belum masuk git) bisa dihapus.
 
 Tidak dibuat: radio.
 
