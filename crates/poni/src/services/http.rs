@@ -564,6 +564,14 @@ mod cache_tests {
     fn a_repeated_get_without_cache_headers_comes_from_windows_cache() {
         // oyenza-studio#137's IELTS self-test found this. If it ever stops
         // happening, the test below proves nothing: look at both again.
+        // A process with a package identity (this test binary picks up the
+        // identity package's <msix> manifest once tools\identity.ps1 has
+        // registered target\release) gets a cache of its own that this
+        // doesn't describe.
+        if crate::autostart::packaged() {
+            eprintln!("skipped: this test process has a package identity");
+            return;
+        }
         let (bodies, hits) = ask_twice("");
         assert_eq!((hits, bodies[1].as_str()), (1, r#"{"hit":1}"#), "answers {bodies:?}");
     }
