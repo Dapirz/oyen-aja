@@ -62,6 +62,9 @@ Nanti (belum dikerjakan):
 - Screentime.
 - Downloads: Downloader sudah ada (lihat di atas). Tinggal dicoba dan dirapikan.
 - Meeting notes versi sendiri.
+- Foto profil pengirim di kartu notifikasi: baca `wpndatabase.db` dan folder `wpnidm` seperti Poni (Poni portable memakai SQLite, tanpa API resmi). Exe sekitar +1 MB.
+- Ganti `poni.exe` jadi `hihu.exe` (`[[bin]] name` di `crates/poni/Cargo.toml`; perbaiki Run value autostart, `<msix>` Executable di `installer\identity`, skrip yang menyebut `poni.exe`).
+- Bersih-bersih: hapus `installer/art`, `site/` dan tools rilis/website Oyenza yang tidak dipakai; `HANDOFF-oyenza.md` (belum masuk git) bisa dihapus.
 
 Tidak dibuat: radio.
 
