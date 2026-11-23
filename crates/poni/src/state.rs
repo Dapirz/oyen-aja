@@ -407,6 +407,10 @@ pub struct AppState {
     /// Apps' logos for the notification card, by AppUserModelID (each
     /// fetched once, the first time that app sends a notification).
     pub notify_logos: std::collections::HashMap<String, crate::gfx::Image>,
+    /// The notification the card shows (Windows' id), and its sender's
+    /// picture once read.
+    pub notice_card_id: u32,
+    pub notice_photo: Option<crate::gfx::Image>,
     pub shelf_thumbs: HashMap<String, Option<Image>>,
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
@@ -499,6 +503,8 @@ impl AppState {
             screen_live: None,
             screen_icons: std::collections::HashMap::new(),
             notify_logos: std::collections::HashMap::new(),
+            notice_card_id: 0,
+            notice_photo: None,
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,

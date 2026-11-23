@@ -266,6 +266,7 @@ fn fake_phone(scene: Scene, now: f64) -> Option<PhoneDrop> {
 /// reads no notifications).
 fn sample_message() -> poni_core::notifications::Seen {
     poni_core::notifications::Seen {
+        id: 0,
         app_id: "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App".into(),
         app: "WhatsApp".into(),
         lines: vec!["Mom".into(), "Dinner at 7 tonight?".into()],

@@ -744,11 +744,16 @@ fn draw_card_notice(ui: &mut Ui, st: &mut AppState, n: &Notice, body: Rect) {
     // Nearly opaque, whatever the island's own black (Smoke's lets the
     // screen through): the message reads over anything behind it.
     ui.c.fill_rrect(card, CARD_R, Color::rgba(0.12, 0.12, 0.13, 0.95));
-    // The app's logo, or the notice's own icon on a soft disc until it comes.
+    // Who wrote, as their own picture when the toast has one (a round
+    // photo, the app's logo then small by its name); else the app's logo,
+    // or the notice's own icon on a soft disc until it comes.
     let logo = Rect::new(card.x + 12.0, card.center().y - CARD_LOGO / 2.0, CARD_LOGO, CARD_LOGO);
-    match card_app(n).and_then(|id| st.notify_logos.get(id)) {
-        Some(img) => ui.c.image(img, logo, 10.0),
-        None => {
+    let app_logo = card_app(n).and_then(|id| st.notify_logos.get(id)).cloned();
+    let photo = st.notice_photo.clone();
+    match (&photo, &app_logo) {
+        (Some(p), _) => ui.c.image(p, logo, CARD_LOGO / 2.0),
+        (None, Some(img)) => ui.c.image(img, logo, 10.0),
+        (None, None) => {
             ui.c.fill_rrect(logo, 10.0, n.color.with_alpha(0.22));
             ui.c.icon(n.icon, Rect::from_center(logo.center(), 20.0, 20.0), n.color);
         }
@@ -768,7 +773,16 @@ fn draw_card_notice(ui: &mut Ui, st: &mut AppState, n: &Notice, body: Rect) {
     let tw = (text_right - tx).max(0.0);
     let small = TextStyle::caption().color(palette::TEXT_DIM);
     let now_w = ui.c.measure("now", &small, 100.0).0.ceil();
-    let head = Rect::new(tx, card.y + 8.0, (tw - now_w - 8.0).max(0.0), 15.0);
+    // With the sender's photo, the app's logo goes small before its name.
+    let badge = if photo.is_some() { app_logo.as_ref() } else { None };
+    let head_x = match badge {
+        Some(img) => {
+            ui.c.image(img, Rect::new(tx, card.y + 9.5, 12.0, 12.0), 3.0);
+            tx + 17.0
+        }
+        None => tx,
+    };
+    let head = Rect::new(head_x, card.y + 8.0, (tw - now_w - 8.0 - (head_x - tx)).max(0.0), 15.0);
     ui.c.text(app, head, &small);
     ui.c.text("now", Rect::new(tx + tw - now_w, card.y + 8.0, now_w + 1.0, 15.0), &small);
     let (bold_y, dim_y) = if dim.is_empty() { (card.y + 28.0, 0.0) } else { (card.y + 24.0, card.y + 42.0) };

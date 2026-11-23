@@ -31,6 +31,8 @@ pub const PHONE_LINK: Color = Color::hex(0x0078D4);
 /// One notification, as Windows describes it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Seen {
+    /// Windows' id for it (0 where there's none: the self-test's).
+    pub id: u32,
     /// The app's AppUserModelID ("5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App").
     pub app_id: String,
     /// The app's name as Windows shows it ("WhatsApp").
@@ -222,7 +224,7 @@ mod tests {
     const OUTLOOK: &str = "Microsoft.Office.OUTLOOK.EXE.15";
 
     fn seen(app_id: &str, app: &str, lines: &[&str]) -> Seen {
-        Seen { app_id: app_id.into(), app: app.into(), lines: lines.iter().map(|l| l.to_string()).collect() }
+        Seen { id: 0, app_id: app_id.into(), app: app.into(), lines: lines.iter().map(|l| l.to_string()).collect() }
     }
 
     #[test]

@@ -3837,6 +3837,12 @@ impl App {
                     self.st.cmd(Command::SaveSettings);
                 }
             }
+            NotifyEvent::Photo(id, img) => {
+                if id == self.st.notice_card_id {
+                    self.st.notice_photo = Some(img);
+                    self.request_frame();
+                }
+            }
             NotifyEvent::Logo(app_id, img) => {
                 self.st.notify_logos.insert(app_id, img);
                 self.request_frame();
@@ -3851,6 +3857,9 @@ impl App {
                     return;
                 }
                 if let Some(n) = pages::notifications::message_notice(&seen, &self.st.settings.notifications, self.st.accent, self.st.now) {
+                    // Its sender's picture comes a moment later, if it has one.
+                    self.st.notice_card_id = seen.id;
+                    self.st.notice_photo = None;
                     self.st.show_or_hold(n, self.fullscreen_hidden);
                 }
             }

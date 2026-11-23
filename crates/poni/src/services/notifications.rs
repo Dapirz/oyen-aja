@@ -32,6 +32,9 @@ pub enum NotifyEvent {
     Apps(Vec<(String, String)>),
     /// A new notification.
     Seen(Seen),
+    /// Who a notification is from, as its own picture (its id): the
+    /// sender's photo for the card, where the toast has one on the PC.
+    Photo(u32, crate::gfx::Image),
     /// An app's logo (its AppUserModelID), for the notification card;
     /// fetched once per app, the first time it sends one.
     Logo(String, crate::gfx::Image),
@@ -148,10 +151,12 @@ impl Listener {
             // One that can't be read (gone already, no words) is skipped.
             let n = listener.GetNotification(args.UserNotificationId()?);
             match n.as_ref().map_err(|e| e.clone()).and_then(read) {
-                Ok(seen) => {
-                    let app_id = seen.app_id.clone();
+                Ok(mut seen) => {
+                    seen.id = args.UserNotificationId().unwrap_or(0);
+                    let (app_id, id) = (seen.app_id.clone(), seen.id);
                     sink.send(AppEvent::Notify(NotifyEvent::Seen(seen)));
                     fetch_logo(app_id, sink.clone());
+                    fetch_photo(id, sink.clone());
                 }
                 Err(e) => crate::pinfo!("notifications: one skipped: {e}"),
             }
@@ -235,6 +240,24 @@ fn app_of(n: &UserNotification) -> Result<(String, String)> {
     Ok((id, name))
 }
 
+/// The sender's picture for notification `id`, on a thread of its own:
+/// read from Windows' notification database (`wpndb`), tried again once a
+/// moment later in case Windows hasn't written the notification yet.
+fn fetch_photo(id: u32, sink: EventSink) {
+    if id == 0 {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("poni-notify-photo".into()).spawn(move || {
+        for wait in [0u64, 400] {
+            std::thread::sleep(std::time::Duration::from_millis(wait));
+            if let Some(img) = crate::services::wpndb::sender_picture(id, LOGO_PX) {
+                sink.send(AppEvent::Notify(NotifyEvent::Photo(id, img)));
+                return;
+            }
+        }
+    });
+}
+
 /// Apps whose logo was asked for already (this run), so each is fetched once.
 static LOGOS_ASKED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 /// The logo's size (pixels): the card's 40 DIPs up to 200 % and more.
@@ -268,7 +291,7 @@ fn read(n: &UserNotification) -> Result<Seen> {
             lines.push(t.to_string());
         }
     }
-    Ok(Seen { app_id, app, lines })
+    Ok(Seen { id: 0, app_id, app, lines })
 }
 
 /// For the self-test: what this copy can do, without asking Windows anything.

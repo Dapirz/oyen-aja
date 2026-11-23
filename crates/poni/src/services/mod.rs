@@ -24,6 +24,7 @@ pub mod romanize;
 mod romanize_compare;
 pub mod secret;
 pub mod sound;
+pub mod wpndb;
 pub mod notifications;
 
 use crate::commands::MediaCmd;
