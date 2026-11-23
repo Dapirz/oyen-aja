@@ -783,7 +783,9 @@ impl App {
     /// start and whenever the scale, the monitor or the expanded width changes.
     fn layout_surface(&mut self) {
         let tallest = PageKind::ALL.iter().map(|p| pages::content_height(*p, &self.st)).fold(pages::TALLEST, f32::max);
-        self.layout_surface_for(self.st.settings.expanded_width, pages::HEADER_H + tallest + pages::PAD);
+        // Wide enough for the closed island's longest lyric line too, at its size setting.
+        let closed = crate::pill::media::MAX_W * self.st.settings.island_scale_pct.max(100) as f32 / 100.0;
+        self.layout_surface_for(self.st.settings.expanded_width.max(closed), pages::HEADER_H + tallest + pages::PAD);
         // The band Step aside watches follows the monitor and its scale.
         self.sync_top_watch();
     }
@@ -1957,7 +1959,7 @@ impl App {
             self.monitor = window::pick_monitor(self.st.settings.monitor);
             self.set_dpi(self.monitor.dpi);
             self.refresh_monitor();
-        } else if before.expanded_width != self.st.settings.expanded_width {
+        } else if before.expanded_width != self.st.settings.expanded_width || before.island_scale_pct != self.st.settings.island_scale_pct {
             self.layout_surface();
         }
         if let Some(w) = self.settings_win.as_mut() {

@@ -39,7 +39,9 @@ pub(crate) const H_READS: f32 = 46.0;
 /// their gaps, the same on both sides so the text centres (spec 6.5).
 const SIDES: f32 = 88.0;
 const MIN_W: f32 = 240.0;
-const MAX_W: f32 = 520.0;
+/// The widest the singing pill (and Smoke's two rows) gets for a long line;
+/// the island's window is laid out at least this wide (`App::layout_surface`).
+pub(crate) const MAX_W: f32 = 680.0;
 /// The song ("Title · artist") is held to the spec's width for a title on
 /// the collapsed pill (6.4's peek): without lyrics it rests there all song
 /// long, so it stays as compact as that; a sung line may take the full

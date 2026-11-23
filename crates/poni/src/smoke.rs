@@ -31,7 +31,7 @@ pub const ALPHA_OPEN: f32 = 0.82;
 /// The music island's width: at least this (room for the time, the art and
 /// the bars, and a short title), at most that.
 const MIN_W: f32 = 300.0;
-const MAX_W: f32 = 520.0;
+const MAX_W: f32 = crate::pill::media::MAX_W;
 /// Widths go in steps, so lines a few DIPs apart don't each morph it.
 const W_STEP: f32 = 8.0;
 /// Space between the island's sides and what's in it.
