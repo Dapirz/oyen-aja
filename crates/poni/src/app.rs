@@ -2207,6 +2207,8 @@ impl App {
             && !self.drag_hover
             && !self.rests_hidden()
             && matches!(self.mode, Mode::Idle | Mode::Activity(_))
+            // The prayer countdown has its OK to press: it stays.
+            && self.mode != Mode::Activity(activities::Activity::Prayer)
             && p.y > MAKE_WAY_EDGE
     }
 

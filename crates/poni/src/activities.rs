@@ -542,14 +542,18 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             ui.c.text(&text, Rect::new(body.x + 40.0, body.y, 64.0, body.h), &countdown_style(col, paused));
         }
         Activity::Prayer => {
-            // The moon, the minutes and OK only.
+            // The moon, the minutes and OK only, even about the middle: the
+            // moon sits in a slot as wide as OK's, as far in from the left
+            // end as OK is from the right, and the words centre between.
             let Some((prayer, left)) = prayer_countdown(st) else { return };
             let col = st.accent;
-            ui.c.icon(Icon::Moon, Rect::new(body.x + 14.0, cy - 8.0, 16.0, 16.0), col);
+            let slot = Rect::new(body.x + PRAYER_OK_INSET, cy - PRAYER_OK_H / 2.0, PRAYER_OK_W, PRAYER_OK_H);
+            ui.c.icon(Icon::Moon, Rect::from_center(slot.center(), 16.0, 16.0), col);
             let text = format!("{} {left} min", prayer.name());
-            let ts = TextStyle::body().weight(Weight::Semibold).tabular().color(col).right();
+            let ts = TextStyle::body().weight(Weight::Semibold).tabular().color(col).center();
             let end = draw_prayer_ok(ui, body);
-            ui.c.text(&text, Rect::new(body.x + 36.0, body.y, end - body.x - 36.0, body.h), &ts);
+            let start = slot.right() + 12.0;
+            ui.c.text(&text, Rect::new(start, body.y, (end - start).max(0.0), body.h), &ts);
         }
         Activity::MediaTimer => {
             // Art on the left; the ring sits right next to its countdown.
