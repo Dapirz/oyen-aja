@@ -340,11 +340,13 @@ fn draw_song(ui: &mut Ui, st: &AppState, area: Rect, alpha: f32) -> f32 {
     let playing = m.is_playing();
     if playing && mw + rw > area.w + 1.0 && alpha > 0.002 {
         let lap = f64::from(mw + rw + RUN_GAP);
-        let t = (st.now - since - RUN_HOLD).max(0.0);
+        // The first song since start has no start time (it showed at once):
+        // it runs from when the clock began instead.
+        let from = if since.is_finite() { since } else { 0.0 };
         // Each pass: hold at the start, then run one lap.
         let pass = RUN_HOLD + lap / RUN_SPEED;
-        let into = (st.now - since).rem_euclid(pass);
-        let off = if t <= 0.0 || into < RUN_HOLD { 0.0 } else { ((into - RUN_HOLD) * RUN_SPEED) as f32 };
+        let into = (st.now - from).max(0.0).rem_euclid(pass);
+        let off = if into < RUN_HOLD { 0.0 } else { ((into - RUN_HOLD) * RUN_SPEED) as f32 };
         ui.c.clip(area);
         ui.c.with_alpha(alpha, |c| {
             for start in [area.x - off, area.x - off + lap as f32] {
