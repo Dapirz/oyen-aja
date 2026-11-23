@@ -14,8 +14,8 @@ It is not Oyenza Studio and is not made by its authors. It doesn't use Oyenza's 
 - **Music.** Any player Windows' media controls know (SMTC), synced lyrics from [LRCLIB](https://lrclib.net), Latin readings under lyrics in other scripts, and Apple Music lyrics with your own token.
 - **Today.** A calendar: the day, date, year, week number and five weeks starting this Monday. It reads nothing and only wakes at midnight.
 - **Shelf and phone drop.** Keep files on the island, send files from your phone over Wi-Fi, or pair a phone to send from any network.
-- **Tabs you can hide:** Tasks, Focus and Notifications (Notifications only reads other apps' notifications in a Microsoft Store copy).
-- **Add-ons**, each off until you switch it on: Prayer times (your location or a place you pick), Japanese readings, the Script reader and the Downloader (yt-dlp).
+- **Add-ons**, every feature's switch in one place: Tasks, Focus and Notifications (on until switched off), the Script reader, Prayer times (your location or a place you pick), Japanese readings and the Downloader (yt-dlp). Off, a feature doesn't run.
+- **Notifications** from the apps you pick, on the island. Windows lets only an app with a package identity read them: see [Notifications](#notifications).
 - **Themes:** Classic, Glass, Pill and Diorama.
 
 ## Your data stays on your computer
@@ -35,6 +35,16 @@ It needs your Apple Music token, copied once from the web player:
 3. Right-click the island (or the tray icon) → **Apple Music lyrics** → **Use token from clipboard**.
 
 Hihu Island checks the token with Apple and says whether it worked. It stores the token encrypted for your Windows account (`%LOCALAPPDATA%\Hihu\apple-music-token.bin`) and clears it from the clipboard. If Windows clipboard history (Win+V) is on, delete it there too. When Apple stops accepting the token, the app says so and you copy a fresh one. **Remove token** in the same menu turns this off. It uses the web player's own API, which Apple doesn't publish for other apps, so it can stop working when Apple changes its site.
+
+## Notifications
+
+Windows lets only an app with a package identity read other apps' notifications. A copy you build has none, so `tools\identity.ps1` registers a small identity package for it (`installer\identity`): the exe stays where it is, its data stays in `%APPDATA%\Hihu`, and nothing is installed or copied. It needs Developer Mode (Settings → System → For developers), not a certificate or admin rights.
+
+1. Close Hihu Island.
+2. `powershell -ExecutionPolicy Bypass -File tools\identity.ps1 register`
+3. Start it again, open Add-ons, and allow Notifications when Windows asks. Then pick the apps whose notifications show on the island.
+
+Rebuilding keeps the registration; `tools\identity.ps1 unregister` removes it.
 
 ## Build
 

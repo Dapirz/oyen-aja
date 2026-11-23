@@ -160,10 +160,14 @@ impl Listener {
                 return;
             }
         }
-        let (listener, sink) = (self.listener.clone(), self.sink.clone());
+        let sink = self.sink.clone();
         let spawned = std::thread::Builder::new().name("poni-notify-apps".into()).spawn(move || {
-            // `.get()` waits, so it runs here, never on the UI thread.
-            let apps = listener.GetNotificationsAsync(NotificationKinds::Toast).and_then(|op| op.get()).and_then(|list| {
+            // `.get()` waits, so it runs here, never on the UI thread. The
+            // listener is the UI thread's object, which can't be used from
+            // another thread unmarshalled (RPC_E_WRONG_THREAD): this thread
+            // joins the multithreaded apartment and asks for its own.
+            let com = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED) };
+            let apps = UserNotificationListener::Current().and_then(|l| l.GetNotificationsAsync(NotificationKinds::Toast)).and_then(|op| op.get()).and_then(|list| {
                 let mut apps: Vec<(String, String)> = Vec::new();
                 for i in 0..list.Size()? {
                     if let Ok((id, name)) = list.GetAt(i).and_then(|n| app_of(&n)) {
@@ -177,6 +181,9 @@ impl Listener {
             match apps {
                 Ok(apps) => sink.send(AppEvent::Notify(NotifyEvent::Apps(apps))),
                 Err(e) => crate::pinfo!("notifications: Windows' list unreadable: {e}"),
+            }
+            if com.is_ok() {
+                unsafe { windows::Win32::System::Com::CoUninitialize() };
             }
         });
         if let Err(e) = spawned {
