@@ -260,6 +260,7 @@ pub enum Key {
     MakeWay,
     CloseDelay,
     Width,
+    ClosedSize,
     Display,
     Position,
     LockPosition,
@@ -377,6 +378,8 @@ const AUTOSTART: (&str, &str) = if cfg!(target_os = "macos") {
 } else {
     ("Start with Windows", "Opens Hihu Island when you sign in")
 };
+/// The closed island's size, in percent of its own.
+const CLOSED_SIZE: [(u32, &str); 3] = [(90, "Small"), (100, "Normal"), (115, "Large")];
 const WIDTH_STEP: f32 = 20.0;
 const OFFSET_STEP: i32 = 100;
 fn chosen<T: PartialEq>(list: &[(T, &str)], v: T) -> Option<usize> {
@@ -467,6 +470,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                         item(Key::HoverDelay, "Opens after", Some("How long the pointer rests on the island first"), Ctl::Choice(names(&HOVER), nearest(&HOVER, s.hover_delay_ms))),
                         switch(Key::MakeWay, "Make way for the pointer", Some("Steps aside when the pointer comes; push to the top to open"), s.make_way),
                         item(Key::CloseDelay, "Closes", Some("Once the pointer leaves the open island"), Ctl::Choice(names(&CLOSE), nearest(&CLOSE, s.collapse_delay_ms))),
+                        item(Key::ClosedSize, "Size when closed", Some("The closed island and what's on it"), Ctl::Choice(names(&CLOSED_SIZE), chosen(&CLOSED_SIZE, s.island_scale_pct))),
                         item(Key::Width, "Width when open", Some("Wider gives the pages more room"), Ctl::Stepper(format!("{:.0}", s.expanded_width))),
                     ],
                 ),
@@ -646,6 +650,10 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::Position if step != 0 => s.island_x = poni_core::spot::nudge(s.island_x, step),
         Key::Position => return,
         Key::LockPosition => s.lock_position = !s.lock_position,
+        Key::ClosedSize => match act {
+            Act::Pick(i) if i < CLOSED_SIZE.len() => s.island_scale_pct = CLOSED_SIZE[i].0,
+            _ => return,
+        },
         Key::Width => s.expanded_width = (s.expanded_width + step as f32 * WIDTH_STEP).clamp(480.0, 900.0),
         Key::Display => match act {
             Act::Pick(i) if i < DISPLAYS.len() => s.monitor = DISPLAYS[i].0,

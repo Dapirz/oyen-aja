@@ -2853,11 +2853,7 @@ impl App {
                         canvas.layered(old_body, alpha, xf, |c| {
                             let mut ghost_input = Input::default();
                             let mut ghost_hits = Vec::new();
-                            let mut ghost = Ui::new(c, &mut ghost_input, &mut ghost_hits, now);
-                            match m {
-                                Mode::Expanded(page) => pages::draw_expanded(&mut ghost, st, old_body, page, None),
-                                _ => activities::draw(&mut ghost, st, &m, old_body),
-                            }
+                            draw_content(c, &mut ghost_input, &mut ghost_hits, st, m, old_body, old_body, None, now);
                         });
                     }
                 }
@@ -4133,6 +4129,35 @@ fn draw_content(
     transition: Option<pages::PageTransition>,
     now: f64,
 ) -> (bool, bool, Option<bool>, bool) {
+    // The closed island at another size (Settings > Island > Size when
+    // closed): its content lays out at its own size and draws scaled about
+    // the top centre, where the island hangs; the pointer is mapped into
+    // that layout and the click targets back out of it.
+    let k = activities::collapsed_scale(&mode, st);
+    if k != 1.0 {
+        let pivot = Point::new(body.center().x, body.y);
+        let inward = |p: Point| Point::new(pivot.x + (p.x - pivot.x) / k, pivot.y + (p.y - pivot.y) / k);
+        let own = Rect::new(pivot.x - body.w / k / 2.0, body.y, body.w / k, body.h / k);
+        let saved = (input.mouse, input.press_pos, input.released);
+        input.mouse = input.mouse.map(inward);
+        input.press_pos = input.press_pos.map(inward);
+        input.released = input.released.map(|(id, p)| (id, inward(p)));
+        let before = hits.len();
+        let xf = c.save_transform();
+        c.scale_about(pivot, k);
+        let out = {
+            let mut ui = Ui::new(c, input, hits, now);
+            activities::draw(&mut ui, st, &mode, own);
+            (ui.repaint_requested(), ui.anim_requested(), ui.focus_request(), ui.live_requested())
+        };
+        c.restore_transform(xf);
+        (input.mouse, input.press_pos, input.released) = saved;
+        for h in &mut hits[before..] {
+            let r = h.rect;
+            h.rect = Rect::new(pivot.x + (r.x - pivot.x) * k, pivot.y + (r.y - pivot.y) * k, r.w * k, r.h * k);
+        }
+        return out;
+    }
     let mut ui = Ui::new(c, input, hits, now);
     match mode {
         Mode::Expanded(page) => pages::draw_expanded(&mut ui, st, lay, page, transition),

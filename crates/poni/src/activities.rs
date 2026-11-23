@@ -217,7 +217,31 @@ fn clock_badge(st: &AppState) -> Option<ClockBadge> {
     }
 }
 
+/// The island's size for `m`: what the theme lays out, times the closed
+/// island's scale (Settings > Island > Size when closed) while closed.
 pub fn geom(m: &Mode, st: &AppState) -> Geom {
+    let g = base_geom(m, st);
+    let k = collapsed_scale(m, st);
+    if k == 1.0 {
+        g
+    } else {
+        Geom::new(g.w * k, g.h * k, g.r * k)
+    }
+}
+
+/// How much bigger (or smaller) the closed island draws `m` than its own
+/// layout: the setting while closed, 1 open, and 1 for the strips at the
+/// top edge (the Hidden look, stepped aside), which only catch the pointer.
+pub fn collapsed_scale(m: &Mode, st: &AppState) -> f32 {
+    let strip = matches!(m, Mode::Aside) || (*m == Mode::Idle && st.settings.idle_style == IdleStyle::Hidden);
+    if matches!(m, Mode::Expanded(_)) || strip {
+        1.0
+    } else {
+        st.settings.island_scale_pct as f32 / 100.0
+    }
+}
+
+fn base_geom(m: &Mode, st: &AppState) -> Geom {
     if let Some(g) = crate::pill::geom(m, st) {
         return g;
     }

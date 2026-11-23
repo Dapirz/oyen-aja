@@ -2573,11 +2573,13 @@ impl SelfTest {
             let seen = px.chunks_exact(4).filter(|p| p[3] > 1).count();
             checks.push(check("aside-invisible", seen == 0, format!("{seen} pixels drawn with alpha above 1/255")));
             let (mode, aside) = app.selftest_mode();
-            // The Hidden look's strip: 150 wide, as short as the island gets (8).
+            // A strip as wide as where the island rests (at least the Hidden
+            // look's 150), as short as the island gets (8).
+            let want_w = crate::activities::geom(&crate::activities::resting_mode(&app.st), &app.st).w.max(150.0);
             checks.push(check(
                 "aside-strip",
-                mode == Mode::Aside && aside && (body.w - 150.0).abs() < 0.5 && body.h <= 8.5,
-                format!("{mode:?} (stepped aside: {aside}), body {:.1}x{:.1} DIP, want the Hidden look's 150x8 strip", body.w, body.h),
+                mode == Mode::Aside && aside && (body.w - want_w).abs() < 0.5 && body.h <= 8.5,
+                format!("{mode:?} (stepped aside: {aside}), body {:.1}x{:.1} DIP, want a {want_w:.0}x8 strip", body.w, body.h),
             ));
         } else {
             let cx = ((body.x + body.w / 2.0) * scale).floor() as i32;

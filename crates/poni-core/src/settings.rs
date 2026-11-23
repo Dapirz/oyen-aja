@@ -95,6 +95,9 @@ pub struct Settings {
     /// stays where it is (a game's clicks near the top edge moved it). The
     /// Position row in Settings still moves it.
     pub lock_position: bool,
+    /// The closed island's size, everything on it with it, in percent of
+    /// its own (80..=150). The open island keeps `expanded_width`.
+    pub island_scale_pct: u32,
     /// Make way for the pointer: the closed island steps aside (flat into
     /// the top edge, see-through to clicks) when the pointer comes onto it,
     /// so a browser's tabs under it can be clicked, and opens only when the
@@ -229,6 +232,7 @@ impl Default for Settings {
             monitor: MonitorChoice::Primary,
             island_x: None,
             lock_position: false,
+            island_scale_pct: 100,
             make_way: false,
             show_media_activity: true,
             music_fps: 60,
@@ -304,6 +308,7 @@ impl Settings {
         self.hover_delay_ms = self.hover_delay_ms.min(2000);
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
         self.lyrics_size = self.lyrics_size.clamp(11, 18);
+        self.island_scale_pct = self.island_scale_pct.clamp(80, 150);
         self.paused_linger_s = self.paused_linger_s.map(|s| s.min(3600));
         if self.music_fps != 0 {
             self.music_fps = self.music_fps.clamp(15, 240);
@@ -447,6 +452,14 @@ mod tests {
         assert_eq!(keep.sanitized().paused_linger_s, None);
         let long = Settings { paused_linger_s: Some(99999), ..Default::default() }.sanitized();
         assert_eq!(long.paused_linger_s, Some(3600));
+    }
+
+    #[test]
+    fn the_closed_island_keeps_its_size_unless_told() {
+        let s: Settings = serde_json::from_str(r#"{"lyrics":true}"#).unwrap();
+        assert_eq!(s.sanitized().island_scale_pct, 100);
+        let tiny = Settings { island_scale_pct: 10, ..Default::default() }.sanitized();
+        assert_eq!(tiny.island_scale_pct, 80);
     }
 
     #[test]
