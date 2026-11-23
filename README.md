@@ -51,11 +51,11 @@ Rebuilding keeps the registration; `tools\identity.ps1 unregister` removes it.
 Windows 10 or 11, Rust stable with the MSVC toolchain:
 
 ```
-cargo build -p poni --release        # target\release\poni.exe
+cargo build -p poni --release        # target\release\hihu.exe
 cargo test --workspace --release
 ```
 
-The exe and the crates keep Oyenza's `poni` names. Close Hihu Island before you build: Windows can't replace `poni.exe` while it runs.
+The crates keep Oyenza's `poni` names; the exe is `hihu.exe`. Close Hihu Island before you build: Windows can't replace `hihu.exe` while it runs.
 
 | Crate | What |
 |---|---|
@@ -63,7 +63,7 @@ The exe and the crates keep Oyenza's `poni` names. Close Hihu Island before you 
 | `crates/studio-diorama` | The Diorama theme's picture, in plain Rust with no dependencies. |
 | `crates/poni` | The app: Win32, Direct2D and WinRT through [windows-rs](https://github.com/microsoft/windows-rs). The Mac code in `src/mac/` comes from Oyenza and isn't kept up in this fork. |
 
-`poni.exe --selftest <dir>` runs a scripted tour of every state with fake data, writes a screenshot of each, and a `report.json` with layout and timing checks. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit (it still describes Oyenza Studio).
+`hihu.exe --selftest <dir>` runs a scripted tour of every state with fake data, writes a screenshot of each, and a `report.json` with layout and timing checks. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit (it still describes Oyenza Studio).
 
 ## Credits
 

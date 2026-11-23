@@ -1,4 +1,4 @@
-# Measures how much CPU Hihu Island (poni.exe) uses over a window of time,
+# Measures how much CPU Hihu Island (hihu.exe) uses over a window of time,
 # in CPU cycles (QueryProcessCycleTime), as AGENTS.md asks: Task Manager and
 # TotalProcessorTime count in 15.6 ms ticks and miss short frames.
 #
@@ -17,7 +17,7 @@ public static class Cycles {
 }
 "@
 
-$p = Get-Process poni -ErrorAction Stop | Select-Object -First 1
+$p = Get-Process hihu -ErrorAction Stop | Select-Object -First 1
 $mhz = (Get-CimInstance Win32_Processor | Select-Object -First 1).MaxClockSpeed
 $c0 = [uint64]0
 [void][Cycles]::QueryProcessCycleTime($p.Handle, [ref]$c0)

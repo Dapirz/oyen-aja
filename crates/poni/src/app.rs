@@ -667,6 +667,8 @@ impl App {
             if self.st.screentime_on() {
                 self.screentime_on();
             }
+            // Start with Windows keeps pointing at this exe.
+            crate::autostart::refresh_path();
             // The Downloader left the app: the tools a copy from before kept
             // (yt-dlp, QuickJS, FFmpeg, about 28 MB) go, once.
             let tools = paths::addons_dir().join("downloader");

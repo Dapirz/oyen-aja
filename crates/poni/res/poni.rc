@@ -14,9 +14,9 @@ BEGIN
       VALUE "CompanyName", "Dapirz\0"
       VALUE "FileDescription", "Hihu Island\0"
       VALUE "FileVersion", "0.2.30\0"
-      VALUE "InternalName", "poni\0"
+      VALUE "InternalName", "hihu\0"
       VALUE "LegalCopyright", "Copyright (C) 2026 Jatevo Labs; fork by Dapirz (MIT)\0"
-      VALUE "OriginalFilename", "poni.exe\0"
+      VALUE "OriginalFilename", "hihu.exe\0"
       VALUE "ProductName", "Hihu Island\0"
       VALUE "ProductVersion", "0.2.30\0"
     END

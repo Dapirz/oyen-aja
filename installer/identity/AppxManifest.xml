@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Hihu Island's identity package: a sparse package that gives the poni.exe
+  Hihu Island's identity package: a sparse package that gives the hihu.exe
   you built a package identity where it is (target\release), so Windows lets
   it read other apps' notifications (the Notifications add-on). Nothing is
   copied or installed: the package holds this manifest and its logos, and
@@ -40,7 +40,7 @@
   </Resources>
 
   <Applications>
-    <Application Id="Hihu" Executable="poni.exe" uap10:TrustLevel="mediumIL" uap10:RuntimeBehavior="win32App">
+    <Application Id="Hihu" Executable="hihu.exe" uap10:TrustLevel="mediumIL" uap10:RuntimeBehavior="win32App">
       <!-- No Start menu entry of its own: the exe is started as before. -->
       <uap:VisualElements
         AppListEntry="none"

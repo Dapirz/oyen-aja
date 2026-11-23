@@ -5,11 +5,12 @@ edition.workspace = true
 publish.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Poni - a living notch (Dynamic Island) for Windows 10/11"
+description = "Hihu Island - a light notch for Windows 10/11"
 build = "build.rs"
 
+# The exe is hihu.exe; the crate keeps Oyenza's name (cargo build -p poni).
 [[bin]]
-name = "poni"
+name = "hihu"
 path = "src/main.rs"
 
 [dependencies]

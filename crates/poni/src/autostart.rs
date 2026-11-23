@@ -79,6 +79,17 @@ pub fn is_enabled() -> bool {
     ok && size > 0
 }
 
+/// Start with Windows on: point its Run value at this exe again (once, at
+/// start), so it keeps working when the exe moved or was renamed (poni.exe
+/// became hihu.exe).
+pub fn refresh_path() {
+    if !store_packaged() && is_enabled() {
+        if let Err(e) = set_enabled(true) {
+            crate::pwarn!("autostart: couldn't point it at this exe ({e})");
+        }
+    }
+}
+
 pub fn set_enabled(on: bool) -> Result<()> {
     if store_packaged() {
         return set_task_enabled(on);

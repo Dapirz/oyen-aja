@@ -1,4 +1,4 @@
-# Hihu Island's identity package: lets the poni.exe you built read other
+# Hihu Island's identity package: lets the hihu.exe you built read other
 # apps' notifications (the Notifications add-on), which Windows allows only
 # for an app with a package identity.
 #
@@ -13,7 +13,7 @@
 # admin rights. Nothing is copied: the exe stays where it is, with its data in
 # %APPDATA%\Hihu. Close Hihu first, start it again after.
 #
-# Rebuilding poni.exe keeps the registration. Moving the exe (another
+# Rebuilding hihu.exe keeps the registration. Moving the exe (another
 # -ExeDir) means register again. unregister removes it; the exe then runs
 # without identity, as before, and Notifications is off.
 param(
@@ -44,9 +44,9 @@ switch ($Action) {
         'unregistered: restart Hihu to run without identity'
     }
     'register' {
-        $exe = Join-Path $ExeDir 'poni.exe'
-        if (-not (Test-Path $exe)) { throw "no poni.exe in $ExeDir (build it first: cargo build -p poni --release)" }
-        if (Get-Process poni -ErrorAction SilentlyContinue) { throw 'close Hihu first (tray > Quit), then run this again' }
+        $exe = Join-Path $ExeDir 'hihu.exe'
+        if (-not (Test-Path $exe)) { throw "no hihu.exe in $ExeDir (build it first: cargo build -p poni --release)" }
+        if (Get-Process hihu, poni -ErrorAction SilentlyContinue) { throw 'close Hihu first (tray > Quit), then run this again' }
         $stage = Join-Path $root 'target\identity'
         New-Item -ItemType Directory -Force (Join-Path $stage 'Assets') | Out-Null
         Copy-Item (Join-Path $root 'installer\identity\AppxManifest.xml') $stage -Force

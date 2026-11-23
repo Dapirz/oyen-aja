@@ -8,10 +8,10 @@ Repo ini fork pribadi dari `lucacadalora/oyenza-studio` (remote `upstream`). Tuj
 
 ## Sebutan
 
-- **Oyenza** = Oyenza Studio, app asli repo ini (dulu Oyen Poni; di kode masih `poni`, `poni.exe`, folder `Poni`).
+- **Oyenza** = Oyenza Studio, app asli repo ini (dulu Oyen Poni; di kode masih `poni` untuk nama crate). Exe fork ini `hihu.exe` (sejak 23 Nov 2026).
 - **Poni** = Poni buatan Bos Digital (poni.web.id). App lain, closed source, WebView2.
 - **Oyen** = karakter kucing dan tema Oyen di Oyenza, bukan nama app.
-- `poni` dalam huruf kode (crate, exe, folder) = kode Oyenza.
+- `poni` dalam huruf kode (crate, folder) = kode Oyenza.
 
 ## Alur branch
 
@@ -62,7 +62,6 @@ Nanti (belum dikerjakan):
 - RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
 - Meeting notes versi sendiri.
 - Foto profil pengirim di kartu notifikasi: baca `wpndatabase.db` dan folder `wpnidm` seperti Poni (Poni portable memakai SQLite, tanpa API resmi). Exe sekitar +1 MB.
-- Ganti `poni.exe` jadi `hihu.exe` (`[[bin]] name` di `crates/poni/Cargo.toml`; perbaiki Run value autostart, `<msix>` Executable di `installer\identity`, skrip yang menyebut `poni.exe`).
 
 Tidak dibuat: radio.
 
@@ -78,8 +77,8 @@ Tidak dibuat: radio.
 ## Cara kerja yang sudah dipakai
 
 - Nama branch `remove-<fitur>` atau `<topik>`. Setelah dites, merge ke `main` dengan `--ff-only` lalu hapus branch-nya. Push ke `origin` hanya setelah ditanyakan ke user.
-- Pesan commit dalam bahasa Inggris, gaya repo: apa yang hilang atau berubah, apa yang tetap jalan untuk file settings atau data lama, lalu baris `Cost:` (ukuran poni.exe sebelum → sesudah, dan apa yang berubah saat diam).
+- Pesan commit dalam bahasa Inggris, gaya repo: apa yang hilang atau berubah, apa yang tetap jalan untuk file settings atau data lama, lalu baris `Cost:` (ukuran hihu.exe sebelum → sesudah, dan apa yang berubah saat diam).
 - Sebelum commit: `cargo build -p poni --release` tanpa warning baru (sekarang ada 10 warning lama), lalu `cargo test --workspace --release`.
-- `target\release\poni.exe` tidak bisa ditimpa saat app jalan. Tutup Hihu dulu sebelum build, lalu jalankan lagi.
+- `target\release\hihu.exe` tidak bisa ditimpa saat app jalan. Tutup Hihu dulu sebelum build, lalu jalankan lagi.
 - File di repo memakai CRLF. Skrip edit harus mempertahankan CRLF, atau keluarkan file dari working copy lalu `git checkout` lagi setelah commit.
 

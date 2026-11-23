@@ -1,4 +1,4 @@
-//! `poni.exe --selftest <dir>`: drive the real app through every visual state
+//! `hihu.exe --selftest <dir>`: drive the real app through every visual state
 //! with fake (original) data, save screenshots, verify pixel invariants and
 //! frame timings, and write `<dir>/report.json`.
 //!
