@@ -52,6 +52,29 @@ pub fn screentime_path() -> PathBuf {
     data_dir().join("screentime.json")
 }
 
+/// A meeting being recorded or handed over for notes: its audio parts, one
+/// folder a meeting (local, never roaming). A folder goes once its notes are
+/// saved or the recording is thrown away.
+pub fn notes_audio_dir() -> PathBuf {
+    cache_dir().join("notes")
+}
+
+/// Where meeting notes are saved, as Markdown: `Documents\Hihu Island\Notes`
+/// (wherever the user moved Documents to). Under `PONI_HOME` for the self-test.
+pub fn notes_dir() -> PathBuf {
+    if let Some(h) = home_override() {
+        return h.join("notes-saved");
+    }
+    let docs = known_folder(&windows::Win32::UI::Shell::FOLDERID_Documents).unwrap_or_else(|| env_dir("USERPROFILE").join("Documents"));
+    docs.join(crate::version::APP_NAME).join("Notes")
+}
+
+/// The Meeting notes add-on's Gemini key, sealed for the Windows account
+/// (`services::secret`); never roams, and goes when the person removes it.
+pub fn gemini_key_path() -> PathBuf {
+    cache_dir().join("gemini.key")
+}
+
 /// The Clipboard add-on's history, sealed for the Windows account
 /// (`services::secret`); deleted when the add-on goes off.
 pub fn clipboard_path() -> PathBuf {

@@ -102,4 +102,30 @@ pub enum Command {
     GetCities(String),
     /// Notifications.
     Notify(NotifyCmd),
+    /// The Notes page's buttons (Meeting notes).
+    Notes(NotesCmd),
+}
+
+/// The Notes page's buttons (the Meeting notes add-on).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NotesCmd {
+    /// Take notes: the recording starts.
+    Start,
+    /// Stop: the meeting is over, its notes get written.
+    Stop,
+    /// Try again: hand the kept recording over again.
+    Retry,
+    /// Throw the kept recording away.
+    Discard,
+    /// Open the notes' file, or the notes folder.
+    Open,
+    Folder,
+    /// Copy the notes (without the transcript) as Markdown.
+    Copy,
+    /// Back to Take notes.
+    Done,
+    /// The Gemini key: the one on the clipboard is saved (sealed), or the
+    /// saved one goes.
+    PasteKey,
+    RemoveKey,
 }

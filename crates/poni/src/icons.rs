@@ -29,6 +29,9 @@ pub enum Icon {
     Minus,
     Close,
     Clipboard,
+    Copy,
+    /// The Notes tab (Meeting notes): a page with a sound wave over two lines of text.
+    Notes,
     /// Screen time: an hourglass.
     Hourglass,
     Calendar,
@@ -207,6 +210,19 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Stop => p![f("M8.2 6.5h7.6a1.7 1.7 0 0 1 1.7 1.7v7.6a1.7 1.7 0 0 1-1.7 1.7H8.2a1.7 1.7 0 0 1-1.7-1.7V8.2a1.7 1.7 0 0 1 1.7-1.7z")],
         AppWindow => p![s("M5 4.5h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2z"), s("M3 9h18"), f("M5.6 6.75a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z"), f("M8.6 6.75a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z")],
         Bell => p![s("M6 11a6 6 0 0 1 12 0v4.2l1.6 2.3H4.4L6 15.2z"), s("M10 20.3a2.2 2.2 0 0 0 4 0")],
+        Copy => p![
+            s("M9.5 8.5h9A1.5 1.5 0 0 1 20 10v9.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 8 19.5V10a1.5 1.5 0 0 1 1.5-1.5z"),
+            s("M16 8.5v-3A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5V15a1.5 1.5 0 0 0 1.5 1.5H8"),
+        ],
+        Notes => p![
+            s("M6.5 3h11A1.5 1.5 0 0 1 19 4.5v15a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-15A1.5 1.5 0 0 1 6.5 3z"),
+            s("M8.5 8v1.5"),
+            s("M10.75 6.5v4.5"),
+            s("M13 7.25v3"),
+            s("M15.25 8v1.5"),
+            s("M8.5 14.5h7"),
+            s("M8.5 17.5h4.5"),
+        ],
         Message => p![s("M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z")],
     }
 }
@@ -224,7 +240,7 @@ mod tests {
         Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye,
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
-        Icon::AppWindow, Icon::Bell, Icon::Message,
+        Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
     ];
 
     #[test]

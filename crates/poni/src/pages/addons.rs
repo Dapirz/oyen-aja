@@ -82,6 +82,7 @@ fn icon(a: &Addon) -> Icon {
         "tasks" => Icon::ListChecks,
         "focus" => Icon::Timer,
         "notifications" => Icon::Bell,
+        "notes" => Icon::Notes,
         _ => Icon::Addons,
     }
 }

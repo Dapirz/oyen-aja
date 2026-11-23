@@ -394,6 +394,13 @@ pub struct App {
     /// Screen time's tracker (None while it's off), and whether its days
     /// changed since they were saved.
     screen: Option<crate::screentime::Tracker>,
+    /// The Notes page's meeting while it is recorded (only then).
+    notes_rec: Option<services::notes::Recording>,
+    /// The meeting's audio once stopped, kept until its notes are saved (or
+    /// it is thrown away), for Try again.
+    notes_take: Option<services::notes::Take>,
+    /// When the meeting being taken down began (local time, for its notes).
+    notes_started: poni_core::datetime::LocalDateTime,
     screen_dirty: bool,
     /// Show in screenshots off: what Windows was last asked (None: not yet).
     capture_hidden: Option<bool>,
@@ -606,6 +613,9 @@ impl App {
             own_clip: None,
             clip_saved: 0,
             screen: None,
+            notes_rec: None,
+            notes_take: None,
+            notes_started: Default::default(),
             screen_dirty: false,
             capture_hidden: None,
             raises_left: 0,
@@ -663,6 +673,9 @@ impl App {
             }
             if self.st.clipboard_on() {
                 self.clipboard_on();
+            }
+            if self.st.notes_on() {
+                self.notes_restore();
             }
             if self.st.screentime_on() {
                 self.screentime_on();
@@ -1811,6 +1824,17 @@ impl App {
                 }
             }
         }
+        // Meeting notes off: a recording stops and its audio goes. On: what
+        // shows of its key.
+        let notes_id = poni_core::addons::MEETING_NOTES.id;
+        let notes_on = self.st.settings.addon_on(notes_id);
+        if before.addon_on(notes_id) != notes_on && self.selftest.is_none() {
+            if notes_on {
+                self.notes_restore();
+            } else {
+                self.notes_off();
+            }
+        }
         // Screen time switched on: its days back and it counts; off: it
         // stops, and the days go.
         let screen_id = poni_core::addons::SCREEN_TIME.id;
@@ -1956,6 +1980,11 @@ impl App {
         }
         match ev {
             AppEvent::FrontWindow(h) => self.screen_front(HWND(h as *mut _)),
+            AppEvent::Notes(reply) => self.notes_reply(*reply),
+            AppEvent::NotesStopped(issue) => {
+                pwarn!("notes: the recording stopped by itself ({issue:?})");
+                self.notes_stop();
+            }
             AppEvent::ScreenIcon(key, img) => {
                 self.st.screen_icons.insert(key, img);
                 self.request_frame();
@@ -2405,6 +2434,206 @@ impl App {
         self.script_held = held;
         let can_read = self.st.page == PageKind::Script && !self.st.store.script.is_empty() && (self.expanded || self.st.script.active);
         self.set_script_hotkey(can_read && self.selftest.is_none());
+    }
+
+    // ------------------------------------------------------------ Meeting notes
+
+    /// Each frame while a meeting is recorded: how loud each source is, for
+    /// the page's bars.
+    fn notes_tick(&mut self) {
+        if let Some(r) = &self.notes_rec {
+            (self.st.notes.mic, self.st.notes.pc) = r.levels();
+        }
+    }
+
+    /// A press on the Notes page (or Settings' key row).
+    fn notes_cmd(&mut self, c: crate::commands::NotesCmd) {
+        use crate::commands::NotesCmd;
+        let now = self.st.now;
+        match c {
+            NotesCmd::Start => self.notes_start(),
+            NotesCmd::Stop => self.notes_stop(),
+            NotesCmd::Retry => self.notes_send(),
+            NotesCmd::Discard => {
+                self.notes_take = None;
+                self.st.ui.notes_kept = false;
+                services::notes::clear_audio(None);
+                self.st.notes.reset();
+                pinfo!("notes: the kept recording was thrown away");
+            }
+            NotesCmd::Done => self.st.notes.reset(),
+            NotesCmd::Open => {
+                if let Some(last) = &self.st.notes.last {
+                    shell::open(&last.file);
+                }
+            }
+            NotesCmd::Folder => {
+                let dir = paths::notes_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                shell::open(&dir.to_string_lossy());
+            }
+            NotesCmd::Copy => {
+                if let Some(last) = &self.st.notes.last {
+                    let md = poni_core::notes::markdown(&last.notes, &last.started, false);
+                    self.own_clip = Some(md.clone());
+                    services::clipboard::set_text(self.helper, &md);
+                    self.st.ui.notes_note = Some(("Copied".into(), now + 2.0));
+                }
+            }
+            NotesCmd::PasteKey => {
+                // Only what looks like a key: anything else on the clipboard is left alone.
+                let pasted = services::clipboard::read_text(self.helper).map(|s| s.trim().to_string());
+                let line = match pasted.filter(|k| services::notes::looks_like_key(k)) {
+                    Some(k) => match services::secret::save(&paths::gemini_key_path(), &k) {
+                        Ok(()) => {
+                            pinfo!("notes: a Gemini key was saved");
+                            // A problem with the key is over: back to Try again.
+                            if matches!(self.st.notes.phase, poni_core::notes::Phase::Failed(p) if matches!(p, poni_core::notes::Problem::NoKey | poni_core::notes::Problem::KeyRefused)) && !self.st.ui.notes_kept {
+                                self.st.notes.reset();
+                            }
+                            "Key saved"
+                        }
+                        Err(e) => {
+                            pwarn!("notes: can't save the key ({e})");
+                            "Couldn't save the key"
+                        }
+                    },
+                    None => "Copy your key first",
+                };
+                self.st.ui.notes_note = Some((line.into(), now + 3.0));
+                self.notes_key_shown();
+            }
+            NotesCmd::RemoveKey => {
+                let _ = services::secret::delete(&paths::gemini_key_path());
+                pinfo!("notes: the Gemini key was removed");
+                self.notes_key_shown();
+            }
+        }
+        self.request_frame();
+    }
+
+    /// What Settings and the page show of the key: its last four characters.
+    fn notes_key_shown(&mut self) {
+        self.st.ui.notes_key = services::notes::key().map(|k| k.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect());
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+    }
+
+    /// Take notes: the microphone and the PC's sound start recording.
+    fn notes_start(&mut self) {
+        if self.notes_rec.is_some() || self.st.notes.live() || self.notes_take.is_some() {
+            return;
+        }
+        // Whatever an earlier meeting left (the app closed on it) goes first.
+        services::notes::clear_audio(None);
+        let now = self.st.now;
+        let started = self.st.local;
+        match services::notes::Recording::start(&paths::notes_audio_dir(), &started, &self.sink) {
+            Ok((rec, mic, pc)) => {
+                pinfo!("notes: listening (microphone {}, the PC's sound {})", if mic { "on" } else { "off" }, if pc { "on" } else { "off" });
+                self.notes_started = started;
+                self.st.notes.started(now, mic, pc);
+                self.notes_rec = Some(rec);
+            }
+            Err(issue) => {
+                pwarn!("notes: no recording ({issue:?})");
+                self.st.ui.notes_kept = false;
+                self.st.notes.failed(poni_core::notes::Problem::Capture(issue));
+            }
+        }
+    }
+
+    /// Stop: the meeting is over, its notes get written.
+    fn notes_stop(&mut self) {
+        use poni_core::notes::{CaptureIssue, Problem};
+        let Some(rec) = self.notes_rec.take() else { return };
+        match rec.stop() {
+            Ok(take) if take.secs >= 1.0 && !take.parts.is_empty() => {
+                self.notes_take = Some(take);
+                self.st.ui.notes_kept = true;
+                self.notes_send();
+            }
+            Ok(take) => {
+                let _ = std::fs::remove_dir_all(&take.dir);
+                self.st.ui.notes_kept = false;
+                self.st.notes.failed(Problem::NothingHeard);
+            }
+            Err(issue) => {
+                self.st.ui.notes_kept = false;
+                self.st.notes.failed(Problem::Capture(if issue == CaptureIssue::MicDenied { issue } else { CaptureIssue::Failed }));
+            }
+        }
+    }
+
+    /// Hand the kept meeting over (again, for Try again).
+    fn notes_send(&mut self) {
+        let Some(take) = self.notes_take.clone() else { return };
+        self.st.notes.stopped(take.parts.len() as u32, take.secs);
+        let job = services::notes::Job {
+            take,
+            started: self.notes_started,
+            lang: poni_core::notes::Lang::from_key(&self.st.settings.notes_lang),
+            model: self.st.settings.notes_model.clone(),
+            out: paths::notes_dir(),
+        };
+        services::notes::send(job, &self.sink);
+    }
+
+    /// The meeting on its way: how far, the notes saved, or what went wrong.
+    /// With the island closed, the end of it shows as a notice.
+    fn notes_reply(&mut self, r: poni_core::notes::Reply) {
+        use poni_core::notes::Reply;
+        if !self.st.notes_on() {
+            return;
+        }
+        let now = self.st.now;
+        let end = match &r {
+            Reply::Saved(s) => Some(("Your notes are ready".to_string(), s.notes.title.clone(), true)),
+            Reply::Failed(p) => Some((p.title().to_string(), "Open Notes to try again".to_string(), false)),
+            _ => None,
+        };
+        let saved = matches!(r, Reply::Saved(_));
+        self.st.notes.reply(r, now);
+        if saved {
+            self.notes_take = None;
+            self.st.ui.notes_kept = false;
+        }
+        if let Some((title, subtitle, good)) = end {
+            if !(self.expanded && self.st.page == PageKind::Notes) {
+                let color = if good { self.st.accent } else { palette::TEXT_DIM };
+                self.st.notify(Icon::Notes, color, title, subtitle, 8.0, Some(crate::state::NoticeAction::OpenPage(PageKind::Notes)));
+            }
+        }
+        self.request_frame();
+    }
+
+    /// The add-on came on (or was on at start): what shows of the key, and
+    /// a meeting the app closed on before its notes were saved, which waits
+    /// on the page for Write it up or Throw away.
+    fn notes_restore(&mut self) {
+        self.notes_key_shown();
+        if self.notes_take.is_some() || self.notes_rec.is_some() {
+            return;
+        }
+        if let Some((take, started)) = services::notes::kept() {
+            pinfo!("notes: a meeting of {:.0} s from before wasn't written up; it's kept", take.secs);
+            self.notes_started = started;
+            self.st.notes.secs = take.secs;
+            self.notes_take = Some(take);
+            self.st.ui.notes_kept = true;
+            self.st.notes.failed(poni_core::notes::Problem::Unfinished);
+        }
+    }
+
+    /// The add-on switched off: a recording stops, its audio goes, and the
+    /// page forgets the meeting. The key stays (Settings removes it).
+    fn notes_off(&mut self) {
+        drop(self.notes_rec.take());
+        self.notes_take = None;
+        services::notes::clear_audio(None);
+        self.st.notes = Default::default();
+        self.st.ui.notes_kept = false;
     }
 
     // ------------------------------------------------------------ screen time
@@ -2935,6 +3164,7 @@ impl App {
         }
         self.prayer_tick();
         self.script_tick();
+        self.notes_tick();
         // Prayer times or Notifications switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
@@ -3778,6 +4008,7 @@ impl App {
                     }
                 }
                 Command::Notify(c) => self.notify_cmd(c),
+                Command::Notes(c) => self.notes_cmd(c),
             }
         }
         self.sync_phone_offer();

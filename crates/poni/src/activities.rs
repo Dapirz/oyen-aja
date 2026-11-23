@@ -23,6 +23,9 @@ pub enum Activity {
     MediaTimer,
     /// Prayer times: the minutes before the next prayer.
     Prayer,
+    /// Meeting notes: the red dot and the time while it records, then
+    /// "Writing notes".
+    Notes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +72,11 @@ const BADGE_GAP: f32 = 6.0;
 /// The countdown before a prayer: the moon, then "Maghrib 10 min" (152,
 /// its words' room), then its OK.
 const PRAYER_W: f32 = 152.0 + PRAYER_OK_ROOM;
+/// A meeting being taken down: the dot and "0:42" (an hour needs more);
+/// then "Writing notes".
+const NOTES_W: f32 = 104.0;
+const NOTES_LONG_W: f32 = 120.0;
+const NOTES_WRITING_W: f32 = 150.0;
 /// The countdown's OK: a small grey pill concentric with the 32 DIP pill's
 /// right end, as a notice's Hide is with the notice's. It puts the
 /// countdown away until the prayer's time (`AppState::prayer_countdown_ok`).
@@ -86,6 +94,7 @@ pub fn content_key(m: &Mode) -> u32 {
         Mode::Activity(Activity::Timer) => 3,
         Mode::Activity(Activity::MediaTimer) => 4,
         Mode::Activity(Activity::Prayer) => 5,
+        Mode::Activity(Activity::Notes) => 6,
         Mode::Hud(t) => 10 + *t as u32,
         Mode::Notice => 20,
         Mode::Expanded(_) => 30,
@@ -136,6 +145,10 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
     // The few minutes before a prayer come first: they don't come back.
     if prayer_countdown(st).is_some() {
         return Some(Activity::Prayer);
+    }
+    // So does a meeting being taken down, and its notes on their way.
+    if st.notes.live() && st.notes_on() {
+        return Some(Activity::Notes);
     }
     let media = st.settings.show_media_activity
         && st.media.as_ref().is_some_and(|m| m.is_playing() || paused_keeps(st) || media_grace_end(st).is_some_and(|end| st.now < end));
@@ -266,6 +279,7 @@ fn base_geom(m: &Mode, st: &AppState) -> Geom {
         }
         Mode::Activity(Activity::MediaTimer) => Geom::new(132.0, 32.0, 15.0),
         Mode::Activity(Activity::Prayer) => Geom::new(PRAYER_W, 32.0, 15.0),
+        Mode::Activity(Activity::Notes) => Geom::new(notes_w(st), 32.0, 15.0),
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
         Mode::Hud(HudTag::Bluetooth) => Geom::new(336.0, 46.0, 22.0),
@@ -338,6 +352,12 @@ pub fn next_wake(m: &Mode, st: &AppState) -> Option<f64> {
     }
     if let Some(t) = crate::pill::next_wake(m, st) {
         consider(t);
+    }
+    // The meeting's time moves on each second while it records.
+    if *m == Mode::Activity(Activity::Notes) {
+        if let Some(b) = st.notes.next_second(now) {
+            consider(now + b);
+        }
     }
     // A notification card: what rests above it changes on its own as before.
     if *m == Mode::Notice && notice_card(st) {
@@ -555,6 +575,7 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             let start = slot.right() + 12.0;
             ui.c.text(&text, Rect::new(start, body.y, (end - start).max(0.0), body.h), &ts);
         }
+        Activity::Notes => draw_notes(ui, st, body),
         Activity::MediaTimer => {
             // Art on the left; the ring sits right next to its countdown.
             art_or_icon(ui, st, art, playing);
@@ -569,6 +590,33 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             let c = Point::new(right - tw - 6.0 - 7.0, cy);
             ui.c.ring(c, 7.0, 2.2, p.progress(st.now), RING_TRACK, col);
         }
+    }
+}
+
+/// The meeting's pill: recording, "0:42" (an hour needs more); then the
+/// notes on their way.
+fn notes_w(st: &AppState) -> f32 {
+    match st.notes.phase {
+        poni_core::notes::Phase::Listening { .. } if st.notes.elapsed(st.now) >= 3600.0 => NOTES_LONG_W,
+        poni_core::notes::Phase::Listening { .. } => NOTES_W,
+        _ => NOTES_WRITING_W,
+    }
+}
+
+/// The red dot and the time while it records; the notes' icon and
+/// "Writing notes" after. Nothing moves but the time, once a second.
+fn draw_notes(ui: &mut Ui, st: &AppState, body: Rect) {
+    let cy = body.center().y;
+    let x = body.x + 16.0;
+    if st.notes.listening() {
+        ui.c.fill_circle(Point::new(x + 5.0, cy), 5.0, palette::RED);
+        let ts = TextStyle::body().weight(Weight::Semibold).tabular().color(palette::TEXT);
+        let text = poni_core::notes::fmt_length(st.notes.elapsed(st.now));
+        ui.c.text(&text, Rect::new(x + 14.0, body.y, body.right() - 16.0 - x - 14.0, body.h), &ts.right());
+    } else {
+        ui.c.icon(Icon::Notes, Rect::new(x - 2.0, cy - 8.0, 16.0, 16.0), palette::TEXT_DIM);
+        let ts = TextStyle::footnote().weight(Weight::Semibold).color(palette::TEXT_DIM);
+        ui.c.text("Writing notes\u{2026}", Rect::new(x + 22.0, body.y, body.right() - 14.0 - x - 22.0, body.h), &ts);
     }
 }
 

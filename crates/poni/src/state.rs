@@ -288,6 +288,13 @@ impl PhoneDrop {
 /// Transient per-page UI state (scroll offsets, text being typed, …).
 #[derive(Clone, Debug, Default)]
 pub struct PageUiState {
+    /// The Notes page: a short line beside the notes until a time
+    /// ("Copied"), and whether a recording is kept on this PC for Try again.
+    pub notes_note: Option<(String, f64)>,
+    pub notes_kept: bool,
+    /// The Gemini key's last four characters while one is saved (what
+    /// Settings shows of it).
+    pub notes_key: Option<String>,
     pub task_input: String,
     pub task_scroll: f32,
     pub shelf_scroll: f32,
@@ -404,6 +411,8 @@ pub struct AppState {
     pub screen_icons: std::collections::HashMap<String, crate::gfx::Image>,
     /// The Clipboard add-on's history.
     pub clip: poni_core::cliphist::ClipHistory,
+    /// The Notes page's meeting (the Meeting notes add-on).
+    pub notes: poni_core::notes::Taker,
     /// Apps' logos for the notification card, by AppUserModelID (each
     /// fetched once, the first time that app sends a notification).
     pub notify_logos: std::collections::HashMap<String, crate::gfx::Image>,
@@ -505,6 +514,7 @@ impl AppState {
             notify_logos: std::collections::HashMap::new(),
             notice_card_id: 0,
             notice_photo: None,
+            notes: Default::default(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,
@@ -541,6 +551,7 @@ impl AppState {
             PageKind::Tasks => !st.tasks_on(),
             PageKind::Clipboard => !st.clipboard_on(),
             PageKind::Screentime => !st.screentime_on(),
+            PageKind::Notes => !st.notes_on(),
             PageKind::Focus => !st.focus_on(),
             p => st.tab_hidden(p),
         };
@@ -565,6 +576,11 @@ impl AppState {
     /// switched off, where this copy can read them (`notify_can`).
     pub fn notifications_on(&self) -> bool {
         self.notify_can && self.addon(poni_core::addons::NOTIFICATIONS.id) == AddonStatus::Ready
+    }
+
+    /// The Meeting notes add-on is on: the Notes tab shows.
+    pub fn notes_on(&self) -> bool {
+        self.addon(poni_core::addons::MEETING_NOTES.id) == AddonStatus::Ready
     }
 
     /// The Screen time add-on is on: it counts and its tab shows.

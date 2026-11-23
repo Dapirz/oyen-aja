@@ -82,6 +82,11 @@ pub enum LyricsResult {
 }
 
 pub enum AppEvent {
+    /// The meeting being handed over, as it goes (`services::notes`).
+    Notes(Box<poni_core::notes::Reply>),
+    /// The meeting's recording stopped by itself: the longest meeting taken,
+    /// or the disk wouldn't take more (`services::notes`).
+    NotesStopped(poni_core::notes::CaptureIssue),
     /// Another window came to the front (Screen time, from the full-screen
     /// watcher's hook).
     FrontWindow(isize),

@@ -154,12 +154,13 @@ pub enum Section {
     Addons,
     Focus,
     Clipboard,
+    Notes,
     Prayer,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 11] = [
+    pub const ALL: [Section; 12] = [
         Section::General,
         Section::Appearance,
         Section::Island,
@@ -169,6 +170,7 @@ impl Section {
         Section::Addons,
         Section::Focus,
         Section::Clipboard,
+        Section::Notes,
         Section::Prayer,
         Section::About,
     ];
@@ -184,6 +186,7 @@ impl Section {
             Section::Addons => "Add-ons",
             Section::Focus => "Focus",
             Section::Clipboard => "Clipboard",
+            Section::Notes => "Meeting notes",
             Section::Prayer => "Prayer times",
             Section::About => "About",
         }
@@ -201,6 +204,7 @@ impl Section {
             Section::Addons => "addons",
             Section::Focus => "focus",
             Section::Clipboard => "clipboard",
+            Section::Notes => "notes",
             Section::Prayer => "prayer",
             Section::About => "about",
         }
@@ -217,6 +221,7 @@ impl Section {
             Section::Addons => Icon::Addons,
             Section::Focus => Icon::Timer,
             Section::Clipboard => Icon::Clipboard,
+            Section::Notes => Icon::Notes,
             Section::Prayer => Icon::Moon,
             Section::About => Icon::Gear,
         }
@@ -234,6 +239,7 @@ impl Section {
             Section::Addons => Color::hex(0x0A84FF),
             Section::Focus => palette::ORANGE,
             Section::Clipboard => palette::PURPLE,
+            Section::Notes => palette::RED,
             Section::Prayer => Color::hex(0x30B0A0),
             Section::About => Color::hex(0x8E8E93),
         }
@@ -245,6 +251,7 @@ impl Section {
             Section::Prayer => st.prayer_on(),
             Section::Focus => st.focus_on(),
             Section::Clipboard => st.clipboard_on(),
+            Section::Notes => st.notes_on(),
             _ => true,
         }
     }
@@ -281,6 +288,11 @@ pub enum Key {
     MusicFps,
     ClipMax,
     ClipKeep,
+    NotesKey,
+    NotesGetKey,
+    NotesModel,
+    NotesLang,
+    NotesFolder,
     MusicProgress,
     PausedLinger,
     SongTitle,
@@ -374,6 +386,8 @@ const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
 /// None: until removed or pushed out).
 const CLIP_MAX: [(u32, &str); 4] = [(10, "10"), (25, "25"), (50, "50"), (100, "100")];
 const CLIP_KEEP: [(Option<u32>, &str); 4] = [(Some(3_600), "1 hour"), (Some(86_400), "1 day"), (Some(7 * 86_400), "7 days"), (None, "Forever")];
+/// Meeting notes: the language the notes are written in.
+const NOTES_LANG: [(&str, &str); 3] = [("auto", "The meeting's"), ("id", "Indonesian"), ("en", "English")];
 /// How long a paused song stays on the closed island (s; None: while paused).
 /// A song without lyrics: its title on the closed island all song long, or
 /// only for the moment a new track starts.
@@ -552,6 +566,31 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             ]
         }
         Section::Addons => vec![Block::Addons],
+        Section::Notes => {
+            let key = match &st.ui.notes_key {
+                Some(end) => item(Key::NotesKey, "API key", Some(&format!("Saved on this PC, ending in {end}")), Ctl::Button("Remove")),
+                None => item(Key::NotesKey, "API key", Some("Copy your key, then paste it here"), Ctl::Button("Paste")),
+            };
+            let models = poni_core::notes::MODELS;
+            vec![
+                Block::Group(
+                    Some("Gemini"),
+                    vec![
+                        key,
+                        item(Key::NotesGetKey, "Get a key", Some("Free at Google AI Studio"), Ctl::Button("Open")),
+                        item(Key::NotesModel, "Model", Some("Flash is quick; Pro writes better notes, more slowly"), Ctl::Choice(names(&models), chosen(&models, s.notes_model.as_str()))),
+                    ],
+                ),
+                Block::Group(
+                    Some("Notes"),
+                    vec![
+                        item(Key::NotesLang, "Written in", Some("The meeting's own language, or always one"), Ctl::Choice(names(&NOTES_LANG), chosen(&NOTES_LANG, s.notes_lang.as_str()))),
+                        item(Key::NotesFolder, "Saved notes", Some("Documents \u{203a} Hihu Island \u{203a} Notes"), Ctl::Button("Open")),
+                    ],
+                ),
+                Block::Note("The recording goes to Google for Gemini to hear, and is deleted there once the notes are written. On Gemini's free tier, Google may use it to improve its products."),
+            ]
+        }
         Section::Clipboard => vec![
             Block::Group(
                 Some("History"),
@@ -720,6 +759,29 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::LyricsBold => s.lyrics_bold = !s.lyrics_bold,
         Key::LyricsSize => match act {
             Act::Pick(i) if i < LYRICS_SIZE.len() => s.lyrics_size = LYRICS_SIZE[i].0,
+            _ => return,
+        },
+        Key::NotesKey => {
+            let c = if st.ui.notes_key.is_some() { crate::commands::NotesCmd::RemoveKey } else { crate::commands::NotesCmd::PasteKey };
+            st.cmd(Command::Notes(c));
+            return;
+        }
+        Key::NotesGetKey => {
+            st.cmd(Command::OpenUrl(poni_core::notes::KEY_URL.into()));
+            return;
+        }
+        Key::NotesFolder => {
+            let dir = crate::paths::notes_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            st.cmd(Command::OpenPath(dir.to_string_lossy().into_owned()));
+            return;
+        }
+        Key::NotesModel => match act {
+            Act::Pick(i) if i < poni_core::notes::MODELS.len() => s.notes_model = poni_core::notes::MODELS[i].0.to_string(),
+            _ => return,
+        },
+        Key::NotesLang => match act {
+            Act::Pick(i) if i < NOTES_LANG.len() => s.notes_lang = NOTES_LANG[i].0.to_string(),
             _ => return,
         },
         Key::ClipMax => match act {
@@ -1741,7 +1803,8 @@ mod tests {
                 match it.key {
                     // Start with Windows waits for its reading; the buttons open things.
                     Key::Autostart => assert!(st.cmds.is_empty()),
-                    Key::SettingsFile | Key::DataFolder | Key::ReleaseNotes | Key::LyricsCredit => assert!(opens, "{:?}", it.key),
+                    Key::SettingsFile | Key::DataFolder | Key::ReleaseNotes | Key::LyricsCredit | Key::NotesGetKey | Key::NotesFolder => assert!(opens, "{:?}", it.key),
+                    Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
                     _ => assert!(saved, "{:?} didn't save", it.key),
                 }
             }

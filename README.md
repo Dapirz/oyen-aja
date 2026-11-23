@@ -14,7 +14,7 @@ It is not Oyenza Studio and is not made by its authors. It doesn't use Oyenza's 
 - **Music.** Any player Windows' media controls know (SMTC), synced lyrics from [LRCLIB](https://lrclib.net), Latin readings under lyrics in other scripts, and Apple Music lyrics with your own token.
 - **Today.** A calendar: the day, date, year, week number and five weeks starting this Monday. It reads nothing and only wakes at midnight.
 - **Shelf and phone drop.** Keep files on the island, send files from your phone over Wi-Fi, or pair a phone to send from any network.
-- **Add-ons**, every feature's switch in one place: Tasks, Focus and Notifications (on until switched off), Clipboard history (as many copies and for as long as you set), Screen time (how long each app was in front, today and this week), the Script reader, Prayer times (your location or a place you pick) and Japanese readings. Off, a feature doesn't run.
+- **Add-ons**, every feature's switch in one place: Tasks, Focus and Notifications (on until switched off), Clipboard history (as many copies and for as long as you set), Screen time (how long each app was in front, today and this week), Meeting notes (records a call, then Gemini writes the notes and the transcript, with your own API key), the Script reader, Prayer times (your location or a place you pick) and Japanese readings. Off, a feature doesn't run.
 - **Notifications** from the apps you pick, on the island. Windows lets only an app with a package identity read them: see [Notifications](#notifications).
 - **Themes:** Classic, Glass, Pill and Diorama.
 

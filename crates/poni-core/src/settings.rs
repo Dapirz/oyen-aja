@@ -119,6 +119,11 @@ pub struct Settings {
     /// 5..=500) and for how long (seconds; None: until removed or pushed out).
     pub clipboard_max: u32,
     pub clipboard_keep_s: Option<u32>,
+    /// The Meeting notes add-on: the Gemini model that writes the notes
+    /// (`poni_core::notes::MODELS`, or any name typed into the file) and
+    /// their language ("auto", "id" or "en").
+    pub notes_model: String,
+    pub notes_lang: String,
     /// A song without synced lyrics keeps its title on the closed island
     /// for as long as it plays (true), or shows it only for the moment a
     /// new track starts (false). Where the theme shows the song there
@@ -256,6 +261,8 @@ impl Default for Settings {
             music_progress: true,
             clipboard_max: 25,
             clipboard_keep_s: Some(86_400),
+            notes_model: crate::notes::DEFAULT_MODEL.to_string(),
+            notes_lang: "auto".to_string(),
             song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,
@@ -351,6 +358,13 @@ impl Settings {
         self.lyrics_size = self.lyrics_size.clamp(11, 18);
         self.clipboard_max = self.clipboard_max.clamp(5, 500);
         self.clipboard_keep_s = self.clipboard_keep_s.map(|s| s.clamp(60, 365 * 86_400));
+        self.notes_model = self.notes_model.trim().to_string();
+        if self.notes_model.is_empty() || !self.notes_model.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b)) {
+            self.notes_model = crate::notes::DEFAULT_MODEL.to_string();
+        }
+        if !matches!(self.notes_lang.as_str(), "auto" | "id" | "en") {
+            self.notes_lang = "auto".to_string();
+        }
         self.island_scale_pct = self.island_scale_pct.clamp(80, 150);
         self.smoke_opacity_pct = self.smoke_opacity_pct.clamp(30, 95);
         self.paused_linger_s = self.paused_linger_s.map(|s| s.min(3600));

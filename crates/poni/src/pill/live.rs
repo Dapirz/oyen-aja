@@ -62,7 +62,8 @@ fn capsule(w: f32) -> Geom {
 
 pub fn geom(a: Activity, st: &AppState) -> Option<Geom> {
     let w = match a {
-        Activity::Media => return None,
+        // The meeting's pill is the same in every theme.
+        Activity::Media | Activity::Notes => return None,
         Activity::Timer if long_countdown(st) => TIMER_LONG_W,
         Activity::Timer => TIMER_W,
         Activity::MediaTimer => MEDIA_TIMER_W,
@@ -73,7 +74,7 @@ pub fn geom(a: Activity, st: &AppState) -> Option<Geom> {
 
 pub fn draw(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) -> bool {
     match a {
-        Activity::Media => return false,
+        Activity::Media | Activity::Notes => return false,
         Activity::Timer => draw_timer(ui, st, body),
         Activity::MediaTimer => draw_media_timer(ui, st, body),
         Activity::Prayer => draw_prayer(ui, st, body),

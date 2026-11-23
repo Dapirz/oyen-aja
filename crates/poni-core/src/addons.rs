@@ -195,6 +195,22 @@ pub const SCREEN_TIME: Addon = Addon {
     on_by_default: false,
 };
 
+/// Meeting notes: the Notes page. One click and the island records the
+/// microphone and the computer's own sound (a call in Meet, Zoom, Teams),
+/// then Google's Gemini, with the person's own API key, writes the notes and
+/// the transcript. Built in and off until switched on; off, there is no
+/// Notes tab and nothing of it runs (no recording, no calls), and a
+/// recording still kept goes.
+pub const MEETING_NOTES: Addon = Addon {
+    id: "notes",
+    title: "Meeting notes",
+    blurb: "Records your meeting, then Gemini writes the notes and the transcript.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+    on_by_default: false,
+};
+
 /// Tasks: the Tasks page, a short to-do list. Built in and on until
 /// switched off; off, it has no tab (the list stays saved).
 pub const TASKS: Addon = Addon {
@@ -235,7 +251,7 @@ pub const NOTIFICATIONS: Addon = Addon {
 
 /// Every add-on, in the order the Add-ons page lists them: the built-in
 /// pages first, then the ones that download.
-pub const ALL: [&Addon; 8] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCREEN_TIME, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
+pub const ALL: [&Addon; 9] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCREEN_TIME, &MEETING_NOTES, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -439,7 +455,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "screentime", "script", "sholat", "ja"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "screentime", "notes", "script", "sholat", "ja"]);
         // The Downloader left the app: a file that switched it on reads as off.
         assert_eq!(Addon::find("downloader"), None);
         for (i, a) in ALL.iter().enumerate() {

@@ -38,6 +38,17 @@ const BIG_BODY_BYTES: usize = 256 * 1024;
 pub enum Method {
     Get,
     Post,
+    Delete,
+}
+
+/// A request's body for [`Client::send_full`].
+#[derive(Clone, Copy, Debug)]
+pub enum Body<'a> {
+    None,
+    /// Sent as `application/json; charset=utf-8`.
+    Json(&'a str),
+    /// Bytes as they are (a meeting's audio part), with their media type.
+    Bytes(&'a [u8], &'a str),
 }
 
 /// A complete response.
@@ -157,11 +168,24 @@ impl Client {
     /// `method` on `url` with extra request headers and, when given, a JSON
     /// body (sent as `application/json; charset=utf-8`).
     pub fn send(&self, method: Method, url: &str, headers: &[(&str, &str)], json: Option<&str>, timeout: Duration) -> Result<Response, FetchError> {
+        let body = json.map_or(Body::None, Body::Json);
+        self.send_full(method, url, headers, body, None, timeout).map(|(r, _)| r)
+    }
+
+    /// `method` on `url` with extra request headers and `body`; with the
+    /// response, the value of its header `want` when asked for (Gemini's
+    /// upload address comes in one).
+    pub fn send_full(&self, method: Method, url: &str, headers: &[(&str, &str)], body: Body<'_>, want: Option<&str>, timeout: Duration) -> Result<(Response, Option<String>), FetchError> {
+        let json = match body {
+            Body::Json(s) => Some(s),
+            _ => None,
+        };
         let deadline = Instant::now() + timeout;
         let uri = Uri::CreateUri(&HSTRING::from(url)).map_err(|e| other("invalid URL", &e))?;
         let method = match method {
             Method::Get => HttpMethod::Get(),
             Method::Post => HttpMethod::Post(),
+            Method::Delete => HttpMethod::Delete(),
         }
         .map_err(|e| other("could not create a request", &e))?;
         let request = HttpRequestMessage::Create(&method, &uri).map_err(|e| other("could not create a request", &e))?;
@@ -184,13 +208,23 @@ impl Client {
             let content = HttpStringContent::CreateFromStringWithEncodingAndMediaType(&HSTRING::from(body), UnicodeEncoding::Utf8, h!("application/json"))
                 .map_err(|e| other("could not set the request body", &e))?;
             request.SetContent(&content).map_err(|e| other("could not set the request body", &e))?;
+        } else if let Body::Bytes(bytes, content_type) = body {
+            let content = (|| {
+                let writer = DataWriter::new()?;
+                writer.WriteBytes(bytes)?;
+                let content = HttpBufferContent::CreateFromBuffer(&writer.DetachBuffer()?)?;
+                content.Headers()?.SetContentType(&HttpMediaTypeHeaderValue::Create(&HSTRING::from(content_type))?)?;
+                request.SetContent(&content)
+            })();
+            content.map_err(|e| other("could not set the request body", &e))?;
         }
         let op = self.http.SendRequestAsync(&request).map_err(classify)?;
         let resp = wait(&op, deadline)?;
+        let wanted = want.and_then(|name| header(&resp, name));
         let out = read_response(&resp, deadline);
         let _ = resp.Close();
         let _ = request.Close();
-        out
+        out.map(|r| (r, wanted))
     }
 }
 
