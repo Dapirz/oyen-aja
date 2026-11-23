@@ -20,7 +20,7 @@ use crate::island::Geom;
 use crate::state::AppState;
 use crate::ui::Ui;
 use poni_core::datetime::fmt_clock;
-use poni_core::geom::{palette, Color, Rect};
+use poni_core::geom::{Color, Rect};
 use poni_core::settings::Theme;
 
 /// How opaque the black is open, at least (the pages' text needs a
@@ -30,34 +30,33 @@ pub const ALPHA_OPEN: f32 = 0.82;
 
 /// The music island's width: at least this (room for the time, the art and
 /// the bars, and a short title), at most that.
-const MIN_W: f32 = 360.0;
+const MIN_W: f32 = 300.0;
 const MAX_W: f32 = 520.0;
 /// Widths go in steps, so lines a few DIPs apart don't each morph it.
 const W_STEP: f32 = 8.0;
 /// Space between the island's sides and what's in it.
-const PAD: f32 = 18.0;
+const PAD: f32 = 16.0;
 /// Two rows and the progress bar; a song sung with readings under its
 /// lines needs a little more for the second row.
-const H: f32 = 70.0;
-const H_READS: f32 = 84.0;
+const H: f32 = 60.0;
+const H_READS: f32 = 74.0;
 /// One row (and the progress bar) while there's nothing to show under it:
 /// a song without lyrics whose title shows only for a moment.
-const H_ONE: f32 = 46.0;
-const RADIUS_ONE: f32 = 18.0;
-const RADIUS: f32 = 22.0;
+const H_ONE: f32 = 40.0;
+const RADIUS_ONE: f32 = 16.0;
+const RADIUS: f32 = 20.0;
 /// The first row's middle, from the top.
-const ROW1_Y: f32 = 19.0;
+const ROW1_Y: f32 = 16.0;
 /// The second row's middle, from the top (and with readings).
-const ROW2_Y: f32 = 45.0;
-const ROW2_Y_READS: f32 = 52.0;
-const ART: f32 = 24.0;
-const EQ_W: f32 = 20.0;
-const EQ_H: f32 = 16.0;
-/// The progress bar: this far in from the sides (clear of the rounded
-/// corners) and up from the bottom, this thick.
-const BAR_INSET: f32 = 26.0;
-const BAR_UP: f32 = 8.0;
-const BAR_H: f32 = 3.0;
+const ROW2_Y: f32 = 38.0;
+const ROW2_Y_READS: f32 = 45.0;
+const ART: f32 = 20.0;
+const EQ_W: f32 = 18.0;
+const EQ_H: f32 = 14.0;
+/// The progress bar: along the bottom edge, where it runs straight between
+/// the rounded corners, this thick.
+const BAR_INSET: f32 = RADIUS;
+const BAR_H: f32 = 2.5;
 /// What the shared middle adds to its text for the Pill's art and bars.
 const MIDDLE_SIDES: f32 = 88.0;
 
@@ -112,14 +111,15 @@ pub fn draw_media(ui: &mut Ui, st: &mut AppState, body: Rect) {
     let alpha = if playing { 1.0 } else { crate::pill::media::PAUSED_TEXT };
     // The song gets the whole row (a long one runs across it).
     crate::pill::media::middle(ui, st, row, body.x + PAD, body.right() - PAD, alpha, body.w - 2.0 * PAD);
-    // The progress bar.
+    // The progress bar, on the bottom edge in the equalizer's colour.
     if let Some(m) = st.media.as_ref().filter(|m| st.settings.music_progress && m.timeline.has_duration()) {
-        let track = Rect::new(body.x + BAR_INSET, body.bottom() - BAR_UP - BAR_H, (body.w - 2.0 * BAR_INSET).max(0.0), BAR_H);
-        ui.c.fill_rrect(track, BAR_H / 2.0, Color::white(0.18));
+        let color = st.media_accent();
+        let track = Rect::new(body.x + BAR_INSET, body.bottom() - BAR_H, (body.w - 2.0 * BAR_INSET).max(0.0), BAR_H);
+        ui.c.fill_rrect(track, BAR_H / 2.0, color.with_alpha(0.22));
         let done = m.timeline.progress_at(st.now).clamp(0.0, 1.0);
         if done > 0.0 {
             let fill = Rect::new(track.x, track.y, (track.w * done).max(BAR_H), BAR_H);
-            ui.c.fill_rrect(fill, BAR_H / 2.0, palette::TEXT.mul_alpha(if playing { 0.85 } else { 0.5 }));
+            ui.c.fill_rrect(fill, BAR_H / 2.0, color.mul_alpha(if playing { 1.0 } else { 0.5 }));
         }
     }
 }

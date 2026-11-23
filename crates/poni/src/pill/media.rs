@@ -91,6 +91,8 @@ pub(crate) const SONG_W: f32 = SONG_MAX_W - SIDES;
 const RUN_HOLD: f64 = 2.0;
 const RUN_SPEED: f64 = 30.0;
 const RUN_GAP: f32 = 40.0;
+/// How long before a longer line the pill starts opening out for it.
+const GROW_LEAD_S: f64 = 0.45;
 
 thread_local! {
     /// The pill width the text asked for on the last frame. `geom` has no
@@ -104,8 +106,6 @@ thread_local! {
     /// Whether the middle showed the sung line (else the song) on the last
     /// frame drawn, and since when, for the hand-off between the two.
     static SUNG: Cell<(bool, f64)> = const { Cell::new((false, f64::NEG_INFINITY)) };
-    /// The track (a hash of its key) and the widest of its lines so far.
-    static WIDEST: Cell<(u64, f32)> = const { Cell::new((0, 0.0)) };
     /// The song the middle names (a hash of its words) and since when.
     static SONG: Cell<(u64, f64)> = const { Cell::new((0, f64::NEG_INFINITY)) };
 }
@@ -269,8 +269,14 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64, so
     if k < 1.0 {
         draw_song(ui, st, song, paused_a * (1.0 - k));
     }
-    // The line's width, or its reading's when that is wider.
-    line_w.map_or(FIT_W.get(), |w| fit(widest_line(st, w), MAX_W))
+    // The line's width (or its reading's when that is wider), and the next
+    // line's once it's near: the pill opens out for a longer line before
+    // it comes, and closes in with a shorter one as it comes.
+    let next_w = super::lyric::upcoming(st)
+        .filter(|(_, at)| *at - st.now <= GROW_LEAD_S)
+        .map(|(text, _)| ui.c.measure(&text, &super::lyric::style(&st.settings), 4000.0).0)
+        .unwrap_or(0.0);
+    line_w.map_or(FIT_W.get(), |w| fit(w.max(next_w), MAX_W))
 }
 
 /// Whether the middle shows the song when nothing is sung: always for a
@@ -278,21 +284,6 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64, so
 /// unless set to show its title only for the moment a new track starts.
 pub(crate) fn shows_song(st: &AppState) -> bool {
     st.settings.song_title_stays || super::lyric::sings(st) || st.now < st.ui.peek_until
-}
-
-/// The widest line sung so far in this track, with one `w` wide now. The
-/// pill grows to fit a longer line and holds there, so it settles within
-/// the first verse instead of morphing at every line (a resize at the top
-/// of the screen every few seconds catches the eye, and runs at the full
-/// refresh rate while it moves).
-fn widest_line(st: &AppState, w: f32) -> f32 {
-    let mut h = DefaultHasher::new();
-    st.media.as_ref().map(|m| m.track_key.as_str()).unwrap_or_default().hash(&mut h);
-    let track = h.finish();
-    let (was, widest) = WIDEST.get();
-    let widest = if was == track { widest.max(w) } else { w };
-    WIDEST.set((track, widest));
-    widest
 }
 
 /// "Title · artist" centred in `area`: the title semibold, the artist dim,
@@ -506,16 +497,6 @@ mod tests {
                 assert!((0.0..=1.0).contains(&k), "bar {i} at frame {n}: {k}");
             }
         }
-    }
-
-    #[test]
-    fn the_width_holds_the_widest_line_until_the_track_changes() {
-        let st = playing("One");
-        assert_eq!(widest_line(&st, 180.0), 180.0);
-        assert_eq!(widest_line(&st, 240.0), 240.0, "a longer line grows the pill");
-        assert_eq!(widest_line(&st, 120.0), 240.0, "a shorter one doesn't shrink it");
-        let next = playing("Two");
-        assert_eq!(widest_line(&next, 120.0), 120.0, "a new track starts over");
     }
 
     #[test]

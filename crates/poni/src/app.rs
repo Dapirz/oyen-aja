@@ -1397,6 +1397,7 @@ impl App {
                     let was = self.brightness.replace(pct);
                     if was.is_some_and(|w| w != pct) && self.st.settings.hud_brightness {
                         self.st.show_hud(HudKind::Brightness { percent: pct }, 1.6);
+                        self.sync_fullscreen_hud();
                         self.request_frame();
                     }
                     return Some(LRESULT(1));
@@ -1690,6 +1691,7 @@ impl App {
                     self.keyboard_layout = Some(hkl);
                     if changed && self.st.settings.hud_language {
                         self.st.show_hud(HudKind::Language { name }, 1.6);
+                        self.sync_fullscreen_hud();
                         self.request_frame();
                     }
                 }
@@ -2108,6 +2110,7 @@ impl App {
                 self.st.volume = crate::state::VolumeState { level, muted, known: true };
                 if !first && self.st.settings.hud_volume {
                     self.st.show_hud(HudKind::Volume { level, muted }, 1.6);
+                    self.sync_fullscreen_hud();
                 }
             }
             AppEvent::Power(p) => {
@@ -2391,7 +2394,18 @@ impl App {
     /// Then nothing covers the app, and Windows sends its frames straight to
     /// the screen.
     fn fullscreen_hides(&self) -> bool {
-        self.fullscreen_on && self.st.settings.hide_in_fullscreen
+        let s = &self.st.settings;
+        // A pop-up shows over it for its moment, when set to.
+        let hud = s.hud_over_fullscreen && self.st.hud.is_some();
+        self.fullscreen_on && s.hide_in_fullscreen && !hud
+    }
+
+    /// A pop-up came or went while a full-screen app is in front: the
+    /// island shows for it, then hides again.
+    fn sync_fullscreen_hud(&mut self) {
+        if self.fullscreen_on && self.fullscreen_hides() != self.fullscreen_hidden {
+            self.apply_fullscreen(self.st.now);
+        }
     }
 
     /// Shows or hides the island for what is in front now.
@@ -2399,8 +2413,8 @@ impl App {
         let hide = self.fullscreen_hides();
         if hide != self.fullscreen_hidden {
             self.fullscreen_hidden = hide;
-            // Hidden: the volume keys go to Windows, whose flyout shows.
-            services::keys::set_passing(hide);
+            // Hidden with no pop-ups over it: the volume keys go to Windows, whose flyout shows.
+            services::keys::set_passing(hide && !self.st.settings.hud_over_fullscreen);
             unsafe {
                 let _ = ShowWindow(self.hwnd, if hide { SW_HIDE } else { SW_SHOWNOACTIVATE });
             }
@@ -3209,6 +3223,7 @@ impl App {
         self.prayer_tick();
         self.script_tick();
         self.notes_tick();
+        self.sync_fullscreen_hud();
         // Prayer times or Notifications switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
@@ -3908,6 +3923,7 @@ impl App {
         let subtitle = format!("{} \u{b7} {place}", site.hhmm(m.at));
         let secs = if adzan { 200.0 } else { 60.0 };
         self.st.notify(Icon::Moon, self.st.accent, title, subtitle, secs, Some(NoticeAction::OpenPage(PageKind::Prayer)));
+        self.st.ui.glow_until = self.st.now + activities::GLOW_S;
         if adzan {
             self.st.set_notice_inline(InlineAction::StopAdzan);
         }
@@ -4111,6 +4127,7 @@ impl App {
         };
         if self.st.settings.hud_locks {
             self.st.show_hud(HudKind::Lock { key, on }, 1.2);
+            self.sync_fullscreen_hud();
             self.request_frame();
         }
     }

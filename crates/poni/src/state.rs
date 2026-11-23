@@ -294,6 +294,9 @@ impl PhoneDrop {
 /// Transient per-page UI state (scroll offsets, text being typed, …).
 #[derive(Clone, Debug, Default)]
 pub struct PageUiState {
+    /// A prayer's moment glows round the island's edge until then (mono
+    /// seconds): its adzan notice, as Poni's does.
+    pub glow_until: f64,
     /// The Notes page: a short line beside the notes until a time
     /// ("Copied"), and whether a recording is kept on this PC for Try again.
     pub notes_note: Option<(String, f64)>,

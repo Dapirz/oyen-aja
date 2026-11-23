@@ -113,6 +113,22 @@ pub fn draw(ui: &mut Ui, st: &AppState, area: Rect) -> Option<f32> {
     with_state(|s| s.draw(ui, st, area)).flatten()
 }
 
+/// The next line to be sung and when it starts (app clock), while the
+/// song plays: the pill grows for a longer one a moment before it comes.
+pub fn upcoming(st: &AppState) -> Option<(String, f64)> {
+    let (next, at) = with_state(|s| {
+        let p = s.follow.update(st)?;
+        let l = followed(st)?;
+        let at = p.wake?;
+        let from = p.line.map_or(0, |i| i + 1);
+        let i = (from..l.lines.len()).find(|&i| has_text(&l.lines[i]))?;
+        Some((i, at))
+    })
+    .flatten()?;
+    st.media.as_ref().filter(|m| m.is_playing())?;
+    Some((line_text(st, next)?.to_string(), at))
+}
+
 /// When the next line starts, for the app's one-shot wake. Also when an
 /// instrumental break ends, and once while paused: when the pause has lasted
 /// long enough for the title to come back. Nothing while the line can't

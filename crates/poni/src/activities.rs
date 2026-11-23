@@ -218,8 +218,86 @@ fn clock_badge(st: &AppState) -> Option<ClockBadge> {
 
 /// The island's size for `m`: what the theme lays out, times the closed
 /// island's scale (Settings > Island > Size when closed) while closed.
+/// A second row under a notice or the prayer countdown, while a song sings:
+/// its line, so the music keeps showing under what came up (two at once,
+/// at most).
+const STACK_ROW: f32 = 26.0;
+/// How long a prayer's moment glows round the island's edge.
+pub const GLOW_S: f64 = 4.0;
+/// The glow's colour: a warm orange, whatever the theme.
+const GLOW: Color = Color::hex(0xFF9F0A);
+
+thread_local! {
+    /// The prayer countdown last seen (its moment) and when it first showed,
+    /// so it glows for its first seconds.
+    static COUNTDOWN_SEEN: std::cell::Cell<(i64, f64)> = const { std::cell::Cell::new((i64::MIN, 0.0)) };
+}
+
+/// `m` shows the line being sung in a row under it: a notice (not a
+/// notification's card, which has its own) or the prayer countdown, while
+/// a song with synced lyrics plays. The Pill theme draws its own pills.
+pub fn stacks(m: &Mode, st: &AppState) -> bool {
+    let top = match m {
+        Mode::Notice => !notice_card(st),
+        Mode::Activity(Activity::Prayer) => true,
+        _ => false,
+    };
+    top && !crate::pill::on(st.settings.theme)
+        && st.settings.show_media_activity
+        && st.media.as_ref().is_some_and(|x| x.is_playing())
+        && crate::pill::lyric::sings(st)
+}
+
+/// Since when the island glows for a prayer (its countdown's first
+/// seconds, or its moment's notice), while it still does.
+fn glow_since(m: &Mode, st: &AppState) -> Option<f64> {
+    if matches!(m, Mode::Notice) && st.now < st.ui.glow_until {
+        return Some(st.ui.glow_until - GLOW_S);
+    }
+    if *m == Mode::Activity(Activity::Prayer) {
+        let at = prayer_countdown_at(st)?;
+        let (seen, since) = COUNTDOWN_SEEN.get();
+        let since = if seen == at { since } else { st.now };
+        COUNTDOWN_SEEN.set((at, since));
+        return (st.now - since < GLOW_S).then_some(since);
+    }
+    None
+}
+
+/// The countdown's moment (unix seconds), while it shows.
+fn prayer_countdown_at(st: &AppState) -> Option<i64> {
+    let site = st.prayer_site()?;
+    poni_core::prayer::countdown(&site, st.prayer_now(), st.settings.prayer.remind_before_min)
+        .filter(|(m, _)| st.prayer.countdown_ok != Some(m.at))
+        .map(|(m, _)| m.at)
+}
+
+/// The glow: an orange edge round the island's sides and bottom that
+/// breathes, then fades out by [`GLOW_S`].
+fn draw_glow(ui: &mut Ui, body: Rect, since: f64) {
+    let t = (ui.now - since).max(0.0);
+    if t >= GLOW_S {
+        return;
+    }
+    let breathe = 0.6 + 0.4 * (t * std::f64::consts::TAU * 0.9).cos() as f32;
+    let fade = (((GLOW_S - t) / 0.8).min(1.0) as f32).max(0.0);
+    let a = breathe * fade;
+    let r = (body.h / 2.0).min(24.0);
+    ui.c.clip(body);
+    // Soft outside in: wide and faint, then the bright edge.
+    for (inset, width, k) in [(5.0, 8.0, 0.12), (2.5, 4.0, 0.3), (1.0, 2.0, 1.0)] {
+        let e = Rect::new(body.x + inset, body.y - 40.0, body.w - 2.0 * inset, body.h + 40.0 - inset);
+        ui.c.stroke_rrect(e, (r - inset).max(2.0), GLOW.with_alpha(a * k), width);
+    }
+    ui.c.unclip();
+    ui.request_anim();
+}
+
 pub fn geom(m: &Mode, st: &AppState) -> Geom {
-    let g = base_geom(m, st);
+    let mut g = base_geom(m, st);
+    if stacks(m, st) {
+        g = Geom::new(g.w.max(crate::pill::media::fit_w()), g.h + STACK_ROW, g.r.max(20.0));
+    }
     let k = collapsed_scale(m, st);
     if k == 1.0 {
         g
@@ -351,6 +429,12 @@ pub fn next_wake(m: &Mode, st: &AppState) -> Option<f64> {
             consider(end);
         }
     }
+    // A line under a notice or the countdown changes as the song goes on.
+    if stacks(m, st) {
+        if let Some(t) = crate::pill::lyric::next_wake(st) {
+            consider(t);
+        }
+    }
     if *m == Mode::Activity(Activity::Media) {
         consider(st.ui.peek_until);
         // The next sung line: the equalizer's frames stop while paused or
@@ -384,12 +468,22 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
     if crate::pill::draw(ui, st, m, body) {
         return;
     }
+    // Two at once: what came up on top, the line being sung under it.
+    let stacked = stacks(m, st);
+    let top = if stacked { Rect::new(body.x, body.y, body.w, (body.h - STACK_ROW).max(0.0)) } else { body };
     match m {
         Mode::Idle => draw_idle(ui, st, body),
-        Mode::Activity(a) => draw_activity(ui, st, *a, body),
+        Mode::Activity(a) => draw_activity(ui, st, *a, top),
         Mode::Hud(_) => draw_hud(ui, st, body),
-        Mode::Notice => draw_notice(ui, st, body),
+        Mode::Notice => draw_notice(ui, st, top),
         Mode::Expanded(_) | Mode::Aside => {}
+    }
+    if stacked {
+        let row = Rect::new(body.x, top.bottom() - 6.0, body.w, STACK_ROW);
+        crate::pill::media::middle(ui, st, row, body.x + 16.0, body.right() - 16.0, 1.0, body.w - 32.0);
+    }
+    if let Some(since) = glow_since(m, st) {
+        draw_glow(ui, body, since);
     }
 }
 

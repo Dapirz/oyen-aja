@@ -321,6 +321,7 @@ pub enum Key {
     HudLocks,
     HudLanguage,
     HudBrightness,
+    HudOverFullscreen,
     RememberPage,
     StartPage,
     Tab(PageKind),
@@ -589,9 +590,12 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
         ),
         Block::Group(
             Some("Instead of Windows"),
-            vec![switch(Key::HudVolumeKeys, "Take over the volume keys", Some("Windows' volume pop-up stays away; the keys move 2 % a press"), s.hud_volume_keys)],
+            vec![
+                switch(Key::HudVolumeKeys, "Take over the volume keys", Some("Windows' volume pop-up stays away; the keys move 2 % a press"), s.hud_volume_keys),
+                switch(Key::HudOverFullscreen, "Show over full-screen apps", Some("While the island hides for a game or video, pop-ups still show"), s.hud_over_fullscreen),
+            ],
         ),
-        Block::Note("Over a full-screen game or video, while the island hides, the volume keys go to Windows as before.")],
+        Block::Note("Games in exclusive full screen draw over every window: there the pop-ups can't show. Off, the volume keys go to Windows there.")],
         Section::Tabs => {
             let pages = start_pages(st);
             let start = PageKind::from_key(&s.start_page);
@@ -891,6 +895,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::HudLocks => s.hud_locks = !s.hud_locks,
         Key::HudLanguage => s.hud_language = !s.hud_language,
         Key::HudBrightness => s.hud_brightness = !s.hud_brightness,
+        Key::HudOverFullscreen => s.hud_over_fullscreen = !s.hud_over_fullscreen,
         Key::RememberPage => s.remember_page = !s.remember_page,
         Key::StartPage => {
             let pages = start_pages(st);

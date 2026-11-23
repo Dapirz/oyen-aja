@@ -153,6 +153,9 @@ pub struct Settings {
     pub hud_locks: bool,
     pub hud_language: bool,
     pub hud_brightness: bool,
+    /// While the island hides for a full-screen game or video, its pop-ups
+    /// still show for their moment (and the volume keys stay taken over).
+    pub hud_over_fullscreen: bool,
     pub sounds: bool,
     /// The island shows in screenshots, screen recordings and screen
     /// sharing. Off, Windows leaves it out (as it always does while the
@@ -288,6 +291,7 @@ impl Default for Settings {
             hud_locks: true,
             hud_language: true,
             hud_brightness: true,
+            hud_over_fullscreen: true,
             sounds: true,
             show_in_capture: true,
             start_page: "media".into(),
