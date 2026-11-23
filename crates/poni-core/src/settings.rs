@@ -115,6 +115,11 @@ pub struct Settings {
     /// The Smoke theme's closed music island shows how far the song has
     /// played along its bottom.
     pub music_progress: bool,
+    /// The closed music island in two rows (art, the time and the bars over
+    /// the line being sung) in Classic, Smoke and Glass; off, one row.
+    pub music_two_rows: bool,
+    /// The time in the middle of the two-row music island.
+    pub music_clock: bool,
     /// The Clipboard add-on: how many entries it keeps (pinned ones aside,
     /// 5..=500) and for how long (seconds; None: until removed or pushed out).
     pub clipboard_max: u32,
@@ -273,6 +278,8 @@ impl Default for Settings {
             show_media_activity: true,
             music_fps: 60,
             music_progress: true,
+            music_two_rows: true,
+            music_clock: true,
             clipboard_max: 25,
             clipboard_keep_s: Some(86_400),
             notes_model: crate::notes::DEFAULT_MODEL.to_string(),

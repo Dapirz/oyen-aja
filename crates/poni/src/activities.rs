@@ -338,7 +338,7 @@ fn base_geom(m: &Mode, st: &AppState) -> Geom {
             IdleStyle::Eyes => Geom::new(118.0, 30.0, 14.0),
             IdleStyle::Hidden => hidden_strip(),
         },
-        Mode::Activity(Activity::Media) if crate::smoke::on(st.settings.theme) => crate::smoke::media_geom(st),
+        Mode::Activity(Activity::Media) if crate::smoke::two_rows(st) => crate::smoke::media_geom(st),
         Mode::Activity(Activity::Media) => {
             // A song with synced lyrics sings its line here, as in the Pill
             // theme: the pill is as wide as its words (`pill::media`), and
@@ -646,7 +646,7 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
     let art = Rect::new(body.x + 12.0, cy - 11.0, 22.0, 22.0);
     let playing = st.media.as_ref().is_some_and(|m| m.is_playing());
     match a {
-        Activity::Media if crate::smoke::on(st.settings.theme) => crate::smoke::draw_media(ui, st, body),
+        Activity::Media if crate::smoke::two_rows(st) => crate::smoke::draw_media(ui, st, body),
         Activity::Media => draw_music(ui, st, body, true),
         Activity::Timer => {
             // Ring (with the phase glyph) on the left, digits right after it.
@@ -1091,6 +1091,8 @@ mod tests {
     /// Music playing 12 s into a song, with these lyrics found for it.
     fn playing(lrc: Option<&str>) -> AppState {
         let mut st = AppState::new(Settings::default(), Store::default());
+        // The one-row music pill (two rows is `smoke`'s layout, tested there).
+        st.settings.music_two_rows = false;
         let key = MediaSession::make_track_key("Paper Boats", "The Lanterns", "");
         st.media = Some(MediaSession {
             app_id: "Spotify.exe".into(),

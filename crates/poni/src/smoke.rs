@@ -64,6 +64,12 @@ pub fn on(theme: Theme) -> bool {
     theme == Theme::Smoke
 }
 
+/// The closed music island in this module's two rows: Classic, Smoke and
+/// Glass, while Settings says two rows (Pill and Diorama have their own).
+pub fn two_rows(st: &AppState) -> bool {
+    matches!(st.settings.theme, Theme::Classic | Theme::Smoke | Theme::Glass) && st.settings.music_two_rows
+}
+
 /// How opaque the closed island's black is (the Transparency setting).
 pub fn alpha_closed(s: &poni_core::settings::Settings) -> f32 {
     s.smoke_opacity_pct as f32 / 100.0
@@ -101,9 +107,11 @@ pub fn draw_media(ui: &mut Ui, st: &mut AppState, body: Rect) {
     activities::art_or_icon(ui, st, art, playing);
     let eq = Rect::new(body.right() - PAD - EQ_W, cy - EQ_H / 2.0, EQ_W, EQ_H);
     activities::equalizer(ui, eq, st.media_accent(), playing, st.now);
-    let clock = fmt_clock(&st.local, st.settings.use_24h);
-    let clock_r = Rect::new(art.right() + 8.0, cy - 10.0, (eq.x - art.right() - 16.0).max(0.0), 20.0);
-    ui.c.text(&clock, clock_r, &TextStyle::body().weight(Weight::Semibold).tabular().center());
+    if st.settings.music_clock {
+        let clock = fmt_clock(&st.local, st.settings.use_24h);
+        let clock_r = Rect::new(art.right() + 8.0, cy - 10.0, (eq.x - art.right() - 16.0).max(0.0), 20.0);
+        ui.c.text(&clock, clock_r, &TextStyle::body().weight(Weight::Semibold).tabular().center());
+    }
     // Row two: the line being sung, or the song.
     let row_y = body.y + if reads { ROW2_Y_READS } else { ROW2_Y };
     let row_h = crate::pill::media::height(st);
