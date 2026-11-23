@@ -2753,7 +2753,11 @@ impl App {
 
         // Stepping aside, the island flattens into the top edge and goes
         // invisible once there; coming back, it drops from the edge.
-        let hidden_idle = self.rests_hidden() && (self.mode != Mode::Aside || self.island.settled());
+        // Making way for the pointer, the strip stays in sight: a thin bar
+        // along the top edge, where the island went (it takes the mouse only
+        // there either way).
+        let making_way_strip = self.mode == Mode::Aside && self.making_way;
+        let hidden_idle = self.rests_hidden() && !making_way_strip && (self.mode != Mode::Aside || self.island.settled());
         let floating = self.island.floating();
         // Software renderer: what of the floating island's hit area isn't
         // drawn (the gap above it) is painted at 1/255 (see hit_mask_for).
