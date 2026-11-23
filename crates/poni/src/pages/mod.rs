@@ -726,7 +726,7 @@ mod tests {
         let mut st = state();
         assert!(!st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications));
         // Settings' tabs row is Music, Today and Shelf: add-ons switch on Add-ons.
-        assert_eq!(hideable_tabs(&st), &[PageKind::Media, PageKind::Today, PageKind::Shelf]);
+        assert_eq!(PageKind::HIDEABLE, [PageKind::Media, PageKind::Today, PageKind::Shelf]);
         // The Store copy: on until its add-on is switched off.
         st.notify_can = true;
         assert!(st.notifications_on() && tabs(&st).contains(&PageKind::Notifications));
