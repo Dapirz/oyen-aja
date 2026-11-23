@@ -553,7 +553,7 @@ impl AppState {
         // first tab.
         let off = match st.page {
             PageKind::Script => !st.script_on(),
-            PageKind::Notifications => !st.notifications_on(),
+            PageKind::Notifications => true,
             PageKind::Tasks => !st.tasks_on(),
             PageKind::Clipboard => !st.clipboard_on(),
             PageKind::Screentime => !st.screentime_on(),

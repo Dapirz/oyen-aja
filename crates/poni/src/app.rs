@@ -3212,7 +3212,7 @@ impl App {
         // Prayer times or Notifications switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
-            PageKind::Notifications => !self.st.notifications_on(),
+            PageKind::Notifications => true,
             _ => false,
         };
         if gone {

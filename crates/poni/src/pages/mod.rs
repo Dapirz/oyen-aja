@@ -195,7 +195,8 @@ pub fn first_tab(st: &AppState) -> PageKind {
 /// Add-ons always last. Whether each shows is [`tabs`]'s business.
 pub fn ordered(st: &AppState) -> Vec<PageKind> {
     let order = &st.settings.tab_order;
-    let mut v: Vec<PageKind> = PageKind::ALL.into_iter().filter(|p| p.tabbed() && *p != PageKind::Addons).collect();
+    // Notifications has no tab: it's set up in Settings > Notifications.
+    let mut v: Vec<PageKind> = PageKind::ALL.into_iter().filter(|p| p.tabbed() && !matches!(p, PageKind::Addons | PageKind::Notifications)).collect();
     v.sort_by_key(|p| order.iter().position(|k| k == p.key()).unwrap_or(order.len() + p.index()));
     v.push(PageKind::Addons);
     v
@@ -216,7 +217,7 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::Screentime => st.screentime_on(),
             PageKind::Notes => st.notes_on(),
             PageKind::Script => st.script_on(),
-            PageKind::Notifications => st.notifications_on(),
+            PageKind::Notifications => false,
             PageKind::Tasks => st.tasks_on(),
             PageKind::Focus => st.focus_on(),
             p if p.hideable() => !st.tab_hidden(p) || open == Some(p),
@@ -729,7 +730,7 @@ mod tests {
         assert_eq!(PageKind::HIDEABLE, [PageKind::Media, PageKind::Today, PageKind::Shelf]);
         // The Store copy: on until its add-on is switched off.
         st.notify_can = true;
-        assert!(st.notifications_on() && tabs(&st).contains(&PageKind::Notifications));
+        assert!(st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications), "set up in Settings, no tab");
         // Switched off, tab and all, even while its page is open.
         st.addons.insert("notifications", poni_core::addons::Status::Off);
         st.page = PageKind::Notifications;

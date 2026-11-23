@@ -60,12 +60,12 @@ pub fn height(st: &AppState) -> f32 {
 
 /// A button beside the line: its label, what it asks for, and whether it
 /// is the one to press (the accent's colour).
-type Button = (&'static str, NotifyCmd, bool);
+pub type Button = (&'static str, NotifyCmd, bool);
 
 const SETTINGS: Button = ("Windows settings", NotifyCmd::OpenWindowsSettings, false);
 
 /// What the line under the title says, and the buttons beside it (right to left).
-fn access_look(access: NotifyAccess) -> (&'static str, Vec<Button>) {
+pub fn access_look(access: NotifyAccess) -> (&'static str, Vec<Button>) {
     match access {
         NotifyAccess::Unknown => ("Checking with Windows\u{2026}", vec![]),
         NotifyAccess::NoPackage => ("Windows lets only the Microsoft Store copy read notifications.", vec![]),

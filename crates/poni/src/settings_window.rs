@@ -150,6 +150,7 @@ pub enum Section {
     Island,
     Music,
     Popups,
+    Notifications,
     Tabs,
     Addons,
     Focus,
@@ -160,12 +161,13 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 12] = [
+    pub const ALL: [Section; 13] = [
         Section::General,
         Section::Appearance,
         Section::Island,
         Section::Music,
         Section::Popups,
+        Section::Notifications,
         Section::Tabs,
         Section::Addons,
         Section::Focus,
@@ -182,6 +184,7 @@ impl Section {
             Section::Island => "Island",
             Section::Music => "Music and lyrics",
             Section::Popups => "Pop-ups",
+            Section::Notifications => "Notifications",
             Section::Tabs => "Tabs",
             Section::Addons => "Add-ons",
             Section::Focus => "Focus",
@@ -200,6 +203,7 @@ impl Section {
             Section::Island => "island",
             Section::Music => "music",
             Section::Popups => "popups",
+            Section::Notifications => "notifications",
             Section::Tabs => "tabs",
             Section::Addons => "addons",
             Section::Focus => "focus",
@@ -217,6 +221,7 @@ impl Section {
             Section::Island => Icon::AppWindow,
             Section::Music => Icon::Music,
             Section::Popups => Icon::Volume,
+            Section::Notifications => Icon::Bell,
             Section::Tabs => Icon::App,
             Section::Addons => Icon::Addons,
             Section::Focus => Icon::Timer,
@@ -235,6 +240,7 @@ impl Section {
             Section::Island => palette::BLUE,
             Section::Music => palette::PINK,
             Section::Popups => palette::CYAN,
+            Section::Notifications => palette::ORANGE,
             Section::Tabs => palette::GREEN,
             Section::Addons => Color::hex(0x0A84FF),
             Section::Focus => palette::ORANGE,
@@ -252,6 +258,7 @@ impl Section {
             Section::Focus => st.focus_on(),
             Section::Clipboard => st.clipboard_on(),
             Section::Notes => st.notes_on(),
+            Section::Notifications => st.notifications_on(),
             _ => true,
         }
     }
@@ -289,6 +296,14 @@ pub enum Key {
     ClipMax,
     ClipKeep,
     NotesKey,
+    NotifyAccess,
+    NotifyWho,
+    NotifyText,
+    NotifyEvery,
+    NotifyNew,
+    NotifyBanners,
+    /// An app in the list, by its place.
+    NotifyApp(u16),
     NotesGetKey,
     NotesModel,
     NotesLang,
@@ -592,6 +607,33 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             ]
         }
         Section::Addons => vec![Block::Addons],
+        Section::Notifications => {
+            let n = &s.notifications;
+            let (line, buttons) = crate::pages::notifications::access_look(st.notify_access);
+            let label = buttons.first().map_or("Windows settings", |b| b.0);
+            let mut shows = vec![
+                switch(Key::NotifyWho, "Who it's from", Some("Off: the app's name, and Show for the rest"), n.who),
+                switch(Key::NotifyText, "Message text", Some("Off: it waits for Show"), n.text),
+                switch(Key::NotifyEvery, "Every app", Some("Off: only the apps switched on below"), n.every_app),
+            ];
+            if !n.every_app {
+                shows.push(switch(Key::NotifyNew, "New apps start on", Some("An app's first notification switches it on"), n.new_apps_on));
+            }
+            shows.push(switch(Key::NotifyBanners, "Hide Windows' pop-ups", Some("For the apps that show on the island; back when Hihu quits"), n.hide_banners));
+            let mut out = vec![
+                Block::Group(Some("Windows"), vec![item(Key::NotifyAccess, "Reading notifications", Some(line), Ctl::Button(label))]),
+                Block::Group(Some("The island shows"), shows),
+            ];
+            if !n.every_app {
+                let apps: Vec<Item> = n.apps.iter().enumerate().map(|(i, a)| switch(Key::NotifyApp(i as u16), &a.name, None, a.on)).collect();
+                if apps.is_empty() {
+                    out.push(Block::Note("Apps show up here after their first notification."));
+                } else {
+                    out.push(Block::Group(Some("Apps"), apps));
+                }
+            }
+            out
+        }
         Section::Notes => {
             let key = match &st.ui.notes_key {
                 Some(end) => item(Key::NotesKey, "API key", Some(&format!("Saved on this PC, ending in {end}")), Ctl::Button("Remove")),
@@ -786,6 +828,24 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::LyricsSize => match act {
             Act::Pick(i) if i < LYRICS_SIZE.len() => s.lyrics_size = LYRICS_SIZE[i].0,
             _ => return,
+        },
+        Key::NotifyAccess => {
+            let (_, buttons) = crate::pages::notifications::access_look(st.notify_access);
+            let c = buttons.first().map_or(crate::commands::NotifyCmd::OpenWindowsSettings, |b| b.1);
+            if c == crate::commands::NotifyCmd::Ask {
+                st.notify_access = crate::state::NotifyAccess::Asking;
+            }
+            st.cmd(Command::Notify(c));
+            return;
+        }
+        Key::NotifyWho => s.notifications.who = !s.notifications.who,
+        Key::NotifyText => s.notifications.text = !s.notifications.text,
+        Key::NotifyEvery => s.notifications.every_app = !s.notifications.every_app,
+        Key::NotifyNew => s.notifications.new_apps_on = !s.notifications.new_apps_on,
+        Key::NotifyBanners => s.notifications.hide_banners = !s.notifications.hide_banners,
+        Key::NotifyApp(i) => match s.notifications.apps.get(i as usize).map(|a| (a.id.clone(), a.on)) {
+            Some((id, on)) => s.notifications.set(&id, !on),
+            None => return,
         },
         Key::NotesKey => {
             let c = if st.ui.notes_key.is_some() { crate::commands::NotesCmd::RemoveKey } else { crate::commands::NotesCmd::PasteKey };
@@ -1674,7 +1734,7 @@ fn page_addon(p: PageKind) -> Option<&'static poni_core::addons::Addon> {
 /// tab but Add-ons (always last), Notifications only where this copy can
 /// read them.
 pub fn tab_rows(st: &AppState) -> Vec<PageKind> {
-    crate::pages::ordered(st).into_iter().filter(|&p| p != PageKind::Addons && (p != PageKind::Notifications || st.notify_can)).collect()
+    crate::pages::ordered(st).into_iter().filter(|&p| p != PageKind::Addons).collect()
 }
 
 /// A tab's switch: its page shows (an add-on's: the add-on is on).
@@ -2071,6 +2131,7 @@ mod tests {
                     Key::Autostart => assert!(st.cmds.is_empty()),
                     Key::SettingsFile | Key::DataFolder | Key::ReleaseNotes | Key::LyricsCredit | Key::NotesGetKey | Key::NotesFolder => assert!(opens, "{:?}", it.key),
                     Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
+                    Key::NotifyAccess => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notify(_)))),
                     Key::AppleMusicToken | Key::AppleMusicHelp => assert!(st.cmds.iter().any(|c| matches!(c, Command::Menu(_)))),
                     _ => assert!(saved, "{:?} didn't save", it.key),
                 }
@@ -2163,9 +2224,11 @@ mod tests {
         let mut st = state();
         st.notify_can = true;
         let listed = tab_rows(&st);
-        for p in [PageKind::Media, PageKind::Today, PageKind::Shelf, PageKind::Tasks, PageKind::Focus, PageKind::Notifications, PageKind::Notes] {
+        for p in [PageKind::Media, PageKind::Today, PageKind::Shelf, PageKind::Tasks, PageKind::Focus, PageKind::Notes] {
             assert!(listed.contains(&p), "{p:?}");
         }
+        assert!(!listed.contains(&PageKind::Notifications), "set up in Settings > Notifications");
+        assert!(Section::Notifications.shown(&st));
         assert!(!listed.contains(&PageKind::Addons) && !listed.contains(&PageKind::Settings));
         assert!(blocks(Section::Tabs, &st).contains(&Block::TabOrder));
         // Moved down one, then dragged back to the top.
