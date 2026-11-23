@@ -157,12 +157,6 @@ impl PageKind {
         Self::ALL.iter().position(|p| *p == self).unwrap_or(0)
     }
 
-    /// Position in the tab row (for slide direction). Settings comes last:
-    /// its gear sits right of the tabs.
-    pub fn tab_index(self) -> usize {
-        self.index()
-    }
-
     /// Has a tab in the header's row (Settings has the gear instead).
     pub fn tabbed(self) -> bool {
         self != PageKind::Settings
@@ -203,8 +197,25 @@ pub fn first_tab(st: &AppState) -> PageKind {
     row(st, None)[0]
 }
 
+/// Every page with a tab, in the row's order: as arranged in Settings >
+/// Tabs (`tab_order`), pages it doesn't name after in their own order, and
+/// Add-ons always last. Whether each shows is [`tabs`]'s business.
+pub fn ordered(st: &AppState) -> Vec<PageKind> {
+    let order = &st.settings.tab_order;
+    let mut v: Vec<PageKind> = PageKind::ALL.into_iter().filter(|p| p.tabbed() && *p != PageKind::Addons).collect();
+    v.sort_by_key(|p| order.iter().position(|k| k == p.key()).unwrap_or(order.len() + p.index()));
+    v.push(PageKind::Addons);
+    v
+}
+
+/// Where `p` sits in the row's order (the slide's direction between pages);
+/// Settings comes last, its gear right of the tabs.
+pub fn tab_pos(st: &AppState, p: PageKind) -> usize {
+    ordered(st).iter().position(|q| *q == p).unwrap_or(PageKind::ALL.len())
+}
+
 fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
-    PageKind::ALL
+    ordered(st)
         .into_iter()
         .filter(|&p| match p {
             PageKind::Prayer => st.prayer_on(),
@@ -699,7 +710,6 @@ mod tests {
     #[test]
     fn settings_keeps_its_key_and_slides_in_from_the_right() {
         assert_eq!(PageKind::from_key("settings"), PageKind::Settings);
-        assert!(PageKind::ALL.iter().all(|p| p.tab_index() <= PageKind::Settings.tab_index()));
     }
 
     #[test]

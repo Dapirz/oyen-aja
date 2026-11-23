@@ -72,6 +72,11 @@ pub enum Icon {
     Bell,
     /// Another app's message in a notice: a speech bubble.
     Message,
+    /// Move up / down (Settings > Tabs' arrows).
+    ChevronUp,
+    ChevronDown,
+    /// A row's handle to drag it by: two columns of three dots.
+    Grip,
 }
 
 pub struct Part {
@@ -223,6 +228,16 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M8.5 14.5h7"),
             s("M8.5 17.5h4.5"),
         ],
+        ChevronUp => p![s("M6.5 14.5L12 9l5.5 5.5")],
+        ChevronDown => p![s("M6.5 9.5L12 15l5.5-5.5")],
+        Grip => p![
+            f("M7.6 7a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+            f("M13.6 7a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+            f("M7.6 12a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+            f("M13.6 12a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+            f("M7.6 17a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+            f("M13.6 17a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
+        ],
         Message => p![s("M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z")],
     }
 }
@@ -241,6 +256,7 @@ mod tests {
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
+        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip,
     ];
 
     #[test]

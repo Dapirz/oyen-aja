@@ -362,6 +362,8 @@ pub enum Block {
     Themes,
     /// The Add-ons page itself.
     Addons,
+    /// The tabs, to switch and to put in order (Settings > Tabs).
+    TabOrder,
     /// A dim line of text.
     Note(&'static str),
 }
@@ -558,11 +560,10 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             if !s.remember_page {
                 open.push(item(Key::StartPage, "Opens on", None, Ctl::Stepper(start_name.to_string())));
             }
-            let tabs = crate::pages::hideable_tabs(st).iter().map(|&p| item(Key::Tab(p), p.title(), None, Ctl::Switch(Some(!st.tab_hidden(p))))).collect();
             vec![
                 Block::Group(Some("When the island opens"), open),
-                Block::Group(Some("Tabs in the island"), tabs),
-                Block::Note("Tasks, Focus, Notifications and the other add-ons switch on and off in Add-ons, with their tabs."),
+                Block::TabOrder,
+                Block::Note("Drag a tab by its handle, or use the arrows. Add-ons stays last. An add-on's switch here is its switch in Add-ons."),
             ]
         }
         Section::Addons => vec![Block::Addons],
@@ -810,6 +811,16 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             let at = pages.iter().position(|p| p.key() == st.settings.start_page).unwrap_or(0) as i32;
             let next = (at + step).rem_euclid(pages.len() as i32) as usize;
             st.settings.start_page = pages[next].key().to_string();
+        }
+        Key::Tab(p) if page_addon(p).is_some() => {
+            let a = page_addon(p).unwrap();
+            let on = s.addon_on(a.id);
+            if !on && !a.pinned() {
+                // This build can't get its files: it stays off, and Add-ons says why.
+                st.addons.insert(a.id, poni_core::addons::Status::Unpinned);
+                return;
+            }
+            s.set_addon(a.id, !on);
         }
         Key::Tab(p) => {
             let hidden = &mut s.hidden_tabs;
@@ -1358,6 +1369,7 @@ fn block_h(st: &AppState, b: &Block) -> f32 {
         Block::Version => 72.0,
         Block::Themes => GROUP_TITLE_H + theme_cards_h(),
         Block::Addons => crate::pages::addons::height(st),
+        Block::TabOrder => tab_order_h(st),
         Block::Note(_) => 18.0,
     }
 }
@@ -1403,6 +1415,7 @@ fn draw_block(ui: &mut Ui, st: &mut AppState, b: &Block, bi: usize, at: Rect, vi
         Block::Version => draw_version(ui, st, r, view, sf),
         Block::Themes => draw_themes(ui, st, r, view, sf, m),
         Block::Addons => crate::pages::addons::draw(ui, st, r),
+        Block::TabOrder => draw_tab_order(ui, st, r, view, sf, m),
         Block::Note(t) => ui.c.text(t, Rect::new(r.x + 2.0, r.y, r.w, r.h), &TextStyle::footnote().color(palette::TEXT_FAINT)),
     }
     next
@@ -1593,6 +1606,221 @@ fn fill_row(ui: &mut Ui, row: Rect, c: Color, (first, last): (bool, bool)) {
     let bottom = if last { row.bottom() } else { row.bottom() + GROUP_R };
     ui.c.fill_rrect(Rect::new(row.x, top, row.w, bottom - top), GROUP_R, c);
     ui.c.unclip();
+}
+
+
+// ---------------------------------------------------------------- Tabs' order
+
+/// A tab row in Settings > Tabs.
+const TAB_ROW_H: f32 = ROW_H_SUB;
+const TAB_ARROW: f32 = 28.0;
+
+/// The add-on whose switch a page's tab follows (None: one of the island's
+/// own pages, which Settings hides or shows).
+fn page_addon(p: PageKind) -> Option<&'static poni_core::addons::Addon> {
+    use poni_core::addons as a;
+    Some(match p {
+        PageKind::Tasks => &a::TASKS,
+        PageKind::Focus => &a::FOCUS,
+        PageKind::Clipboard => &a::CLIPBOARD,
+        PageKind::Screentime => &a::SCREEN_TIME,
+        PageKind::Notes => &a::MEETING_NOTES,
+        PageKind::Script => &a::SCRIPT_READER,
+        PageKind::Prayer => &a::PRAYER_TIMES,
+        PageKind::Notifications => &a::NOTIFICATIONS,
+        _ => return None,
+    })
+}
+
+/// The tabs Settings > Tabs lists, in the row's order: every page with a
+/// tab but Add-ons (always last), Notifications only where this copy can
+/// read them.
+pub fn tab_rows(st: &AppState) -> Vec<PageKind> {
+    crate::pages::ordered(st).into_iter().filter(|&p| p != PageKind::Addons && (p != PageKind::Notifications || st.notify_can)).collect()
+}
+
+/// A tab's switch: its page shows (an add-on's: the add-on is on).
+fn tab_on(st: &AppState, p: PageKind) -> bool {
+    match page_addon(p) {
+        Some(a) => st.settings.addon_on(a.id),
+        None => !st.tab_hidden(p),
+    }
+}
+
+/// What a tab's line says under its name.
+fn tab_line(p: PageKind) -> &'static str {
+    match p {
+        PageKind::Media => "Now playing, with its lyrics",
+        PageKind::Today => "The date and this month's weeks",
+        PageKind::Shelf => "Files for a moment, and your phone",
+        p => page_addon(p).map_or("", |a| a.blurb),
+    }
+}
+
+/// Move the tab `from` (in `rows`, Settings' list) to where `to` is.
+pub fn move_tab(st: &mut AppState, rows: &[PageKind], from: usize, to: usize) {
+    if from == to || from >= rows.len() || to >= rows.len() {
+        return;
+    }
+    let (p, at) = (rows[from], rows[to]);
+    let mut all: Vec<PageKind> = crate::pages::ordered(st).into_iter().filter(|&q| q != PageKind::Addons && q != p).collect();
+    let i = all.iter().position(|&q| q == at).unwrap_or(all.len());
+    all.insert(if from < to { i + 1 } else { i }.min(all.len()), p);
+    st.settings.tab_order = all.iter().map(|q| q.key().to_string()).collect();
+    st.cmd(Command::SaveSettings);
+}
+
+fn tab_order_h(st: &AppState) -> f32 {
+    GROUP_TITLE_H + tab_rows(st).len() as f32 * TAB_ROW_H
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TabAct {
+    Toggle,
+    Up,
+    Down,
+}
+
+/// Where a row dragged `dy` from `i` would land, of `n`.
+fn drag_target(i: usize, dy: f32, n: usize) -> usize {
+    (i as i32 + (dy / TAB_ROW_H).round() as i32).clamp(0, n.saturating_sub(1) as i32) as usize
+}
+
+/// The tabs as rows: a handle to drag each by, its icon and name, up and
+/// down, and its switch. A row held by its handle follows the pointer and
+/// the others make room; letting go puts it there.
+fn draw_tab_order(ui: &mut Ui, st: &mut AppState, r: Rect, view: Rect, sf: &Surfaces, m: &mut Motion) {
+    let rows = tab_rows(st);
+    let n = rows.len();
+    ui.c.text("Tabs in the island", Rect::new(r.x + 2.0, r.y, r.w, GROUP_TITLE_H - 6.0), &TextStyle::footnote().weight(Weight::Semibold).color(palette::TEXT_DIM));
+    let card = Rect::new(r.x, r.y + GROUP_TITLE_H, r.w, n as f32 * TAB_ROW_H);
+    fill_group(ui, card, sf.group);
+    let grip_id = |p: PageKind| wid(&format!("settingswin.tabs.grip.{}", p.key()));
+    // A row held by its handle, and one let go.
+    let mut held: Option<(usize, f32)> = None;
+    let mut dropped: Option<(usize, usize)> = None;
+    for (i, &p) in rows.iter().enumerate() {
+        let gid = grip_id(p);
+        if ui.input.down && ui.input.pressed_id == Some(gid) {
+            if let (Some(a), Some(b)) = (ui.input.press_pos, ui.input.mouse) {
+                held = Some((i, b.y - a.y));
+            }
+        }
+        if let (Some((rid, at)), Some(a)) = (ui.input.released, ui.input.press_pos) {
+            if rid == gid {
+                dropped = Some((i, drag_target(i, at.y - a.y, n)));
+            }
+        }
+    }
+    let accent = st.accent;
+    let mut acts: Vec<(usize, TabAct)> = Vec::new();
+    for (i, &p) in rows.iter().enumerate() {
+        if held.map(|h| h.0) == Some(i) {
+            continue;
+        }
+        // Where it sits while another is dragged past it.
+        let slot = match held {
+            Some((d, dy)) => {
+                let t = drag_target(d, dy, n);
+                if d < i && i <= t {
+                    i - 1
+                } else if t <= i && i < d {
+                    i + 1
+                } else {
+                    i
+                }
+            }
+            None => i,
+        };
+        let row = Rect::new(card.x, card.y + slot as f32 * TAB_ROW_H, card.w, TAB_ROW_H);
+        if slot > 0 {
+            let px = 1.0 / ui.c.scale().max(0.5);
+            ui.c.fill_rect(Rect::new(row.x + ROW_PAD, row.y, row.w - ROW_PAD, px), RULE);
+        }
+        if let Some(a) = tab_row(ui, st, p, (i, n), row, view, accent, (slot == 0, slot + 1 == n), grip_id(p), m, held.is_some()) {
+            acts.push((i, a));
+        }
+    }
+    if let Some((d, dy)) = held {
+        // Lifted: it follows the pointer, kept within the card.
+        let y = (card.y + d as f32 * TAB_ROW_H + dy).clamp(card.y, card.bottom() - TAB_ROW_H);
+        let row = Rect::new(card.x, y, card.w, TAB_ROW_H);
+        ui.c.unthemed(|c| c.fill_rrect(row.inset(-2.0, 0.0), GROUP_R, sf.group_press));
+        tab_row(ui, st, rows[d], (d, n), row, view, accent, (true, true), grip_id(rows[d]), m, true);
+    }
+    for (i, a) in acts {
+        match a {
+            TabAct::Toggle => apply(st, Key::Tab(rows[i]), Act::Toggle),
+            TabAct::Up if i > 0 => move_tab(st, &rows, i, i - 1),
+            TabAct::Down if i + 1 < n => move_tab(st, &rows, i, i + 1),
+            _ => {}
+        }
+    }
+    if let Some((from, to)) = dropped {
+        move_tab(st, &rows, from, to);
+    }
+}
+
+/// One tab's row; what a click on it did. `(i, n)`: its place in the list.
+/// While a row is dragged (`dragging`), nothing but the handles reacts.
+#[allow(clippy::too_many_arguments)]
+fn tab_row(ui: &mut Ui, st: &AppState, p: PageKind, (i, n): (usize, usize), row: Rect, view: Rect, accent: Color, ends: (bool, bool), gid: u64, m: &mut Motion, dragging: bool) -> Option<TabAct> {
+    let on = tab_on(st, p);
+    let inner = row.inset(ROW_PAD, 0.0);
+    let cy = row.center().y;
+    let shown = visible(row, view);
+    let mut act = None;
+    // The whole row flips the switch; the handle and the arrows sit on top.
+    let rid = wid(&format!("settingswin.tabs.row.{}", p.key()));
+    let resp = match shown {
+        Some(hit) if !dragging => ui.button(rid, hit),
+        _ => Default::default(),
+    };
+    let to = if resp.pressed { 0.07 } else if resp.hovered { 0.04 } else { 0.0 };
+    let wash = m.fade(mkey(rid, K_WASH), to, WASH);
+    if wash != to {
+        m.cover(row);
+    }
+    if wash > 0.0 {
+        fill_row(ui, row, Color::white(wash), ends);
+    }
+    if resp.clicked {
+        act = Some(TabAct::Toggle);
+    }
+    let grip = Rect::new(inner.x - 4.0, cy - 14.0, 24.0, 28.0);
+    if let Some(hit) = visible(grip, view) {
+        ui.button(gid, hit);
+    }
+    ui.c.icon(Icon::Grip, Rect::from_center(grip.center(), 16.0, 16.0), palette::TEXT_FAINT);
+    let ink = if on { palette::TEXT } else { palette::TEXT_FAINT };
+    ui.c.icon(p.icon(), Rect::new(inner.x + 26.0, cy - 9.0, 18.0, 18.0), ink);
+    // The switch at the right end, up and down before it.
+    let sw = Rect::new(inner.right() - SWITCH_W, cy - SWITCH_H / 2.0, SWITCH_W, SWITCH_H);
+    let down = Rect::new(sw.x - 14.0 - TAB_ARROW, cy - TAB_ARROW / 2.0, TAB_ARROW, TAB_ARROW);
+    let up = Rect::new(down.x - 4.0 - TAB_ARROW, down.y, TAB_ARROW, TAB_ARROW);
+    for (r, icon, can, what, a) in [(up, Icon::ChevronUp, i > 0, "up", TabAct::Up), (down, Icon::ChevronDown, i + 1 < n, "down", TabAct::Down)] {
+        if can && !dragging {
+            if let Some(hit) = visible(r, view) {
+                let bid = wid(&format!("settingswin.tabs.{what}.{}", p.key()));
+                if ui.icon_button(bid, hit, icon, palette::TEXT_DIM, 16.0).clicked {
+                    act = Some(a);
+                }
+                continue;
+            }
+        }
+        ui.c.icon(icon, Rect::from_center(r.center(), 16.0, 16.0), palette::TEXT_DIM.with_alpha(if can { 0.62 } else { 0.18 }));
+    }
+    let k_to = if on { 1.0 } else { 0.0 };
+    let k = m.fade(mkey(rid, K_ON), k_to, SWITCHING);
+    if k != k_to {
+        m.cover(sw.inset(-1.0, -1.0));
+    }
+    draw_switch_at(ui.c, sw, k, accent);
+    let tx = inner.x + 56.0;
+    let tw = (up.x - 12.0 - tx).max(0.0);
+    ui.c.text(p.title(), Rect::new(tx, cy - 19.0, tw, 19.0), &TextStyle::body().color(ink));
+    ui.c.text(tab_line(p), Rect::new(tx, cy + 1.0, tw, 17.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+    act
 }
 
 /// The version card: the app's tile, its name and this version.
@@ -1869,6 +2097,11 @@ mod tests {
     #[test]
     fn tabs_flip_and_the_start_page_cycles_through_the_tabs() {
         let mut st = state();
+        // An add-on's tab follows its switch.
+        assert!(st.settings.addon_on("tasks"));
+        apply(&mut st, Key::Tab(PageKind::Tasks), Act::Toggle);
+        assert!(!st.settings.addon_on("tasks"));
+        apply(&mut st, Key::Tab(PageKind::Tasks), Act::Toggle);
         apply(&mut st, Key::Tab(PageKind::Shelf), Act::Toggle);
         assert!(st.tab_hidden(PageKind::Shelf));
         apply(&mut st, Key::Tab(PageKind::Shelf), Act::Toggle);
@@ -1890,12 +2123,25 @@ mod tests {
     fn tabs_lists_the_island_s_own_pages_and_add_ons_switch_in_add_ons() {
         let mut st = state();
         st.notify_can = true;
-        for p in [PageKind::Tasks, PageKind::Focus, PageKind::Notifications] {
-            assert!(row(Section::Tabs, &st, Key::Tab(p)).is_none(), "{p:?} switches in Add-ons");
+        let listed = tab_rows(&st);
+        for p in [PageKind::Media, PageKind::Today, PageKind::Shelf, PageKind::Tasks, PageKind::Focus, PageKind::Notifications, PageKind::Notes] {
+            assert!(listed.contains(&p), "{p:?}");
         }
-        for p in [PageKind::Media, PageKind::Today, PageKind::Shelf] {
-            assert!(row(Section::Tabs, &st, Key::Tab(p)).is_some(), "{p:?}");
-        }
+        assert!(!listed.contains(&PageKind::Addons) && !listed.contains(&PageKind::Settings));
+        assert!(blocks(Section::Tabs, &st).contains(&Block::TabOrder));
+        // Moved down one, then dragged back to the top.
+        assert_eq!(listed[..2], [PageKind::Media, PageKind::Today]);
+        move_tab(&mut st, &listed, 0, 1);
+        assert_eq!(tab_rows(&st)[..2], [PageKind::Today, PageKind::Media]);
+        let listed = tab_rows(&st);
+        move_tab(&mut st, &listed, 1, 0);
+        assert_eq!(tab_rows(&st)[..2], [PageKind::Media, PageKind::Today]);
+        let listed = tab_rows(&st);
+        move_tab(&mut st, &listed, 0, 3);
+        assert_eq!(tab_rows(&st)[3], PageKind::Media);
+        assert_eq!(*crate::pages::ordered(&st).last().unwrap(), PageKind::Addons, "Add-ons stays last");
+        assert_eq!(drag_target(2, -TAB_ROW_H * 1.6, 5), 0);
+        assert_eq!(drag_target(2, TAB_ROW_H * 9.0, 5), 4);
         assert!(st.notifications_on(), "on from the start in the Store copy");
         // Focus's section goes with its add-on.
         assert!(sections(&st).contains(&Section::Focus));

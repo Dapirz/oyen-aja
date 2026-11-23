@@ -159,6 +159,9 @@ pub struct Settings {
     /// while its key is here. Keys this version doesn't know are kept, so a
     /// newer Studio's choices survive a save.
     pub hidden_tabs: Vec<String>,
+    /// The tab row's order, as arranged in Settings > Tabs (page keys);
+    /// pages not in it follow in their own order. Empty: the app's order.
+    pub tab_order: Vec<String>,
     pub pomodoro: PomodoroConfig,
     /// Add-ons switched on, by id (`poni_core::addons`). Ids this version
     /// doesn't know are kept, so a newer Poni's choices survive a save.
@@ -278,6 +281,7 @@ impl Default for Settings {
             start_page: "media".into(),
             remember_page: true,
             hidden_tabs: Vec::new(),
+            tab_order: Vec::new(),
             pomodoro: PomodoroConfig::default(),
             addons: BTreeMap::new(),
             prayer: PrayerSettings::default(),

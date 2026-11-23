@@ -3251,7 +3251,7 @@ impl App {
             }
             if let (Mode::Expanded(a), Mode::Expanded(b)) = (self.mode, target) {
                 if a != b {
-                    let dir = if b.tab_index() > a.tab_index() { 1.0 } else { -1.0 };
+                    let dir = if pages::tab_pos(&self.st, b) > pages::tab_pos(&self.st, a) { 1.0 } else { -1.0 };
                     self.page_anim = Some((a, now, dir));
                 }
             }
