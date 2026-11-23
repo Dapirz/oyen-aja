@@ -34,7 +34,7 @@ const COL_GAP: f32 = 24.0;
 pub const MAX_ROWS: usize = 6;
 /// Rows the right column takes (who it's from, the message), and the note
 /// that stands in for an empty list.
-const MIN_ROWS: usize = 2;
+const MIN_ROWS: usize = 5;
 
 /// The island's notice for one notification (None: it has no words): who
 /// it's from and the message, or Show for what the person keeps hidden, as
@@ -73,7 +73,7 @@ fn access_look(access: NotifyAccess) -> (&'static str, Vec<Button>) {
         NotifyAccess::Asking => ("Answer Windows' question to go on.", vec![]),
         NotifyAccess::Unanswered => ("Windows got no answer. Ask again, or turn it on in Windows' settings.", vec![("Ask again", NotifyCmd::Ask, true), SETTINGS]),
         NotifyAccess::Denied => ("Turned off for Hihu Island in Windows' settings.", vec![SETTINGS]),
-        NotifyAccess::Allowed => ("On. New ones from the apps you pick show on the island.", vec![]),
+        NotifyAccess::Allowed => ("On. New ones show on the island.", vec![]),
         NotifyAccess::Failed => ("Windows didn't let the island listen. Switch it off and on in Settings.", vec![]),
     }
 }
@@ -114,8 +114,10 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     ui.c.text("APPS", Rect::new(cols[0], area.y + LABELS_Y, col_w, 14.0), &label_st);
     ui.c.text("THE ISLAND SHOWS", Rect::new(cols[1], area.y + LABELS_Y, col_w, 14.0), &label_st);
 
-    // The apps, in the order they first sent one.
+    // The apps, in the order they first sent one; with Every app, their
+    // switches rest (dimmed) until it's off.
     let row = |i: usize, col: usize| Rect::new(cols[col], area.y + ROWS_Y + i as f32 * ROW_H, col_w, ROW_H);
+    let every = st.settings.notifications.every_app;
     let apps: Vec<(String, String, bool)> =
         st.settings.notifications.apps.iter().take(MAX_ROWS).map(|a| (a.id.clone(), a.name.clone(), a.on)).collect();
     if apps.is_empty() {
@@ -124,7 +126,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         ui.c.text(note, r, &TextStyle::footnote().color(palette::TEXT_DIM).wrap().top());
     }
     for (i, (id, name, on)) in apps.iter().enumerate() {
-        if switch_row(ui, wid_n("notify.app", i as u64), row(i, 0), name, Some(*on), accent) {
+        let shown = if every { None } else { Some(*on) };
+        if switch_row(ui, wid_n("notify.app", i as u64), row(i, 0), name, shown, accent) && !every {
             st.settings.notifications.set(id, !on);
             st.cmd(Command::SaveSettings);
         }
@@ -141,10 +144,24 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         st.settings.notifications.text = !text;
         st.cmd(Command::SaveSettings);
     }
-    // Which apps join the list switched on.
-    let new_on = st.settings.notifications.new_apps_on;
-    if switch_row(ui, wid("notify.new"), row(2, 1), "New apps start on", Some(new_on), accent) {
-        st.settings.notifications.new_apps_on = !new_on;
+    // Every app, or the ones picked (and which join switched on).
+    if switch_row(ui, wid("notify.every"), row(2, 1), "Every app", Some(every), accent) {
+        st.settings.notifications.every_app = !every;
+        st.cmd(Command::SaveSettings);
+    }
+    let mut next = 3;
+    if !every {
+        let new_on = st.settings.notifications.new_apps_on;
+        if switch_row(ui, wid("notify.new"), row(next, 1), "New apps start on", Some(new_on), accent) {
+            st.settings.notifications.new_apps_on = !new_on;
+            st.cmd(Command::SaveSettings);
+        }
+        next += 1;
+    }
+    // Windows' own pop-ups, for the apps that show here.
+    let hide = st.settings.notifications.hide_banners;
+    if switch_row(ui, wid("notify.banners"), row(next, 1), "Hide Windows' pop-ups", Some(hide), accent) {
+        st.settings.notifications.hide_banners = !hide;
         st.cmd(Command::SaveSettings);
     }
 }

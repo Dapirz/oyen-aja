@@ -60,6 +60,11 @@ pub struct NotificationSettings {
     /// An app the island hasn't seen joins the list switched on (off: only
     /// the chat apps do, [`starts_on`]).
     pub new_apps_on: bool,
+    /// Every app's notifications show, whatever its switch in the list.
+    pub every_app: bool,
+    /// Windows' own pop-ups are hidden for the apps the island shows (their
+    /// notifications still go to Windows' notification centre).
+    pub hide_banners: bool,
     /// The apps that sent a notification since Notifications came on, in the
     /// order they first did.
     pub apps: Vec<AppChoice>,
@@ -67,11 +72,22 @@ pub struct NotificationSettings {
 
 impl Default for NotificationSettings {
     fn default() -> Self {
-        Self { who: true, text: true, new_apps_on: false, apps: Vec::new() }
+        Self { who: true, text: true, new_apps_on: false, every_app: true, hide_banners: true, apps: Vec::new() }
     }
 }
 
 impl NotificationSettings {
+    /// Whether the island shows `app_id`'s notifications now (its switch,
+    /// or every app's).
+    pub fn shows(&self, app_id: &str) -> bool {
+        self.every_app || self.apps.iter().any(|a| a.id == app_id && a.on)
+    }
+
+    /// The apps the island shows, of those it knows.
+    pub fn shown(&self) -> impl Iterator<Item = &str> {
+        self.apps.iter().filter(|a| self.every_app || a.on).map(|a| a.id.as_str())
+    }
+
     /// Whether the island shows `app_id`'s notifications. An app it hasn't
     /// seen joins the list (on for the chat apps, and for every app with
     /// [`Self::new_apps_on`]; off for the rest); one it has keeps its switch
@@ -119,6 +135,15 @@ fn chat(app_id: &str, app: &str) -> Option<Color> {
 }
 
 /// On the list from its first notification: WhatsApp, Telegram, Phone Link.
+/// Windows' pop-ups to hide and to give back: `want` are the apps whose
+/// pop-ups should be hidden now, `was` the ones hidden already (with what
+/// they had before). Returns (to hide, to give back).
+pub fn banner_plan(was: &std::collections::BTreeMap<String, Option<u32>>, want: &std::collections::BTreeSet<String>) -> (Vec<String>, Vec<String>) {
+    let hide = want.iter().filter(|id| !was.contains_key(*id)).cloned().collect();
+    let back = was.keys().filter(|id| !want.contains(*id)).cloned().collect();
+    (hide, back)
+}
+
 pub fn starts_on(app_id: &str, app: &str) -> bool {
     chat(app_id, app).is_some()
 }
@@ -256,6 +281,25 @@ mod tests {
         assert_eq!(s.apps.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [WA, OUTLOOK], "in the order they came");
         s.remember("No.Name", " ");
         assert_eq!(s.apps[2].name, "No.Name", "an app without a name shows its id");
+    }
+
+    #[test]
+    fn every_app_shows_and_windows_pop_ups_follow_what_shows() {
+        let mut n = NotificationSettings { every_app: false, ..Default::default() };
+        n.remember("A", "A");
+        n.remember("5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App", "WhatsApp");
+        assert!(!n.shows("A") && n.shows("5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"));
+        assert_eq!(n.shown().collect::<Vec<_>>(), ["5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App"]);
+        n.every_app = true;
+        assert!(n.shows("A") && n.shows("never seen"));
+        assert_eq!(n.shown().count(), 2);
+        // Old files: every app, and Windows' pop-ups hidden.
+        let old: NotificationSettings = serde_json::from_str(r#"{"who":true,"apps":[]}"#).unwrap();
+        assert!(old.every_app && old.hide_banners);
+        let was: std::collections::BTreeMap<String, Option<u32>> = [("A".to_string(), None), ("B".to_string(), Some(1))].into();
+        let want: std::collections::BTreeSet<String> = ["B".to_string(), "C".to_string()].into();
+        assert_eq!(banner_plan(&was, &want), (vec!["C".to_string()], vec!["A".to_string()]));
+        assert_eq!(banner_plan(&was, &Default::default()).1, ["A", "B"]);
     }
 
     #[test]

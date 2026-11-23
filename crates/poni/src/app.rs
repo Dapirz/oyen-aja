@@ -470,6 +470,8 @@ pub struct App {
     /// Notifications' listener while it is on; None while it's
     /// off, in the download (no package identity) and in the self-test.
     notify: Option<services::notifications::Listener>,
+    /// Windows' own pop-ups hidden for the apps the island shows.
+    banners: services::banners::Banners,
 }
 
 /// The island window: position and size in screen pixels.
@@ -653,6 +655,7 @@ impl App {
             laid_spot: None,
             grab: None,
             notify: None,
+            banners: services::banners::Banners::load(),
         })
     }
 
@@ -711,6 +714,8 @@ impl App {
 
     fn shutdown(&mut self) -> i32 {
         self.save_now();
+        // With Hihu closed, Windows shows its own pop-ups again.
+        self.banners.set(&Default::default());
         self.screen_close(self.st.unix);
         self.save_screentime(false);
         self.settings_win = None;
@@ -1878,6 +1883,13 @@ impl App {
             } else {
                 self.stop_notify();
             }
+        }
+        // Which apps show (Every app, a switch), or Hide Windows' pop-ups.
+        if before.notifications.every_app != self.st.settings.notifications.every_app
+            || before.notifications.hide_banners != self.st.settings.notifications.hide_banners
+            || before.notifications.apps != self.st.settings.notifications.apps
+        {
+            self.sync_banners();
         }
         // The display the island hangs on, or its width when open (the
         // Settings window has both).
@@ -3999,10 +4011,24 @@ impl App {
         }
     }
 
-    /// Off: stop listening (dropping the listener stops it).
+    /// Off: stop listening (dropping the listener stops it), and Windows'
+    /// pop-ups come back.
     fn stop_notify(&mut self) {
         self.notify = None;
         self.st.notify_access = NotifyAccess::Unknown;
+        self.sync_banners();
+    }
+
+    /// Windows' pop-ups hidden for exactly the apps the island shows, while
+    /// it can read them and Hide Windows' pop-ups is on; back for the rest.
+    fn sync_banners(&mut self) {
+        let n = &self.st.settings.notifications;
+        let want: std::collections::BTreeSet<String> = if self.st.notifications_on() && n.hide_banners && self.st.notify_access == NotifyAccess::Allowed && self.selftest.is_none() {
+            n.shown().map(str::to_string).collect()
+        } else {
+            Default::default()
+        };
+        self.banners.set(&want);
     }
 
     fn notify_cmd(&mut self, c: NotifyCmd) {
@@ -4031,6 +4057,7 @@ impl App {
                 if let Some(l) = self.notify.as_mut() {
                     l.follow(a);
                 }
+                self.sync_banners();
             }
             NotifyEvent::Apps(apps) => {
                 let mut changed = false;
@@ -4040,6 +4067,7 @@ impl App {
                 if changed {
                     self.st.cmd(Command::SaveSettings);
                 }
+                self.sync_banners();
             }
             NotifyEvent::Photo(id, img) => {
                 if id == self.st.notice_card_id {
@@ -4052,9 +4080,12 @@ impl App {
                 self.request_frame();
             }
             NotifyEvent::Seen(seen) => {
-                let (shows, changed) = self.st.settings.notifications.remember(&seen.app_id, &seen.app);
+                let (_, changed) = self.st.settings.notifications.remember(&seen.app_id, &seen.app);
+                let shows = self.st.settings.notifications.shows(&seen.app_id);
                 if changed {
                     self.st.cmd(Command::SaveSettings);
+                    // A new app: its next pop-ups are the island's.
+                    self.sync_banners();
                 }
                 // Nobody would see it: Windows keeps it in its own list.
                 if !shows || self.locked || self.display_off {

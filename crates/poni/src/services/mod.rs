@@ -6,6 +6,7 @@ pub mod adzan;
 pub mod applemusic;
 pub mod applemusic_ui;
 pub mod audio;
+pub mod banners;
 pub mod backdrop;
 pub mod bluetooth;
 pub mod clipboard;
