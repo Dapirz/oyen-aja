@@ -35,7 +35,9 @@ Dipertahankan:
 - Tasks, Focus, Script, Bacaan Jepang: tetap ada, bisa dimatikan lewat toggle. Semua toggle fitur dikumpulkan di satu tempat (halaman Add-ons), dan fitur yang mati tidak jalan sama sekali (hemat memori).
 - Waktu sholat: lokasi otomatis dan pilih manual.
 - Downloader (yt-dlp): add-on, tidak perlu Pro lagi. Nyala setelah diaktifkan di Add-ons dan tools-nya terunduh.
-- Tema: tidak diganti (keputusan 22 Nov 2026). Classic, Glass, Pill, Diorama. Tema Oyen sudah dihapus.
+- Tema: Classic, Smoke (hitam semi transparan, island musik dua baris: cover, jam, equalizer; lirik; progress bar), Glass, Pill, Diorama. Tema Oyen sudah dihapus.
+- Island: Position dan Lock position, Make way for the pointer (menyingkir saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
+- Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke).
 - Notifications: dipertahankan, cari cara supaya jalan di build non-Store (sekarang hanya jalan di copy versi Store).
 
 Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 1790ee2..ba747ac`):
@@ -57,7 +59,6 @@ Nanti (belum dikerjakan):
 - RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
 - Clipboard history: jumlah item dan lama simpan bisa diatur.
 - Screentime.
-- Island menyingkir saat didekati mouse (supaya tab browser tidak tertutup), dan baru terbuka kalau mouse didorong mentok ke tepi atas layar. Seperti di Poni.
 - Downloads: Downloader sudah ada (lihat di atas). Tinggal dicoba dan dirapikan.
 - Meeting notes versi sendiri.
 
