@@ -57,6 +57,17 @@ const TIMER_MINUTE: usize = 6;
 pub const TIMER_SELFTEST: usize = 7;
 const TIMER_TRAY: usize = 8;
 const TIMER_RAISE: usize = 9;
+/// Make way: while the island is out of the pointer's way, how often to
+/// look whether the pointer left (the window no longer takes the mouse
+/// there, so no message says so). Runs only while it makes way.
+const TIMER_MAKE_WAY: usize = 10;
+const MAKE_WAY_POLL_MS: u32 = 100;
+/// Make way: the pointer this close to the top edge (DIPs, the strip the
+/// island steps aside to) opens the island as usual instead.
+const MAKE_WAY_EDGE: f32 = 5.0;
+/// Make way: the island comes back once the pointer is this far (DIPs)
+/// beyond where it rests.
+const MAKE_WAY_MARGIN: f32 = 12.0;
 /// Alt+Shift+S pauses and resumes the Script page's reading from any app.
 const HOTKEY_SCRIPT: i32 = 2;
 /// Raises that follow a new foreground window, and their spacing.
@@ -365,6 +376,9 @@ pub struct App {
     /// Step aside: the app windows at the top edge of the island's monitor
     /// (screen pixels, cut to the band along it), as last reported.
     top_windows: Vec<[i32; 4]>,
+    /// Make way for the pointer: the island stepped aside because the
+    /// pointer came onto it (`Settings::make_way`), until it leaves.
+    making_way: bool,
     /// Follow-up raises still due (TIMER_RAISE).
     raises_left: u8,
     /// Window classes already logged for covering the island (once each).
@@ -570,6 +584,7 @@ impl App {
             fullscreen_hidden: false,
             fullscreen_on: false,
             top_windows: Vec::new(),
+            making_way: false,
             raises_left: 0,
             covered_by: HashSet::new(),
             shown: false,
@@ -980,6 +995,10 @@ impl App {
                         self.pointer_left();
                         self.request_frame();
                     }
+                    return Some(LRESULT(0));
+                }
+                if !self.hovering && self.should_make_way(p) {
+                    self.start_making_way();
                     return Some(LRESULT(0));
                 }
                 self.input.mouse = Some(p);
@@ -1569,6 +1588,13 @@ impl App {
                     self.expand();
                 }
             }
+            TIMER_MAKE_WAY => {
+                // Back once the pointer left, the island opened (pushed up to
+                // the top edge), or the setting went off.
+                if !self.making_way || self.expanded || !self.st.settings.make_way || !self.pointer_near_rest() {
+                    self.stop_making_way();
+                }
+            }
             TIMER_RAISE => {
                 self.raises_left = self.raises_left.saturating_sub(1);
                 if self.shown && !self.fullscreen_hidden {
@@ -2093,6 +2119,49 @@ impl App {
         self.request_frame();
     }
 
+    /// Make way: the pointer came onto the closed island at `p` (window
+    /// DIPs), not pushed up to the top edge.
+    fn should_make_way(&self, p: Point) -> bool {
+        self.st.settings.make_way
+            && !self.expanded
+            && !self.st.pinned
+            && !self.input.down
+            && self.grab.is_none()
+            && !self.drag_hover
+            && !self.rests_hidden()
+            && matches!(self.mode, Mode::Idle | Mode::Activity(_))
+            && p.y > MAKE_WAY_EDGE
+    }
+
+    /// Step aside out of the pointer's way, and watch for it leaving.
+    fn start_making_way(&mut self) {
+        self.making_way = true;
+        self.cancel_hover();
+        unsafe {
+            SetTimer(self.hwnd, TIMER_MAKE_WAY, MAKE_WAY_POLL_MS, None);
+        }
+        self.request_frame();
+    }
+
+    fn stop_making_way(&mut self) {
+        self.making_way = false;
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_MAKE_WAY);
+        }
+        self.request_frame();
+    }
+
+    /// Make way: the pointer is still over (or near) where the island rests.
+    fn pointer_near_rest(&self) -> bool {
+        let mut pt = POINT::default();
+        if unsafe { GetCursorPos(&mut pt) }.is_err() {
+            return false;
+        }
+        let r = self.rest_rect();
+        let m = (MAKE_WAY_MARGIN * self.gfx.scale()).round() as i32;
+        pt.x >= r.left - m && pt.x < r.right + m && pt.y >= r.top && pt.y < r.bottom + m
+    }
+
     /// (Re)start the hover dwell from `p`.
     fn arm_hover(&mut self, p: Point) {
         self.hover_arm = Some(p);
@@ -2433,11 +2502,15 @@ impl App {
     fn sync_aside(&mut self) {
         let r = self.rest_rect();
         let under = self.top_windows.iter().any(|t| t[0] < r.right && t[2] > r.left && t[1] < r.bottom && t[3] > r.top);
-        let aside = self.st.settings.step_aside && !self.fullscreen_on && under;
+        let step = self.st.settings.step_aside && !self.fullscreen_on && under;
+        let aside = step || self.making_way;
         if aside != self.st.aside {
             self.st.aside = aside;
-            let why = if aside { "a window is under the island; it rests out of the way" } else { "nothing under the island; it rests as before" };
-            self.log_queue.push(format!("step aside: {why}"));
+            // (Making way comes and goes with the pointer: not worth a log line each time.)
+            if step || !self.making_way {
+                let why = if aside { "a window is under the island; it rests out of the way" } else { "nothing under the island; it rests as before" };
+                self.log_queue.push(format!("step aside: {why}"));
+            }
         }
     }
 

@@ -95,6 +95,11 @@ pub struct Settings {
     /// stays where it is (a game's clicks near the top edge moved it). The
     /// Position row in Settings still moves it.
     pub lock_position: bool,
+    /// Make way for the pointer: the closed island steps aside (flat into
+    /// the top edge, see-through to clicks) when the pointer comes onto it,
+    /// so a browser's tabs under it can be clicked, and opens only when the
+    /// pointer is pushed up to the top edge. Back once the pointer leaves.
+    pub make_way: bool,
     pub show_media_activity: bool,
     /// Frames a second for the closed island while music plays (the
     /// equalizer, the sung line): 0 = every refresh of the display, else the
@@ -220,6 +225,7 @@ impl Default for Settings {
             monitor: MonitorChoice::Primary,
             island_x: None,
             lock_position: false,
+            make_way: false,
             show_media_activity: true,
             music_fps: 60,
             music_progress: true,

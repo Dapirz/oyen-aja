@@ -264,7 +264,12 @@ pub fn geom(m: &Mode, st: &AppState) -> Geom {
             let h = pages::HEADER_H + pages::content_height(*p, st) + pages::PAD;
             Geom::new(st.settings.expanded_width, h.round(), 30.0)
         }
-        Mode::Aside => hidden_strip(),
+        // The strip the island steps aside to: as wide as where it rests,
+        // so pushing up anywhere over it opens it.
+        Mode::Aside => {
+            let rest = geom(&resting_mode(st), st);
+            Geom::new(rest.w.max(hidden_strip().w), hidden_strip().h, hidden_strip().r)
+        }
     }
 }
 

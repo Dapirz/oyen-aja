@@ -257,6 +257,7 @@ pub enum Key {
     Clock24,
     IdleLook,
     HoverDelay,
+    MakeWay,
     CloseDelay,
     Width,
     Display,
@@ -461,6 +462,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     Some("Opening and closing"),
                     vec![
                         item(Key::HoverDelay, "Opens after", Some("How long the pointer rests on the island first"), Ctl::Choice(names(&HOVER), nearest(&HOVER, s.hover_delay_ms))),
+                        switch(Key::MakeWay, "Make way for the pointer", Some("Steps aside when the pointer comes; push to the top to open"), s.make_way),
                         item(Key::CloseDelay, "Closes", Some("Once the pointer leaves the open island"), Ctl::Choice(names(&CLOSE), nearest(&CLOSE, s.collapse_delay_ms))),
                         item(Key::Width, "Width when open", Some("Wider gives the pages more room"), Ctl::Stepper(format!("{:.0}", s.expanded_width))),
                     ],
@@ -628,6 +630,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
                 _ => return,
             }
         }
+        Key::MakeWay => s.make_way = !s.make_way,
         Key::HoverDelay => match act {
             Act::Pick(i) if i < HOVER.len() => s.hover_delay_ms = HOVER[i].0,
             _ => return,
