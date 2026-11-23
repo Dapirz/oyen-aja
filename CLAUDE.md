@@ -32,9 +32,8 @@ Dipertahankan:
 - Music: SMTC, lirik sinkron (LRCLIB), bacaan latin, lirik Apple Music.
 - Today: kalender saja. Hari, tanggal, tahun, nomor minggu, dan lima minggu mulai Senin ini. Tidak membaca apa pun dan hanya bangun saat tengah malam. Tile CPU/RAM/disk sudah dihapus.
 - Shelf + Phone drop + pairing HP.
-- Tasks, Focus, Notifications, Script, Bacaan Jepang, Waktu sholat, Downloader: semua toggle ada di halaman Add-ons (selesai 23 Nov 2026). Tasks, Focus, Notifications add-on bawaan yang nyala sejak awal; yang mati tidak jalan (tab, section Settings, timer Focus, listener Notifications). Settings → Tabs tinggal Music, Today, Shelf.
+- Tasks, Focus, Notifications, Clipboard, Script, Bacaan Jepang, Waktu sholat: semua toggle ada di halaman Add-ons (selesai 23 Nov 2026). Tasks, Focus, Notifications add-on bawaan yang nyala sejak awal; yang mati tidak jalan (tab, section Settings, timer Focus, listener Notifications). Settings → Tabs tinggal Music, Today, Shelf.
 - Waktu sholat: lokasi otomatis dan pilih manual.
-- Downloader (yt-dlp): add-on, tidak perlu Pro lagi. Nyala setelah diaktifkan di Add-ons dan tools-nya terunduh.
 - Tema: Classic, Smoke (hitam semi transparan, island musik dua baris: cover, jam, equalizer; lirik; progress bar), Glass, Pill, Diorama. Tema Oyen sudah dihapus.
 - Island: Position dan Lock position, Size when closed (90/100/115 %), Transparency Smoke (40/55/75 %), Make way for the pointer (menyusut jadi garis tipis di tepi atas saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
 - Clipboard history (add-on, mati sejak awal; selesai 23 Nov 2026): pengawas `WM_CLIPBOARDUPDATE` di thread sendiri yang hanya jalan saat nyala, menghormati format "jangan rekam" password manager; Settings → Clipboard: 10/25/50/100 item, 1 jam/1 hari/7 hari/Forever; disimpan terenkripsi DPAPI di `%LOCALAPPDATA%\Hihu\clipboard.bin`, dihapus saat add-on dimatikan. Kode dasarnya dari Oyenza sebelum `a30fcc4`.
@@ -47,6 +46,7 @@ Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 17
 - Show over games, beserta pembaca CPU/GPU (`sysmon`, `psu`) dan penghitung frame.
 - Tab Oyenza, login dan sign-in, notifikasi uang dan tagihan, Studio Pro (`Addon::pro`), dan bagian Today yang butuh login.
 - Updater ke studio.oyenza.com. Update Hihu cukup dengan build ulang.
+- Downloader (yt-dlp) beserta halaman Downloads dan pill download (dihapus 23 Nov 2026; user sudah punya app downloader sendiri). Tool lama di `%LOCALAPPDATA%\Hihu\addons\downloader` dihapus sekali saat start.
 - Ukuran poni.exe: 9,55 MB (sebelum Stocks) → 6,61 MB.
 - Kalau butuh kode yang sudah dihapus (misalnya perekaman Meeting notes untuk versi sendiri), ambil dari commit sebelum penghapusannya, contoh `git show 0800e50:crates/poni/src/services/notes.rs`.
 
@@ -60,7 +60,6 @@ Nanti (belum dikerjakan):
 - Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
 - RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
 - Screentime.
-- Downloads: Downloader sudah ada (lihat di atas). Tinggal dicoba dan dirapikan.
 - Meeting notes versi sendiri.
 - Foto profil pengirim di kartu notifikasi: baca `wpndatabase.db` dan folder `wpnidm` seperti Poni (Poni portable memakai SQLite, tanpa API resmi). Exe sekitar +1 MB.
 - Ganti `poni.exe` jadi `hihu.exe` (`[[bin]] name` di `crates/poni/Cargo.toml`; perbaiki Run value autostart, `<msix>` Executable di `installer\identity`, skrip yang menyebut `poni.exe`).
