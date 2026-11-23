@@ -34,6 +34,9 @@ pub enum HudTag {
     Charging,
     Bluetooth,
     LowBattery,
+    Lock,
+    Language,
+    Brightness,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,6 +111,9 @@ fn hud_tag(k: &HudKind) -> HudTag {
         HudKind::Charging { .. } => HudTag::Charging,
         HudKind::Bluetooth { .. } => HudTag::Bluetooth,
         HudKind::LowBattery { .. } => HudTag::LowBattery,
+        HudKind::Lock { .. } => HudTag::Lock,
+        HudKind::Language { .. } => HudTag::Language,
+        HudKind::Brightness { .. } => HudTag::Brightness,
     }
 }
 
@@ -283,6 +289,9 @@ fn base_geom(m: &Mode, st: &AppState) -> Geom {
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
         Mode::Hud(HudTag::Bluetooth) => Geom::new(336.0, 46.0, 22.0),
+        Mode::Hud(HudTag::Lock) => Geom::new(240.0, 40.0, 19.0),
+        Mode::Hud(HudTag::Language) => Geom::new(300.0, 40.0, 19.0),
+        Mode::Hud(HudTag::Brightness) => Geom::new(316.0, 40.0, 19.0),
         Mode::Notice if notice_card(st) => card_geom(st),
         Mode::Notice => Geom::new(372.0, 52.0, 24.0),
         Mode::Expanded(p) => {
@@ -667,6 +676,38 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             }
             let pct = if muted { "Muted".to_string() } else { format!("{}%", (level * 100.0).round() as i32) };
             ui.c.text(&pct, Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.tabular().right());
+        }
+        HudKind::Lock { key, on } => {
+            ui.c.icon(Icon::Keyboard, icon_r, palette::TEXT);
+            ui.c.text(key, Rect::new(body.x + 46.0, body.y, 140.0, body.h), &label_st);
+            let (word, color) = if on { ("On", st.accent) } else { ("Off", palette::TEXT_DIM) };
+            ui.c.text(word, Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.color(color).right());
+        }
+        HudKind::Language { name } => {
+            ui.c.icon(Icon::Keyboard, icon_r, palette::TEXT);
+            ui.c.text(&name, Rect::new(body.x + 46.0, body.y, body.w - 46.0 - HUD_PAD, body.h), &label_st);
+        }
+        HudKind::Brightness { percent } => {
+            ui.c.icon(Icon::Sun, icon_r, palette::TEXT);
+            let bar = Rect::new(body.x + 48.0, cy - 3.0, body.w - 48.0 - 62.0, 6.0);
+            let target = percent as f32 / 100.0;
+            let cur = st.ui.hud_level;
+            let shown = if (cur - target).abs() > 0.002 {
+                ui.request_anim();
+                cur + (target - cur) * 0.32
+            } else {
+                target
+            };
+            st.ui.hud_level = shown;
+            ui.c.fill_rrect(bar, 3.0, palette::TRACK);
+            if shown > 0.0 {
+                let fill = match ui.c.look().accent {
+                    Some(a) => a,
+                    None => Color::white(0.95),
+                };
+                ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * shown).max(6.0), bar.h), 3.0, fill);
+            }
+            ui.c.text(&format!("{percent}%"), Rect::new(body.right() - HUD_PAD - 48.0, body.y, 48.0, body.h), &label_st.tabular().right());
         }
         HudKind::Charging { percent, plugged } => {
             let (icon, color, label) = if plugged { (Icon::Bolt, palette::GREEN, "Charging") } else { (Icon::Battery, palette::TEXT, "On battery") };

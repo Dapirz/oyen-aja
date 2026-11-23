@@ -74,6 +74,10 @@ pub enum Icon {
     /// Move up / down (Settings > Tabs' arrows).
     ChevronUp,
     ChevronDown,
+    /// The keyboard pop-ups (a lock key, the language).
+    Keyboard,
+    /// The brightness pop-up.
+    Sun,
     /// A row's handle to drag it by: two columns of three dots.
     Grip,
 }
@@ -223,6 +227,27 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M8.5 17.5h4.5"),
         ],
         ChevronUp => p![s("M6.5 14.5L12 9l5.5 5.5")],
+        Keyboard => p![
+            s("M4.5 6.5h15A1.5 1.5 0 0 1 21 8v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8a1.5 1.5 0 0 1 1.5-1.5z"),
+            s("M6.5 10h1"),
+            s("M10 10h1"),
+            s("M13.5 10h1"),
+            s("M17 10h.5"),
+            s("M6.5 13.5h1"),
+            s("M16.5 13.5h1"),
+            s("M10 14h4"),
+        ],
+        Sun => p![
+            s("M8.5 12a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0"),
+            s("M12 3.5v1.5"),
+            s("M12 19v1.5"),
+            s("M3.5 12h1.5"),
+            s("M19 12h1.5"),
+            s("M6 6l1.1 1.1"),
+            s("M16.9 16.9L18 18"),
+            s("M6 18l1.1-1.1"),
+            s("M16.9 7.1L18 6"),
+        ],
         ChevronDown => p![s("M6.5 9.5L12 15l5.5-5.5")],
         Grip => p![
             f("M7.6 7a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
@@ -250,7 +275,7 @@ mod tests {
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
-        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip,
+        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip, Icon::Keyboard, Icon::Sun,
     ];
 
     #[test]

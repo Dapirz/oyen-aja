@@ -66,6 +66,10 @@ const MAKE_WAY_POLL_MS: u32 = 100;
 /// a cut so the page and the file keep up. Only while it's on and someone
 /// is there (not locked, screen on).
 const TIMER_SCREEN: usize = 11;
+/// A moment after a key that switches the keyboard's language: Windows has
+/// switched it by then, and the pop-up says which. One-shot.
+const TIMER_LANGUAGE: usize = 12;
+const LANGUAGE_WAIT_MS: u32 = 250;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -472,6 +476,10 @@ pub struct App {
     notify: Option<services::notifications::Listener>,
     /// Windows' own pop-ups hidden for the apps the island shows.
     banners: services::banners::Banners,
+    /// The keyboard layout last shown (or found), and the screen's
+    /// brightness Windows last reported: a pop-up only for a change.
+    keyboard_layout: Option<isize>,
+    brightness: Option<u8>,
 }
 
 /// The island window: position and size in screen pixels.
@@ -656,6 +664,8 @@ impl App {
             grab: None,
             notify: None,
             banners: services::banners::Banners::load(),
+            keyboard_layout: None,
+            brightness: None,
         })
     }
 
@@ -664,6 +674,10 @@ impl App {
         let fake = self.selftest.is_some();
         self.st.power = services::power::query();
         services::power::register(self.helper);
+        if !fake {
+            services::power::register_brightness(self.helper);
+            self.sync_keys();
+        }
         if !fake {
             self.services = Some(Services::start(&self.sink, self.hwnd, self.helper, &self.st.settings));
             self.sync_top_watch();
@@ -716,6 +730,7 @@ impl App {
         self.save_now();
         // With Hihu closed, Windows shows its own pop-ups again.
         self.banners.set(&Default::default());
+        services::keys::set(self.helper, false, false, false);
         self.screen_close(self.st.unix);
         self.save_screentime(false);
         self.settings_win = None;
@@ -1338,6 +1353,10 @@ impl App {
             return Some(LRESULT(0));
         }
         match msg {
+            services::keys::WM_APP_KEY => {
+                self.on_key(wp.0, lp.0 != 0);
+                return Some(LRESULT(0));
+            }
             WM_APP_TRAY => {
                 let ev = (lp.0 & 0xffff) as u32;
                 match ev {
@@ -1369,6 +1388,14 @@ impl App {
                 Some(LRESULT(0))
             }
             WM_POWERBROADCAST => {
+                if let Some(pct) = services::power::brightness_change(wp, lp) {
+                    let was = self.brightness.replace(pct);
+                    if was.is_some_and(|w| w != pct) && self.st.settings.hud_brightness {
+                        self.st.show_hud(HudKind::Brightness { percent: pct }, 1.6);
+                        self.request_frame();
+                    }
+                    return Some(LRESULT(1));
+                }
                 if let Some(on) = services::power::display_state_change(wp, lp) {
                     self.display_off = !on;
                     self.screen_presence();
@@ -1647,6 +1674,17 @@ impl App {
                 }
             }
             TIMER_SCREEN => self.screen_check(),
+            TIMER_LANGUAGE => {
+                unsafe {
+                    let _ = KillTimer(self.helper, TIMER_LANGUAGE);
+                }
+                if let Some((hkl, name)) = services::keys::language() {
+                    if self.keyboard_layout.replace(hkl).is_some_and(|was| was != hkl) && self.st.settings.hud_language {
+                        self.st.show_hud(HudKind::Language { name }, 1.6);
+                        self.request_frame();
+                    }
+                }
+            }
             TIMER_MAKE_WAY => {
                 // Back once the pointer left, the island opened (pushed up to
                 // the top edge), or the setting went off.
@@ -1883,6 +1921,11 @@ impl App {
             } else {
                 self.stop_notify();
             }
+        }
+        // The keys the pop-ups answer.
+        let s = &self.st.settings;
+        if (before.hud_volume_keys, before.hud_locks, before.hud_language) != (s.hud_volume_keys, s.hud_locks, s.hud_language) && self.selftest.is_none() {
+            self.sync_keys();
         }
         // Which apps show (Every app, a switch), or Hide Windows' pop-ups.
         if before.notifications.every_app != self.st.settings.notifications.every_app
@@ -2341,6 +2384,8 @@ impl App {
         let hide = self.fullscreen_hides();
         if hide != self.fullscreen_hidden {
             self.fullscreen_hidden = hide;
+            // Hidden: the volume keys go to Windows, whose flyout shows.
+            services::keys::set_passing(hide);
             unsafe {
                 let _ = ShowWindow(self.hwnd, if hide { SW_HIDE } else { SW_SHOWNOACTIVATE });
             }
@@ -4017,6 +4062,40 @@ impl App {
         self.notify = None;
         self.st.notify_access = NotifyAccess::Unknown;
         self.sync_banners();
+    }
+
+    /// The keyboard hook for the pop-ups' keys: there while one of them is on.
+    fn sync_keys(&mut self) {
+        let s = &self.st.settings;
+        services::keys::set(self.helper, s.hud_volume_keys, s.hud_locks, s.hud_language);
+        if s.hud_language && self.keyboard_layout.is_none() {
+            self.keyboard_layout = services::keys::language().map(|l| l.0);
+        }
+    }
+
+    /// A key from the hook: a volume key to act on, a lock key just
+    /// pressed (`on`: on now), or a language switch to look at in a moment.
+    fn on_key(&mut self, vk: usize, on: bool) {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{VK_CAPITAL, VK_NUMLOCK, VK_SCROLL};
+        if vk == services::keys::LANGUAGE {
+            unsafe {
+                let _ = SetTimer(self.helper, TIMER_LANGUAGE, LANGUAGE_WAIT_MS, None);
+            }
+            return;
+        }
+        let key = match vk as u16 {
+            v if v == VK_CAPITAL.0 => "Caps Lock",
+            v if v == VK_NUMLOCK.0 => "Num Lock",
+            v if v == VK_SCROLL.0 => "Scroll Lock",
+            v => {
+                services::audio::volume_key(v);
+                return;
+            }
+        };
+        if self.st.settings.hud_locks {
+            self.st.show_hud(HudKind::Lock { key, on }, 1.2);
+            self.request_frame();
+        }
     }
 
     /// Windows' pop-ups hidden for exactly the apps the island shows, while

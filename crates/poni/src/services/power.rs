@@ -49,6 +49,35 @@ pub fn register_session(hwnd: HWND) {
     }
 }
 
+/// The screen's brightness as Windows reports it when it changes (a
+/// laptop's keys, the quick settings slider), 0..100: Windows' "current
+/// monitor brightness" setting.
+const GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS: windows::core::GUID = windows::core::GUID::from_u128(0x8ffee2c6_2d01_46be_adb9_398addc5b4ff);
+
+/// Ask Windows to say when the screen's brightness changes (it says the
+/// level at once too; the app takes that as the start, not a change).
+pub fn register_brightness(hwnd: HWND) {
+    unsafe {
+        if let Err(e) = RegisterPowerSettingNotification(HANDLE(hwnd.0), &GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS, DEVICE_NOTIFY_WINDOW_HANDLE) {
+            crate::pwarn!("brightness notification unavailable: {e}");
+        }
+    }
+}
+
+/// For `WM_POWERBROADCAST`: the screen's brightness, when that's what it reports.
+pub fn brightness_change(wp: WPARAM, lp: LPARAM) -> Option<u8> {
+    if wp.0 as u32 != PBT_POWERSETTINGCHANGE || lp.0 == 0 {
+        return None;
+    }
+    // SAFETY: as in `display_state_change`.
+    let s = unsafe { &*(lp.0 as *const POWERBROADCAST_SETTING) };
+    if s.PowerSetting != GUID_VIDEO_CURRENT_MONITOR_BRIGHTNESS || s.DataLength < 4 {
+        return None;
+    }
+    let v = unsafe { std::ptr::read_unaligned(s.Data.as_ptr() as *const u32) };
+    Some(v.min(100) as u8)
+}
+
 /// For `WM_POWERBROADCAST`: `Some(display_on)` when the message reports a
 /// console display state change (0 = off, 1 = on, 2 = dimmed counts as on).
 pub fn display_state_change(wp: WPARAM, lp: LPARAM) -> Option<bool> {

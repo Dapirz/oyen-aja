@@ -26,6 +26,38 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
+/// A volume key, taken over (`services::keys`): 2 % up or down (up also
+/// unmutes), or mute on and off, on the default playback device. The
+/// watcher above reports the change, and the island shows it. UI thread;
+/// a few Core Audio calls.
+pub fn volume_key(vk: u16) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP};
+    const STEP: f32 = 0.02;
+    let r = (|| -> Result<()> {
+        let devices: IMMDeviceEnumerator = unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)? };
+        let device = unsafe { devices.GetDefaultAudioEndpoint(eRender, eConsole)? };
+        let v: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
+        unsafe {
+            let muted = v.GetMute()?.as_bool();
+            let level = v.GetMasterVolumeLevelScalar()?;
+            if vk == VK_VOLUME_MUTE.0 {
+                v.SetMute(!muted, std::ptr::null())?;
+            } else {
+                let d = if vk == VK_VOLUME_UP.0 { STEP } else if vk == VK_VOLUME_DOWN.0 { -STEP } else { 0.0 };
+                let to = ((level + d) / STEP).round() * STEP;
+                v.SetMasterVolumeLevelScalar(to.clamp(0.0, 1.0), std::ptr::null())?;
+                if d > 0.0 && muted {
+                    v.SetMute(false, std::ptr::null())?;
+                }
+            }
+        }
+        Ok(())
+    })();
+    if let Err(e) = r {
+        crate::pwarn!("audio: the volume key didn't reach the device ({e})");
+    }
+}
+
 /// How long `Drop` waits for the worker to unregister before detaching it.
 const STOP_TIMEOUT: Duration = Duration::from_millis(800);
 

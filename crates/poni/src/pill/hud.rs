@@ -61,6 +61,8 @@ pub fn geom(t: HudTag, st: &AppState) -> Option<Geom> {
         HudTag::Volume => VOLUME_W,
         HudTag::Charging | HudTag::LowBattery => BATTERY_W,
         HudTag::Bluetooth => bluetooth_w(st),
+        // The keyboard and brightness pop-ups are Classic's in every theme.
+        HudTag::Lock | HudTag::Language | HudTag::Brightness => return None,
     };
     Some(Geom::new(w, H, H / 2.0))
 }
@@ -76,6 +78,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, _t: HudTag, body: Rect) -> bool {
         }
         HudKind::LowBattery { percent } => power(ui, body, Icon::Battery, palette::RED, "Low battery", percent, false),
         HudKind::Bluetooth { name, connected, battery, audio } => bluetooth(ui, st, body, &name, connected, battery, audio),
+        HudKind::Lock { .. } | HudKind::Language { .. } | HudKind::Brightness { .. } => return false,
     }
     true
 }

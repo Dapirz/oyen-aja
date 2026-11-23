@@ -105,6 +105,12 @@ pub enum HudKind {
     Charging { percent: u8, plugged: bool },
     Bluetooth { name: String, connected: bool, battery: Option<u8>, audio: bool },
     LowBattery { percent: u8 },
+    /// Caps Lock, Num Lock or Scroll Lock ("Caps Lock"), and whether it's on now.
+    Lock { key: &'static str, on: bool },
+    /// The keyboard's language, just switched ("English (United States)").
+    Language { name: String },
+    /// The screen's brightness, 0..100.
+    Brightness { percent: u8 },
 }
 
 #[derive(Clone, Debug, PartialEq)]

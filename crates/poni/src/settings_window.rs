@@ -302,6 +302,10 @@ pub enum Key {
     HudVolume,
     HudPower,
     HudBluetooth,
+    HudVolumeKeys,
+    HudLocks,
+    HudLanguage,
+    HudBrightness,
     RememberPage,
     StartPage,
     Tab(PageKind),
@@ -563,8 +567,16 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 switch(Key::HudVolume, "Volume", Some("When you change the volume or mute"), s.hud_volume),
                 switch(Key::HudPower, "Charger and battery", Some("When you plug in, unplug or run low"), s.hud_power),
                 switch(Key::HudBluetooth, "Bluetooth", Some("When headphones and other devices connect"), s.hud_bluetooth),
+                switch(Key::HudLocks, "Caps Lock, Num Lock and Scroll Lock", Some("On or Off for a moment when you press one"), s.hud_locks),
+                switch(Key::HudLanguage, "Keyboard language", Some("The new language when you switch (Windows + Space)"), s.hud_language),
+                switch(Key::HudBrightness, "Brightness", Some("When the screen's brightness changes"), s.hud_brightness),
             ],
-        )],
+        ),
+        Block::Group(
+            Some("Instead of Windows"),
+            vec![switch(Key::HudVolumeKeys, "Take over the volume keys", Some("Windows' volume pop-up stays away; the keys move 2 % a press"), s.hud_volume_keys)],
+        ),
+        Block::Note("Over a full-screen game or video, while the island hides, the volume keys go to Windows as before.")],
         Section::Tabs => {
             let pages = start_pages(st);
             let start = PageKind::from_key(&s.start_page);
@@ -815,6 +827,10 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::HudVolume => s.hud_volume = !s.hud_volume,
         Key::HudPower => s.hud_power = !s.hud_power,
         Key::HudBluetooth => s.hud_bluetooth = !s.hud_bluetooth,
+        Key::HudVolumeKeys => s.hud_volume_keys = !s.hud_volume_keys,
+        Key::HudLocks => s.hud_locks = !s.hud_locks,
+        Key::HudLanguage => s.hud_language = !s.hud_language,
+        Key::HudBrightness => s.hud_brightness = !s.hud_brightness,
         Key::RememberPage => s.remember_page = !s.remember_page,
         Key::StartPage => {
             let pages = start_pages(st);

@@ -10,7 +10,7 @@ It is not Oyenza Studio and is not made by its authors. It doesn't use Oyenza's 
 
 ## Features
 
-- **The island.** Grows when you hover, stays click-through around it, and shows a clock, eyes or nothing at rest. Pop-ups for volume, battery and Bluetooth. Hides or stays on top over full-screen apps. Settings, a tray icon and Start with Windows.
+- **The island.** Grows when you hover, stays click-through around it, and shows a clock, eyes or nothing at rest. Pop-ups for volume (the volume keys taken over, so Windows' own flyout stays away), battery, Bluetooth, Caps/Num/Scroll Lock, the keyboard's language and brightness. Hides or stays on top over full-screen apps. Settings, a tray icon and Start with Windows.
 - **Music.** Any player Windows' media controls know (SMTC), synced lyrics from [LRCLIB](https://lrclib.net), Latin readings under lyrics in other scripts, and Apple Music lyrics with your own token.
 - **Today.** A calendar: the day, date, year, week number and five weeks starting this Monday. It reads nothing and only wakes at midnight.
 - **Shelf and phone drop.** Keep files on the island, send files from your phone over Wi-Fi, or pair a phone to send from any network.

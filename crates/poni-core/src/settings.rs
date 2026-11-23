@@ -145,6 +145,14 @@ pub struct Settings {
     pub hud_volume: bool,
     pub hud_power: bool,
     pub hud_bluetooth: bool,
+    /// The volume keys change the volume through the island (2 % a press),
+    /// so Windows' own volume flyout stays away.
+    pub hud_volume_keys: bool,
+    /// Pop-ups for Caps Lock, Num Lock and Scroll Lock, the keyboard's
+    /// language when it switches, and the screen's brightness.
+    pub hud_locks: bool,
+    pub hud_language: bool,
+    pub hud_brightness: bool,
     pub sounds: bool,
     /// The island shows in screenshots, screen recordings and screen
     /// sharing. Off, Windows leaves it out (as it always does while the
@@ -276,6 +284,10 @@ impl Default for Settings {
             hud_volume: true,
             hud_power: true,
             hud_bluetooth: true,
+            hud_volume_keys: true,
+            hud_locks: true,
+            hud_language: true,
+            hud_brightness: true,
             sounds: true,
             show_in_capture: true,
             start_page: "media".into(),

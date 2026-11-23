@@ -14,6 +14,7 @@ pub mod fullscreen;
 pub mod cities;
 pub mod http;
 pub mod imaging;
+pub mod keys;
 pub mod location;
 pub mod lyrics;
 pub mod media;
