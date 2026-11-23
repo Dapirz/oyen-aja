@@ -39,7 +39,7 @@ Dipertahankan:
 - Island: Position dan Lock position, Size when closed (90/100/115 %), Transparency Smoke (40/55/75 %), Make way for the pointer (menyusut jadi garis tipis di tepi atas saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
 - General: Show in screenshots (mati = island tidak ikut screenshot, rekaman, screen share).
 - Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke), After pausing (0/5/10/30 dtk/Keep), Title without lyrics (Stays/A moment; Smoke jadi satu baris), running text untuk judul panjang.
-- Notifications: dipertahankan, cari cara supaya jalan di build non-Store (sekarang hanya jalan di copy versi Store).
+- Notifications: jalan di build non-Store lewat paket identitas sparse (selesai 23 Nov 2026): `tools\identity.ps1 register` (butuh Developer Mode, tanpa sertifikat/admin), manifest di `installer\identity`, elemen `<msix>` di `res/poni.manifest`. `autostart::packaged()` = punya identitas (Notifications); `store_packaged()` = copy Store (startup task, tanpa Downloader). Build ulang tetap terdaftar.
 
 Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 1790ee2..ba747ac`):
 - Stocks, Caffeine, Health, Meeting notes, IELTS, AI usage (termasuk crate `studio-usage`), Screen recorder (Record), System.
