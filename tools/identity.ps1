@@ -38,6 +38,9 @@ switch ($Action) {
         $p = Get-Registered
         if (-not $p) { 'not registered'; return }
         Remove-AppxPackage -Package $p.PackageFullName
+        # The logos copied beside the exe for it.
+        Remove-Item (Join-Path $ExeDir 'Assets') -Recurse -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $ExeDir 'resources.pri') -ErrorAction SilentlyContinue
         'unregistered: restart Hihu to run without identity'
     }
     'register' {
@@ -81,6 +84,12 @@ switch ($Action) {
         } else {
             'No Windows SDK makepri.exe: the icon may stay blank in the taskbar and Task Manager'
         }
+        # Windows looks for a sparse package's logos in its external location
+        # (the exe's folder), not in the package's own: a copy goes there too.
+        $exeAssets = Join-Path $ExeDir 'Assets'
+        New-Item -ItemType Directory -Force $exeAssets | Out-Null
+        Copy-Item (Join-Path $stage 'Assets\*') $exeAssets -Force
+        if (Test-Path (Join-Path $stage 'resources.pri')) { Copy-Item (Join-Path $stage 'resources.pri') $ExeDir -Force }
         if (Get-Registered) { Remove-AppxPackage -Package (Get-Registered).PackageFullName }
         Add-AppxPackage -Register (Join-Path $stage 'AppxManifest.xml') -ExternalLocation $ExeDir
         "registered: $((Get-Registered).PackageFullName)"
