@@ -688,10 +688,16 @@ impl ThumbWorker {
 /// (`shell:AppsFolder\<id>`): packaged apps and classic ones alike (a
 /// notification's sender, for its card), at most `px` on its longer side.
 pub fn app_icon(aumid: &str, px: u32) -> Result<Image, String> {
+    shell_icon(&format!("shell:AppsFolder\\{aumid}"), px)
+}
+
+/// A file's icon as Explorer shows it (a program's own: Screen time's apps),
+/// by its path or any shell parsing name, at most `px` on its longer side.
+pub fn shell_icon(name: &str, px: u32) -> Result<Image, String> {
     let _com = ComInit::new(COINIT_MULTITHREADED);
     let factory = wic_factory().map_err(|e| format!("WIC unavailable: {e}"))?;
     unsafe {
-        let item: IShellItemImageFactory = SHCreateItemFromParsingName(&HSTRING::from(format!("shell:AppsFolder\\{aumid}")), None).map_err(|e| format!("no such app: {e}"))?;
+        let item: IShellItemImageFactory = SHCreateItemFromParsingName(&HSTRING::from(name), None).map_err(|e| format!("no such item: {e}"))?;
         let size = SIZE { cx: px as i32, cy: px as i32 };
         let hbmp = OwnedBitmap(item.GetImage(size, SIIGBF_BIGGERSIZEOK | SIIGBF_ICONONLY).map_err(|e| format!("no icon: {e}"))?);
         let bitmap = factory.CreateBitmapFromHBITMAP(hbmp.0, HPALETTE::default(), WICBitmapUsePremultipliedAlpha).map_err(|e| e.to_string())?;

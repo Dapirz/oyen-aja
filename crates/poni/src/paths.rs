@@ -47,6 +47,11 @@ pub fn lyrics_cache_dir() -> PathBuf {
 
 /// The user's Apple Music token, sealed with DPAPI (never roams; uninstalling
 /// removes it with the cache).
+/// Screen time's counted days.
+pub fn screentime_path() -> PathBuf {
+    data_dir().join("screentime.json")
+}
+
 /// The Clipboard add-on's history, sealed for the Windows account
 /// (`services::secret`); deleted when the add-on goes off.
 pub fn clipboard_path() -> PathBuf {

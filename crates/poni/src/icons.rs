@@ -29,6 +29,8 @@ pub enum Icon {
     Minus,
     Close,
     Clipboard,
+    /// Screen time: an hourglass.
+    Hourglass,
     Calendar,
     Battery,
     Bolt,
@@ -141,6 +143,7 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Plus => p![s("M12 5v14"), s("M5 12h14")],
         Minus => p![s("M5 12h14")],
         Close => p![s("M6.5 6.5l11 11"), s("M17.5 6.5l-11 11")],
+        Hourglass => p![s("M5 22h14"), s("M5 2h14"), s("M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"), s("M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2")],
         Clipboard => p![
             s("M9 3.5h6a1 1 0 0 1 1 1V6a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z"),
             s("M16 5h1.5A1.5 1.5 0 0 1 19 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-13A1.5 1.5 0 0 1 6.5 5H8"),
@@ -215,7 +218,7 @@ mod tests {
     const ALL: &[Icon] = &[
         Icon::Play, Icon::Pause, Icon::Next, Icon::Prev, Icon::Music, Icon::Lyrics, Icon::Timer, Icon::Coffee,
         Icon::Tray, Icon::ListChecks, Icon::Check, Icon::CheckCircle, Icon::Circle, Icon::Plus, Icon::Minus,
-        Icon::Close, Icon::Clipboard, Icon::Calendar,
+        Icon::Close, Icon::Clipboard, Icon::Hourglass, Icon::Calendar,
         Icon::Battery, Icon::Bolt, Icon::Bluetooth, Icon::Headphones, Icon::Volume, Icon::VolumeLow, Icon::VolumeMute,
         Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File, Icon::Trash, Icon::Undo, Icon::Reset,
         Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye,

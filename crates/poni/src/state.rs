@@ -197,6 +197,17 @@ impl Notice {
     }
 }
 
+/// Screen time's stretch under way: the app in front since `since` (unix
+/// seconds), counted on `day`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreenLive {
+    pub key: String,
+    pub name: String,
+    pub path: String,
+    pub since: i64,
+    pub day: String,
+}
+
 /// A phone wants to send these files; the Shelf asks the person at the PC.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PhoneAsk {
@@ -386,6 +397,11 @@ pub struct AppState {
     pub power: PowerState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
+    /// Screen time: the days counted, the stretch under way (for the page's
+    /// running total), and the apps' icons by key.
+    pub screen: poni_core::screentime::Usage,
+    pub screen_live: Option<ScreenLive>,
+    pub screen_icons: std::collections::HashMap<String, crate::gfx::Image>,
     /// The Clipboard add-on's history.
     pub clip: poni_core::cliphist::ClipHistory,
     /// Apps' logos for the notification card, by AppUserModelID (each
@@ -479,6 +495,9 @@ impl AppState {
             hud: None,
             notice: None,
             clip: poni_core::cliphist::ClipHistory::new(clip_cap),
+            screen: poni_core::screentime::Usage::default(),
+            screen_live: None,
+            screen_icons: std::collections::HashMap::new(),
             notify_logos: std::collections::HashMap::new(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
@@ -515,6 +534,7 @@ impl AppState {
             PageKind::Notifications => !st.notifications_on(),
             PageKind::Tasks => !st.tasks_on(),
             PageKind::Clipboard => !st.clipboard_on(),
+            PageKind::Screentime => !st.screentime_on(),
             PageKind::Focus => !st.focus_on(),
             p => st.tab_hidden(p),
         };
@@ -539,6 +559,11 @@ impl AppState {
     /// switched off, where this copy can read them (`notify_can`).
     pub fn notifications_on(&self) -> bool {
         self.notify_can && self.addon(poni_core::addons::NOTIFICATIONS.id) == AddonStatus::Ready
+    }
+
+    /// The Screen time add-on is on: it counts and its tab shows.
+    pub fn screentime_on(&self) -> bool {
+        self.addon(poni_core::addons::SCREEN_TIME.id) == AddonStatus::Ready
     }
 
     /// The Clipboard add-on is on: its listener runs and its tab shows.

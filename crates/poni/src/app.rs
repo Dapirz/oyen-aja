@@ -62,6 +62,10 @@ const TIMER_RAISE: usize = 9;
 /// there, so no message says so). Runs only while it makes way.
 const TIMER_MAKE_WAY: usize = 10;
 const MAKE_WAY_POLL_MS: u32 = 100;
+/// Screen time's look once a minute (`screentime::CHECK_MS`): idle, the day,
+/// a cut so the page and the file keep up. Only while it's on and someone
+/// is there (not locked, screen on).
+const TIMER_SCREEN: usize = 11;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -387,6 +391,10 @@ pub struct App {
     own_clip: Option<String>,
     /// The history's change counter when it was last saved.
     clip_saved: u64,
+    /// Screen time's tracker (None while it's off), and whether its days
+    /// changed since they were saved.
+    screen: Option<crate::screentime::Tracker>,
+    screen_dirty: bool,
     /// Show in screenshots off: what Windows was last asked (None: not yet).
     capture_hidden: Option<bool>,
     /// Follow-up raises still due (TIMER_RAISE).
@@ -597,6 +605,8 @@ impl App {
             clip_listener: None,
             own_clip: None,
             clip_saved: 0,
+            screen: None,
+            screen_dirty: false,
             capture_hidden: None,
             raises_left: 0,
             covered_by: HashSet::new(),
@@ -654,6 +664,9 @@ impl App {
             if self.st.clipboard_on() {
                 self.clipboard_on();
             }
+            if self.st.screentime_on() {
+                self.screentime_on();
+            }
             // The Downloader left the app: the tools a copy from before kept
             // (yt-dlp, QuickJS, FFmpeg, about 28 MB) go, once.
             let tools = paths::addons_dir().join("downloader");
@@ -683,6 +696,8 @@ impl App {
 
     fn shutdown(&mut self) -> i32 {
         self.save_now();
+        self.screen_close(self.st.unix);
+        self.save_screentime(false);
         self.settings_win = None;
         self.set_script_hotkey(false);
         self.glass.stop(self.hwnd, &mut self.gfx);
@@ -1336,6 +1351,7 @@ impl App {
             WM_POWERBROADCAST => {
                 if let Some(on) = services::power::display_state_change(wp, lp) {
                     self.display_off = !on;
+                    self.screen_presence();
                 }
                 let p = services::power::query();
                 self.on_event(AppEvent::Power(p));
@@ -1348,6 +1364,7 @@ impl App {
                     WTS_SESSION_UNLOCK_ => self.locked = false,
                     _ => {}
                 }
+                self.screen_presence();
                 self.request_frame();
                 Some(LRESULT(0))
             }
@@ -1609,6 +1626,7 @@ impl App {
                     self.expand();
                 }
             }
+            TIMER_SCREEN => self.screen_check(),
             TIMER_MAKE_WAY => {
                 // Back once the pointer left, the island opened (pushed up to
                 // the top edge), or the setting went off.
@@ -1791,6 +1809,17 @@ impl App {
                 }
             }
         }
+        // Screen time switched on: its days back and it counts; off: it
+        // stops, and the days go.
+        let screen_id = poni_core::addons::SCREEN_TIME.id;
+        let screen_on = self.st.settings.addon_on(screen_id);
+        if before.addon_on(screen_id) != screen_on && self.selftest.is_none() {
+            if screen_on {
+                self.screentime_on();
+            } else {
+                self.screentime_off();
+            }
+        }
         // Clipboard history switched on: its history back and its listener
         // on; off: nothing watches, and the history goes. Its size and its
         // time apply at once.
@@ -1924,6 +1953,11 @@ impl App {
             w.view.dirty = true;
         }
         match ev {
+            AppEvent::FrontWindow(h) => self.screen_front(HWND(h as *mut _)),
+            AppEvent::ScreenIcon(key, img) => {
+                self.st.screen_icons.insert(key, img);
+                self.request_frame();
+            }
             AppEvent::ClipboardText(t) => {
                 if self.own_clip.as_deref() == Some(t.as_str()) {
                     self.own_clip = None;
@@ -2367,6 +2401,182 @@ impl App {
         self.script_held = held;
         let can_read = self.st.page == PageKind::Script && !self.st.store.script.is_empty() && (self.expanded || self.st.script.active);
         self.set_script_hotkey(can_read && self.selftest.is_none());
+    }
+
+    // ------------------------------------------------------------ screen time
+
+    /// Screen time came on (or was on at start): its saved days back, the
+    /// foreground hook reporting, and a stretch for what's in front.
+    fn screentime_on(&mut self) {
+        let mut usage: poni_core::screentime::Usage = poni_core::store::load_json(&paths::screentime_path()).0;
+        usage.prune(&self.st.local.day_key());
+        self.st.screen = usage;
+        self.screen.get_or_insert_with(Default::default);
+        services::fullscreen::report_foreground(true);
+        pinfo!("screen time: counting");
+        self.screen_presence();
+    }
+
+    /// Screen time went off: nothing counts, and the counted days go.
+    fn screentime_off(&mut self) {
+        services::fullscreen::report_foreground(false);
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_SCREEN);
+        }
+        self.screen = None;
+        self.st.screen = poni_core::screentime::Usage::default();
+        self.st.screen_live = None;
+        self.st.screen_icons.clear();
+        self.screen_dirty = false;
+        if let Err(e) = std::fs::remove_file(paths::screentime_path()) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                pwarn!("screen time: couldn't delete the counted days ({e})");
+            }
+        }
+        pinfo!("screen time: stopped");
+    }
+
+    /// Someone can be at the PC: not locked, the screen on.
+    fn screen_present(&self) -> bool {
+        !self.locked && !self.display_off
+    }
+
+    /// The PC was locked or unlocked, or its screen went off or on: the
+    /// stretch ends while nobody's there, and the minute's look rests; back,
+    /// a stretch starts for what's in front.
+    fn screen_presence(&mut self) {
+        if self.screen.is_none() {
+            return;
+        }
+        if self.screen_present() {
+            if let Some(t) = self.screen.as_mut() {
+                t.idle = false;
+            }
+            self.screen_open_front();
+            unsafe {
+                SetTimer(self.hwnd, TIMER_SCREEN, crate::screentime::CHECK_MS, None);
+            }
+        } else {
+            self.screen_close(self.st.unix);
+            unsafe {
+                let _ = KillTimer(self.hwnd, TIMER_SCREEN);
+            }
+            self.save_screentime(true);
+        }
+    }
+
+    /// End the stretch under way at `at` (unix seconds).
+    fn screen_close(&mut self, at: i64) {
+        let Some(t) = self.screen.as_mut() else { return };
+        if t.close(&mut self.st.screen, at) {
+            self.screen_dirty = true;
+        }
+        self.st.screen_live = None;
+    }
+
+    /// Start a stretch for what's in front now.
+    fn screen_open_front(&mut self) {
+        let pid = unsafe { windows::Win32::System::Threading::GetCurrentProcessId() };
+        let (now, day) = (self.st.unix, self.st.local.day_key());
+        let Some(t) = self.screen.as_mut() else { return };
+        let front = t.foreground(pid);
+        t.close(&mut self.st.screen, now).then(|| self.screen_dirty = true);
+        t.open(front, now, &day);
+        self.st.screen_live = Self::live_of(t);
+    }
+
+    fn live_of(t: &crate::screentime::Tracker) -> Option<crate::state::ScreenLive> {
+        t.current().map(|(f, since, day)| crate::state::ScreenLive { key: f.key.clone(), name: f.name.clone(), path: f.path.clone(), since, day: day.to_string() })
+    }
+
+    /// Another window came to the front.
+    fn screen_front(&mut self, hwnd: HWND) {
+        if !self.screen_present() {
+            return;
+        }
+        let pid = unsafe { windows::Win32::System::Threading::GetCurrentProcessId() };
+        let (now, day) = (self.st.unix, self.st.local.day_key());
+        let Some(t) = self.screen.as_mut() else { return };
+        t.idle = false;
+        if t.switch(&mut self.st.screen, hwnd, pid, now, &day) {
+            self.screen_dirty = true;
+        }
+        self.st.screen_live = Self::live_of(t);
+        if self.expanded && self.st.page == PageKind::Screentime {
+            self.request_frame();
+        }
+    }
+
+    /// The minute's look: nobody there for a while ends the stretch back at
+    /// the last touch; back, one starts; otherwise a cut (the page and the
+    /// file keep up, and a new day starts at midnight). Then a save if
+    /// anything changed.
+    fn screen_check(&mut self) {
+        if self.screen.is_none() || !self.screen_present() {
+            return;
+        }
+        self.refresh_time();
+        let idle = crate::screentime::idle_secs();
+        let was_idle = self.screen.as_ref().is_some_and(|t| t.idle);
+        if idle >= crate::screentime::IDLE_S {
+            if !was_idle {
+                self.screen_close(self.st.unix - idle as i64);
+                if let Some(t) = self.screen.as_mut() {
+                    t.idle = true;
+                }
+            }
+        } else {
+            if let Some(t) = self.screen.as_mut() {
+                t.idle = false;
+            }
+            self.screen_open_front();
+        }
+        if self.st.screen.prune(&self.st.local.day_key()) {
+            self.screen_dirty = true;
+        }
+        self.save_screentime(true);
+        if self.expanded && self.st.page == PageKind::Screentime {
+            self.request_frame();
+        }
+    }
+
+    /// Write the counted days when they changed (`thread`: off the UI
+    /// thread; at the end, right here).
+    fn save_screentime(&mut self, thread: bool) {
+        if !std::mem::take(&mut self.screen_dirty) || self.screen.is_none() || self.selftest.is_some() {
+            return;
+        }
+        let usage = self.st.screen.clone();
+        let save = move || {
+            if let Err(e) = poni_core::store::save_json_atomic(&paths::screentime_path(), &usage) {
+                crate::plog::write("WARN", &format!("screen time: couldn't save ({e})"));
+            }
+        };
+        if thread {
+            let _ = std::thread::Builder::new().name("poni-screen-save".into()).spawn(save);
+        } else {
+            save();
+        }
+    }
+
+    /// The Screen time page's apps without an icon yet: each program's,
+    /// once, on a thread of its own.
+    fn screen_icons(&mut self, list: Vec<(String, String)>) {
+        thread_local! {
+            static ASKED: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+        }
+        let list: Vec<(String, String)> = list.into_iter().filter(|(k, _)| ASKED.with(|a| a.borrow_mut().insert(k.clone()))).collect();
+        if list.is_empty() {
+            return;
+        }
+        let sink = self.sink.clone();
+        let _ = std::thread::Builder::new().name("poni-screen-icons".into()).spawn(move || {
+            for (key, path) in list {
+                if let Ok(img) = services::imaging::shell_icon(&path, 48) {
+                    sink.send(AppEvent::ScreenIcon(key, img));
+                }
+            }
+        });
     }
 
     /// The Clipboard add-on came on (or was on at start): its saved history
@@ -3491,6 +3701,7 @@ impl App {
         let cmds = std::mem::take(&mut self.st.cmds);
         for c in cmds {
             match c {
+                Command::ScreenIcons(list) => self.screen_icons(list),
                 Command::CopyText(t) => {
                     self.own_clip = Some(t.clone());
                     services::clipboard::set_text(self.helper, &t);

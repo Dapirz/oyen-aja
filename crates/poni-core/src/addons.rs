@@ -182,6 +182,19 @@ pub const CLIPBOARD: Addon = Addon {
     on_by_default: false,
 };
 
+/// Screen time: how long each app was in front, today and the six days
+/// before, on its page. Built in and off until switched on; off, nothing is
+/// counted and the counted days are deleted.
+pub const SCREEN_TIME: Addon = Addon {
+    id: "screentime",
+    title: "Screen time",
+    blurb: "How long each app was in front, today and this week.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+    on_by_default: false,
+};
+
 /// Tasks: the Tasks page, a short to-do list. Built in and on until
 /// switched off; off, it has no tab (the list stays saved).
 pub const TASKS: Addon = Addon {
@@ -222,7 +235,7 @@ pub const NOTIFICATIONS: Addon = Addon {
 
 /// Every add-on, in the order the Add-ons page lists them: the built-in
 /// pages first, then the ones that download.
-pub const ALL: [&Addon; 7] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
+pub const ALL: [&Addon; 8] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCREEN_TIME, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -426,7 +439,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "script", "sholat", "ja"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "screentime", "script", "sholat", "ja"]);
         // The Downloader left the app: a file that switched it on reads as off.
         assert_eq!(Addon::find("downloader"), None);
         for (i, a) in ALL.iter().enumerate() {

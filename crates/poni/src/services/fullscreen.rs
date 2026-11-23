@@ -26,6 +26,15 @@
 //! island. With it off (always, since 0.2.6), nothing is looked at.
 
 use crate::events::{AppEvent, EventSink, WM_APP_APPBAR};
+
+/// Screen time is on: the foreground hook also tells the app which window
+/// came to the front ([`AppEvent::FrontWindow`]).
+static REPORT_FOREGROUND: AtomicBool = AtomicBool::new(false);
+
+/// Screen time switched on or off.
+pub fn report_foreground(on: bool) {
+    REPORT_FOREGROUND.store(on, Ordering::Relaxed);
+}
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -332,6 +341,9 @@ unsafe extern "system" fn on_win_event(
         }
         moved_top(&w, hwnd);
     } else {
+        if REPORT_FOREGROUND.load(Ordering::Relaxed) {
+            w.sink.send(AppEvent::FrontWindow(hwnd.0 as isize));
+        }
         // Another window in front: what reaches the top may have changed
         // with it (one minimized or closed, another virtual desktop).
         rescan_top(&w);

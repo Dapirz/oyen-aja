@@ -82,6 +82,11 @@ pub enum LyricsResult {
 }
 
 pub enum AppEvent {
+    /// Another window came to the front (Screen time, from the full-screen
+    /// watcher's hook).
+    FrontWindow(isize),
+    /// An app's icon for the Screen time page (its program's key).
+    ScreenIcon(String, crate::gfx::Image),
     /// Text copied in another app (the Clipboard add-on's listener).
     ClipboardText(String),
     /// The current media session changed (None = nothing playing / no session).

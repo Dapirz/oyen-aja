@@ -64,6 +64,7 @@ mod settings_host;
 #[cfg(any(windows, target_os = "macos"))]
 mod settings_window;
 #[cfg(windows)]
+mod screentime;
 mod shell;
 mod smoke;
 #[cfg(any(windows, target_os = "macos"))]

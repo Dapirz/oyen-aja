@@ -12,6 +12,7 @@
 pub mod addons;
 pub mod card;
 pub mod clipboard;
+pub mod screentime;
 pub mod focus;
 pub mod media;
 pub mod notifications;
@@ -55,6 +56,8 @@ pub enum PageKind {
     /// The teleprompter: a script read under the webcam.
     /// The text copied lately, while the Clipboard add-on is on ([`tabs`]).
     Clipboard,
+    /// How long each app was in front, while Screen time is on ([`tabs`]).
+    Screentime,
     Script,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
@@ -71,13 +74,14 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, then the add-ons'
     /// pages and the "+".
-    pub const ALL: [PageKind; 11] = [
+    pub const ALL: [PageKind; 12] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
         PageKind::Tasks,
         PageKind::Focus,
         PageKind::Clipboard,
+        PageKind::Screentime,
         PageKind::Script,
         PageKind::Prayer,
         PageKind::Notifications,
@@ -93,6 +97,7 @@ impl PageKind {
             PageKind::Tasks => "tasks",
             PageKind::Today => "today",
             PageKind::Clipboard => "clipboard",
+            PageKind::Screentime => "screentime",
             PageKind::Script => "script",
             PageKind::Prayer => "prayer",
             PageKind::Notifications => "notifications",
@@ -114,6 +119,7 @@ impl PageKind {
             PageKind::Tasks => "Tasks",
             PageKind::Today => "Today",
             PageKind::Clipboard => "Clipboard",
+            PageKind::Screentime => "Screen time",
             PageKind::Script => "Script",
             PageKind::Prayer => "Prayer",
             PageKind::Notifications => "Notifications",
@@ -130,6 +136,7 @@ impl PageKind {
             PageKind::Tasks => Icon::ListChecks,
             PageKind::Today => Icon::Calendar,
             PageKind::Clipboard => Icon::Clipboard,
+            PageKind::Screentime => Icon::Hourglass,
             PageKind::Script => Icon::Script,
             PageKind::Prayer => Icon::Moon,
             PageKind::Notifications => Icon::Bell,
@@ -194,6 +201,7 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
         .filter(|&p| match p {
             PageKind::Prayer => st.prayer_on(),
             PageKind::Clipboard => st.clipboard_on(),
+            PageKind::Screentime => st.screentime_on(),
             PageKind::Script => st.script_on(),
             PageKind::Notifications => st.notifications_on(),
             PageKind::Tasks => st.tasks_on(),
@@ -225,6 +233,7 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Tasks => tasks::height(st),
         PageKind::Today => today::height(st),
         PageKind::Clipboard => clipboard::height(st),
+        PageKind::Screentime => screentime::height(st),
         PageKind::Script => script::height(st),
         PageKind::Prayer => prayer::height(st),
         PageKind::Notifications => notifications::height(st),
@@ -242,6 +251,7 @@ pub fn next_wake(page: PageKind, st: &AppState) -> Option<f64> {
         PageKind::Tasks => tasks::next_wake(st),
         PageKind::Shelf => shelf::next_wake(st),
         PageKind::Clipboard => clipboard::next_wake(st),
+        PageKind::Screentime => screentime::next_wake(st),
         PageKind::Script => script::next_wake(st),
         PageKind::Prayer => prayer::next_wake(st),
         PageKind::Today => today::next_wake(st),
@@ -346,6 +356,7 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Tasks => tasks::draw(ui, st, area),
         PageKind::Today => today::draw(ui, st, area),
         PageKind::Clipboard => clipboard::draw(ui, st, area),
+        PageKind::Screentime => screentime::draw(ui, st, area),
         PageKind::Script => script::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
         PageKind::Notifications => notifications::draw(ui, st, area),

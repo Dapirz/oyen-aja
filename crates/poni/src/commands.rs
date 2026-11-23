@@ -61,6 +61,8 @@ pub enum NotifyCmd {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Media(MediaCmd),
+    /// Fetch these apps' icons for the Screen time page (key, program path).
+    ScreenIcons(Vec<(String, String)>),
     /// Put this text on the clipboard (a Clipboard page row), without
     /// recording it again.
     CopyText(String),
