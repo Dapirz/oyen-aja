@@ -1938,7 +1938,10 @@ impl<'a> Canvas<'a> {
         }
         if let Ok(layout) = self.g.layout(s, st, r.w, r.h) {
             self.set_text_brush(st.color);
-            let opts = if self.snap_text { D2D1_DRAW_TEXT_OPTIONS_NONE } else { D2D1_DRAW_TEXT_OPTIONS_NO_SNAP };
+            // Colour fonts in colour: emoji in a message, a title or a lyric
+            // (Segoe UI Emoji), not as outlines in the text's colour.
+            let snap = if self.snap_text { D2D1_DRAW_TEXT_OPTIONS_NONE } else { D2D1_DRAW_TEXT_OPTIONS_NO_SNAP };
+            let opts = snap | D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT;
             unsafe { self.g.rt.DrawTextLayout(pt(r.x, r.y), &layout, &self.g.brush, opts) };
         }
     }
