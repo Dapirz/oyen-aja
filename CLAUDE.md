@@ -32,12 +32,13 @@ Dipertahankan:
 - Music: SMTC, lirik sinkron (LRCLIB), bacaan latin, lirik Apple Music.
 - Today: kalender saja. Hari, tanggal, tahun, nomor minggu, dan lima minggu mulai Senin ini. Tidak membaca apa pun dan hanya bangun saat tengah malam. Tile CPU/RAM/disk sudah dihapus.
 - Shelf + Phone drop + pairing HP.
-- Tasks, Focus, Script, Bacaan Jepang: tetap ada, bisa dimatikan lewat toggle. Semua toggle fitur dikumpulkan di satu tempat (halaman Add-ons), dan fitur yang mati tidak jalan sama sekali (hemat memori).
+- Tasks, Focus, Notifications, Script, Bacaan Jepang, Waktu sholat, Downloader: semua toggle ada di halaman Add-ons (selesai 23 Nov 2026). Tasks, Focus, Notifications add-on bawaan yang nyala sejak awal; yang mati tidak jalan (tab, section Settings, timer Focus, listener Notifications). Settings → Tabs tinggal Music, Today, Shelf.
 - Waktu sholat: lokasi otomatis dan pilih manual.
 - Downloader (yt-dlp): add-on, tidak perlu Pro lagi. Nyala setelah diaktifkan di Add-ons dan tools-nya terunduh.
 - Tema: Classic, Smoke (hitam semi transparan, island musik dua baris: cover, jam, equalizer; lirik; progress bar), Glass, Pill, Diorama. Tema Oyen sudah dihapus.
-- Island: Position dan Lock position, Make way for the pointer (menyingkir saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
-- Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke).
+- Island: Position dan Lock position, Size when closed (90/100/115 %), Transparency Smoke (40/55/75 %), Make way for the pointer (menyusut jadi garis tipis di tepi atas saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
+- General: Show in screenshots (mati = island tidak ikut screenshot, rekaman, screen share).
+- Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke), After pausing (0/5/10/30 dtk/Keep), Title without lyrics (Stays/A moment; Smoke jadi satu baris), running text untuk judul panjang.
 - Notifications: dipertahankan, cari cara supaya jalan di build non-Store (sekarang hanya jalan di copy versi Store).
 
 Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 1790ee2..ba747ac`):
