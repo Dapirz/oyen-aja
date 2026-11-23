@@ -384,6 +384,9 @@ pub struct AppState {
     pub power: PowerState,
     pub hud: Option<Hud>,
     pub notice: Option<Notice>,
+    /// Apps' logos for the notification card, by AppUserModelID (each
+    /// fetched once, the first time that app sends a notification).
+    pub notify_logos: std::collections::HashMap<String, crate::gfx::Image>,
     pub shelf_thumbs: HashMap<String, Option<Image>>,
     pub ui: PageUiState,
     /// System accent colour (falls back to blue).
@@ -475,6 +478,7 @@ impl AppState {
             power: PowerState::default(),
             hud: None,
             notice: None,
+            notify_logos: std::collections::HashMap::new(),
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,

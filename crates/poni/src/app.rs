@@ -3530,6 +3530,10 @@ impl App {
                     self.st.cmd(Command::SaveSettings);
                 }
             }
+            NotifyEvent::Logo(app_id, img) => {
+                self.st.notify_logos.insert(app_id, img);
+                self.request_frame();
+            }
             NotifyEvent::Seen(seen) => {
                 let (shows, changed) = self.st.settings.notifications.remember(&seen.app_id, &seen.app);
                 if changed {

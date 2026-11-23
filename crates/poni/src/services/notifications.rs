@@ -32,6 +32,9 @@ pub enum NotifyEvent {
     Apps(Vec<(String, String)>),
     /// A new notification.
     Seen(Seen),
+    /// An app's logo (its AppUserModelID), for the notification card;
+    /// fetched once per app, the first time it sends one.
+    Logo(String, crate::gfx::Image),
 }
 
 /// The listener while Notifications is on (None without a package).
@@ -143,8 +146,13 @@ impl Listener {
                 return Ok(());
             }
             // One that can't be read (gone already, no words) is skipped.
-            match listener.GetNotification(args.UserNotificationId()?).and_then(|n| read(&n)) {
-                Ok(seen) => sink.send(AppEvent::Notify(NotifyEvent::Seen(seen))),
+            let n = listener.GetNotification(args.UserNotificationId()?);
+            match n.as_ref().map_err(|e| e.clone()).and_then(read) {
+                Ok(seen) => {
+                    let app_id = seen.app_id.clone();
+                    sink.send(AppEvent::Notify(NotifyEvent::Seen(seen)));
+                    fetch_logo(app_id, sink.clone());
+                }
                 Err(e) => crate::pinfo!("notifications: one skipped: {e}"),
             }
             Ok(())
@@ -225,6 +233,28 @@ fn app_of(n: &UserNotification) -> Result<(String, String)> {
     let id = info.AppUserModelId()?.to_string();
     let name = info.DisplayInfo().and_then(|d| d.DisplayName()).map(|h| h.to_string()).unwrap_or_default();
     Ok((id, name))
+}
+
+/// Apps whose logo was asked for already (this run), so each is fetched once.
+static LOGOS_ASKED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// The logo's size (pixels): the card's 40 DIPs up to 200 % and more.
+const LOGO_PX: u32 = 96;
+
+/// The app's icon as the Start menu shows it, once per app, on a thread of
+/// its own (the shell may take a moment), sent as [`NotifyEvent::Logo`]. One
+/// that can't be had leaves the card with its plain icon.
+fn fetch_logo(app_id: String, sink: EventSink) {
+    {
+        let mut asked = LOGOS_ASKED.lock().unwrap_or_else(|p| p.into_inner());
+        if asked.iter().any(|a| *a == app_id) {
+            return;
+        }
+        asked.push(app_id.clone());
+    }
+    let _ = std::thread::Builder::new().name("poni-notify-logo".into()).spawn(move || match crate::services::imaging::app_icon(&app_id, LOGO_PX) {
+        Ok(img) => sink.send(AppEvent::Notify(NotifyEvent::Logo(app_id, img))),
+        Err(e) => crate::pinfo!("notifications: no logo for an app: {e}"),
+    });
 }
 
 /// A notification's app and its lines of text (a toast's text elements).

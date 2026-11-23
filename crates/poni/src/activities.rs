@@ -290,6 +290,7 @@ fn base_geom(m: &Mode, st: &AppState) -> Geom {
         Mode::Hud(HudTag::Volume) => Geom::new(316.0, 40.0, 19.0),
         Mode::Hud(HudTag::Charging) | Mode::Hud(HudTag::LowBattery) => Geom::new(300.0, 40.0, 19.0),
         Mode::Hud(HudTag::Bluetooth) => Geom::new(336.0, 46.0, 22.0),
+        Mode::Notice if notice_card(st) => card_geom(st),
         Mode::Notice => Geom::new(372.0, 52.0, 24.0),
         Mode::Expanded(p) => {
             let h = pages::HEADER_H + pages::content_height(*p, st) + pages::PAD;
@@ -315,6 +316,10 @@ fn hidden_strip() -> Geom {
 pub fn is_live(m: &Mode, st: &AppState) -> bool {
     if let Some(live) = crate::pill::is_live(m, st) {
         return live;
+    }
+    // A notification card: what rests above it keeps moving.
+    if *m == Mode::Notice {
+        return card_live(st);
     }
     let Some(media) = st.media.as_ref() else { return false };
     match m {
@@ -354,6 +359,12 @@ pub fn next_wake(m: &Mode, st: &AppState) -> Option<f64> {
     }
     if let Some(t) = crate::pill::next_wake(m, st) {
         consider(t);
+    }
+    // A notification card: what rests above it changes on its own as before.
+    if *m == Mode::Notice && notice_card(st) {
+        if let Some(t) = card_top(st).and_then(|(rest, _)| next_wake(&rest, st)) {
+            consider(t);
+        }
     }
     next
 }
@@ -759,8 +770,116 @@ fn inline_done(st: &AppState, a: InlineAction) -> bool {
     }
 }
 
+/// Another app's notification arrives as a card under what the island
+/// shows at rest (the song, a timer, a prayer's countdown, a download, the
+/// clock), which keeps going above it; with nothing showing at rest (the
+/// Hidden and Minimal looks) the card is the island. The app's logo, its
+/// name and "now", who it's from in bold and the message under it, and the
+/// Show or Open pill. The app's own notices (Focus, prayer times…) keep
+/// their one-row look.
+pub fn notice_card(st: &AppState) -> bool {
+    st.notice.as_ref().is_some_and(|n| card_app(n).is_some())
+}
+
+/// The app a notice is a card for: another app's notification (it opens
+/// that app).
+fn card_app(n: &Notice) -> Option<&str> {
+    match &n.action {
+        Some(crate::state::NoticeAction::OpenApp(id)) => Some(id.as_str()),
+        _ => None,
+    }
+}
+
+/// The card: as wide as what rests above it, and at least this; this tall,
+/// with this much room around it inside the island.
+const CARD_MIN_W: f32 = 380.0;
+const CARD_MAX_W: f32 = 560.0;
+const CARD_H: f32 = 64.0;
+const CARD_INSET: f32 = 8.0;
+const CARD_R: f32 = 14.0;
+const CARD_LOGO: f32 = 40.0;
+
+/// What rests above the card, and how tall it is (None: nothing shows at rest).
+fn card_top(st: &AppState) -> Option<(Mode, Geom)> {
+    let rest = resting_mode(st);
+    let empty = rest == Mode::Idle && matches!(st.settings.idle_style, IdleStyle::Hidden | IdleStyle::Minimal);
+    (!empty).then(|| (rest, base_geom(&rest, st)))
+}
+
+fn card_geom(st: &AppState) -> Geom {
+    let top = card_top(st);
+    let w = top.map_or(CARD_MIN_W, |(_, g)| g.w).clamp(CARD_MIN_W, CARD_MAX_W);
+    let top_h = top.map_or(CARD_INSET, |(_, g)| g.h);
+    Geom::new(w, top_h + CARD_H + CARD_INSET, 24.0)
+}
+
+/// Is what rests above a notification card moving on its own (the bars)?
+fn card_live(st: &AppState) -> bool {
+    notice_card(st) && card_top(st).is_some_and(|(m, _)| is_live(&m, st))
+}
+
+fn draw_card_notice(ui: &mut Ui, st: &mut AppState, n: &Notice, body: Rect) {
+    let top = card_top(st);
+    let top_h = top.map_or(CARD_INSET, |(_, g)| g.h);
+    if let Some((rest, _)) = top {
+        draw(ui, st, &rest, Rect::new(body.x, body.y, body.w, top_h));
+    }
+    let card = Rect::new(body.x + CARD_INSET, body.y + top_h, body.w - 2.0 * CARD_INSET, CARD_H);
+    // Nearly opaque, whatever the island's own black (Smoke's lets the
+    // screen through): the message reads over anything behind it.
+    ui.c.fill_rrect(card, CARD_R, Color::rgba(0.12, 0.12, 0.13, 0.95));
+    // The app's logo, or the notice's own icon on a soft disc until it comes.
+    let logo = Rect::new(card.x + 12.0, card.center().y - CARD_LOGO / 2.0, CARD_LOGO, CARD_LOGO);
+    match card_app(n).and_then(|id| st.notify_logos.get(id)) {
+        Some(img) => ui.c.image(img, logo, 10.0),
+        None => {
+            ui.c.fill_rrect(logo, 10.0, n.color.with_alpha(0.22));
+            ui.c.icon(n.icon, Rect::from_center(logo.center(), 20.0, 20.0), n.color);
+        }
+    }
+    let inline = n.inline.map(|a| {
+        let (label, icon, color) = inline_look(st, n, a);
+        let w = ui.pill_width(label, icon.is_some(), true).max(if icon.is_some() { 76.0 } else { 0.0 });
+        let r = Rect::new(card.right() - 12.0 - w, card.center().y - PILL_SMALL / 2.0, w, PILL_SMALL);
+        (a, label, icon, color, r)
+    });
+    // Who it's from in bold and the message under it; a notification
+    // without a sender (or with who it's from hidden) has the app's name
+    // as its title, and then the message is the bold line.
+    let (app, bold, dim) = if n.title_dim.is_empty() { (n.title.as_str(), n.subtitle.as_str(), "") } else { (n.title_dim.as_str(), n.title.as_str(), n.subtitle.as_str()) };
+    let tx = logo.right() + 12.0;
+    let text_right = inline.as_ref().map_or(card.right() - 14.0, |(.., r)| r.x - 12.0);
+    let tw = (text_right - tx).max(0.0);
+    let small = TextStyle::caption().color(palette::TEXT_DIM);
+    let now_w = ui.c.measure("now", &small, 100.0).0.ceil();
+    let head = Rect::new(tx, card.y + 8.0, (tw - now_w - 8.0).max(0.0), 15.0);
+    ui.c.text(app, head, &small);
+    ui.c.text("now", Rect::new(tx + tw - now_w, card.y + 8.0, now_w + 1.0, 15.0), &small);
+    let (bold_y, dim_y) = if dim.is_empty() { (card.y + 28.0, 0.0) } else { (card.y + 24.0, card.y + 42.0) };
+    ui.c.text(bold, Rect::new(tx, bold_y, tw, 18.0), &TextStyle::body().weight(Weight::Semibold));
+    if !dim.is_empty() {
+        ui.c.text(dim, Rect::new(tx, dim_y, tw, 16.0), &TextStyle::footnote().color(palette::TEXT_DIM));
+    }
+    // The card is the notice's button (the app handles it on mouse-down); the
+    // inline pill is registered after it so it wins the hit test.
+    ui.button(wid("notice"), card);
+    if let Some((a, label, icon, color, r)) = inline {
+        if inline_done(st, a) {
+            ui.c.fill_rrect(r, r.h / 2.0, color.with_alpha(0.20));
+            ui.c.icon(Icon::Check, Rect::from_center(r.center(), 14.0, 14.0), color);
+        } else {
+            let style = if icon.is_some() { PillStyle::Primary(color) } else { PillStyle::Utility };
+            ui.pill(wid("notice.act"), r, label, icon, style);
+        }
+    }
+}
+
 fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
     let Some(n) = st.notice.clone() else { return };
+    if notice_card(st) {
+        draw_card_notice(ui, st, &n, body);
+        return;
+    }
     let cy = body.center().y;
     // Disc and inline pill keep the same 16 DIP inset from the ends.
     let c = Point::new(body.x + 32.0, cy);

@@ -684,6 +684,31 @@ impl ThumbWorker {
     }
 }
 
+/// An app's icon as the Start menu shows it, by its AppUserModelID
+/// (`shell:AppsFolder\<id>`): packaged apps and classic ones alike (a
+/// notification's sender, for its card), at most `px` on its longer side.
+pub fn app_icon(aumid: &str, px: u32) -> Result<Image, String> {
+    let _com = ComInit::new(COINIT_MULTITHREADED);
+    let factory = wic_factory().map_err(|e| format!("WIC unavailable: {e}"))?;
+    unsafe {
+        let item: IShellItemImageFactory = SHCreateItemFromParsingName(&HSTRING::from(format!("shell:AppsFolder\\{aumid}")), None).map_err(|e| format!("no such app: {e}"))?;
+        let size = SIZE { cx: px as i32, cy: px as i32 };
+        let hbmp = OwnedBitmap(item.GetImage(size, SIIGBF_BIGGERSIZEOK | SIIGBF_ICONONLY).map_err(|e| format!("no icon: {e}"))?);
+        let bitmap = factory.CreateBitmapFromHBITMAP(hbmp.0, HPALETTE::default(), WICBitmapUsePremultipliedAlpha).map_err(|e| e.to_string())?;
+        let source: IWICBitmapSource = bitmap.cast().map_err(|e| e.to_string())?;
+        let (w, h) = source_size(&source).map_err(|e| e.to_string())?;
+        let target = fit_within(w, h, px);
+        let mut pixels = to_pbgra(&factory, &source, (w, h), target).map_err(|e| e.to_string())?;
+        // An all-zero alpha channel means "no alpha": opaque.
+        if pixels.iter().skip(3).step_by(4).all(|&a| a == 0) {
+            for a in pixels.iter_mut().skip(3).step_by(4) {
+                *a = 255;
+            }
+        }
+        Ok(ImageData::new(target.0, target.1, pixels))
+    }
+}
+
 /// Copy a `w`×`h` BGRA image into the centre of a transparent `cw`×`ch` canvas.
 fn center_on_canvas(src: &[u8], w: u32, h: u32, cw: u32, ch: u32) -> Vec<u8> {
     let mut out = vec![0u8; (cw * ch * 4) as usize];
