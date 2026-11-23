@@ -147,6 +147,8 @@ pub fn create_visual_window(island: HWND) -> Result<HWND> {
 pub enum CaptureOwner {
     Glass = 1,
     Script = 2,
+    /// Settings > General > Show in screenshots, off.
+    Setting = 4,
 }
 
 thread_local! {

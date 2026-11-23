@@ -134,6 +134,10 @@ pub struct Settings {
     pub hud_power: bool,
     pub hud_bluetooth: bool,
     pub sounds: bool,
+    /// The island shows in screenshots, screen recordings and screen
+    /// sharing. Off, Windows leaves it out (as it always does while the
+    /// Glass theme or the Script page needs it out).
+    pub show_in_capture: bool,
     /// Page shown first when expanding ("media", "today", "shelf", "tasks", "focus").
     pub start_page: String,
     /// Remember the last page instead of `start_page`.
@@ -253,6 +257,7 @@ impl Default for Settings {
             hud_power: true,
             hud_bluetooth: true,
             sounds: true,
+            show_in_capture: true,
             start_page: "media".into(),
             remember_page: true,
             hidden_tabs: Vec::new(),

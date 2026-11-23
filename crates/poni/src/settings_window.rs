@@ -254,6 +254,7 @@ pub fn sections(st: &AppState) -> Vec<Section> {
 pub enum Key {
     Autostart,
     Sounds,
+    ShowInCapture,
     Clock24,
     IdleLook,
     HoverDelay,
@@ -443,6 +444,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 item(Key::Autostart, AUTOSTART.0, Some(AUTOSTART.1), Ctl::Switch(st.ui.autostart)),
                 switch(Key::Sounds, "Sounds", Some("A soft sound for timers, drops and reminders"), s.sounds),
                 switch(Key::Clock24, "24-hour clock", None, s.use_24h),
+                switch(Key::ShowInCapture, "Show in screenshots", Some("And in recordings and screen sharing (Glass always hides it)"), s.show_in_capture),
             ];
             vec![Block::Version, Block::Group(None, rows)]
         }
@@ -635,6 +637,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             return;
         }
         Key::Sounds => s.sounds = !s.sounds,
+        Key::ShowInCapture => s.show_in_capture = !s.show_in_capture,
         Key::Clock24 => s.use_24h = !s.use_24h,
         Key::IdleLook => {
             let looks = status::looks(theme);

@@ -379,6 +379,8 @@ pub struct App {
     /// Make way for the pointer: the island stepped aside because the
     /// pointer came onto it (`Settings::make_way`), until it leaves.
     making_way: bool,
+    /// Show in screenshots off: what Windows was last asked (None: not yet).
+    capture_hidden: Option<bool>,
     /// Follow-up raises still due (TIMER_RAISE).
     raises_left: u8,
     /// Window classes already logged for covering the island (once each).
@@ -585,6 +587,7 @@ impl App {
             fullscreen_on: false,
             top_windows: Vec::new(),
             making_way: false,
+            capture_hidden: None,
             raises_left: 0,
             covered_by: HashSet::new(),
             shown: false,
@@ -2326,6 +2329,23 @@ impl App {
         self.set_script_hotkey(can_read && self.selftest.is_none());
     }
 
+    /// Out of screenshots, recordings and screen shares while Show in
+    /// screenshots is off (each frame; Windows is told only on a change).
+    fn sync_capture_setting(&mut self) {
+        let hide = !self.st.settings.show_in_capture && self.selftest.is_none();
+        if self.capture_hidden == Some(hide) {
+            return;
+        }
+        let ok = !hide || window::windows_build().is_some_and(|b| b >= crate::glass::EXCLUDE_FROM_CAPTURE_BUILD);
+        let ok = ok && window::exclude_from_capture(self.hwnd, window::CaptureOwner::Setting, hide);
+        pinfo!("capture: {}", match (hide, ok) {
+            (false, _) => "the island shows in screenshots",
+            (true, true) => "the island is left out of screenshots",
+            (true, false) => "Windows can't leave the island out of screenshots",
+        });
+        self.capture_hidden = Some(hide);
+    }
+
     /// Out of screen shares and recordings while the Script page shows, and
     /// until the island has closed over it.
     fn sync_script_capture(&mut self, on: bool) {
@@ -2780,6 +2800,7 @@ impl App {
             && matches!(self.gfx.renderer(), crate::gfx::Renderer::Gpu { .. });
         self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, window_px, &mut self.gfx);
         self.sync_script_capture(self.st.page == PageKind::Script && (self.expanded || !self.island.settled()));
+        self.sync_capture_setting();
         let mut glass_moving = false;
         let glass = if glass_theme && !hidden_idle {
             let small = !matches!(mode, Mode::Expanded(_));
