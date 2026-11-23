@@ -72,6 +72,11 @@ const TIMER_LANGUAGE: usize = 12;
 const LANGUAGE_WAIT_MS: u32 = 300;
 /// Looks after the keys before giving up (Windows can take a moment).
 const LANGUAGE_LOOKS: u8 = 3;
+/// After the brightness changed, Windows' own pop-up is put away again this
+/// often, this many times (it may come a moment after Windows' word).
+const TIMER_OSD: usize = 13;
+const OSD_EVERY_MS: u32 = 120;
+const OSD_LOOKS: u8 = 8;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -484,6 +489,8 @@ pub struct App {
     brightness: Option<u8>,
     /// Looks left for a language switch after its keys.
     language_looks: u8,
+    /// Looks left to put Windows' brightness pop-up away.
+    osd_looks: u8,
 }
 
 /// The island window: position and size in screen pixels.
@@ -671,6 +678,7 @@ impl App {
             keyboard_layout: None,
             brightness: None,
             language_looks: 0,
+            osd_looks: 0,
         })
     }
 
@@ -682,6 +690,9 @@ impl App {
         if !fake {
             services::power::register_brightness(self.helper);
             self.sync_keys();
+            if self.st.settings.hud_brightness && self.st.settings.hud_hide_windows_brightness {
+                services::osd::hide();
+            }
         }
         if !fake {
             self.services = Some(Services::start(&self.sink, self.hwnd, self.helper, &self.st.settings));
@@ -736,6 +747,9 @@ impl App {
         // With Hihu closed, Windows shows its own pop-ups again.
         self.banners.set(&Default::default());
         services::keys::set(self.helper, false, false, false);
+        if self.st.settings.hud_hide_windows_brightness && self.selftest.is_none() {
+            services::osd::restore();
+        }
         self.screen_close(self.st.unix);
         self.save_screentime(false);
         self.settings_win = None;
@@ -1396,6 +1410,7 @@ impl App {
             }
             WM_POWERBROADCAST => {
                 if let Some(pct) = services::power::brightness_change(wp, lp) {
+                    self.hide_windows_osd();
                     let was = self.brightness.replace(pct);
                     if was.is_some_and(|w| w != pct) && self.st.settings.hud_brightness {
                         self.st.show_hud(HudKind::Brightness { percent: pct }, 1.6);
@@ -1682,6 +1697,15 @@ impl App {
                 }
             }
             TIMER_SCREEN => self.screen_check(),
+            TIMER_OSD => {
+                self.osd_looks = self.osd_looks.saturating_sub(1);
+                services::osd::hide();
+                if self.osd_looks == 0 {
+                    unsafe {
+                        let _ = KillTimer(self.hwnd, TIMER_OSD);
+                    }
+                }
+            }
             TIMER_LANGUAGE => {
                 self.language_looks = self.language_looks.saturating_sub(1);
                 let found = services::keys::language();
@@ -1940,6 +1964,11 @@ impl App {
             } else {
                 self.stop_notify();
             }
+        }
+        // Windows' brightness pop-up: back when it's no longer kept away.
+        let osd = |s: &Settings| s.hud_brightness && s.hud_hide_windows_brightness;
+        if osd(&before) && !osd(&self.st.settings) && self.selftest.is_none() {
+            services::osd::restore();
         }
         // The keys the pop-ups answer.
         let s = &self.st.settings;
@@ -4095,6 +4124,20 @@ impl App {
         self.notify = None;
         self.st.notify_access = NotifyAccess::Unknown;
         self.sync_banners();
+    }
+
+    /// Windows' brightness pop-up out of sight, now and a few times in the
+    /// second after, while the island shows brightness and it's set to.
+    fn hide_windows_osd(&mut self) {
+        let s = &self.st.settings;
+        if !(s.hud_brightness && s.hud_hide_windows_brightness) || self.selftest.is_some() {
+            return;
+        }
+        services::osd::hide();
+        self.osd_looks = OSD_LOOKS;
+        unsafe {
+            SetTimer(self.hwnd, TIMER_OSD, OSD_EVERY_MS, None);
+        }
     }
 
     /// The keyboard hook for the pop-ups' keys: there while one of them is on.

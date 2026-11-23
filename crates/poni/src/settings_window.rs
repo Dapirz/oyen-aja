@@ -324,6 +324,7 @@ pub enum Key {
     HudLanguage,
     HudBrightness,
     HudOverFullscreen,
+    HudHideBrightness,
     RememberPage,
     StartPage,
     Tab(PageKind),
@@ -596,6 +597,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             Some("Instead of Windows"),
             vec![
                 switch(Key::HudVolumeKeys, "Take over the volume keys", Some("Windows' volume pop-up stays away; the keys move 2 % a press"), s.hud_volume_keys),
+                switch(Key::HudHideBrightness, "Hide Windows' brightness pop-up", Some("Experimental: Windows' own bar stays away while the island shows it"), s.hud_hide_windows_brightness),
                 switch(Key::HudOverFullscreen, "Show over full-screen apps", Some("While the island hides for a game or video, pop-ups still show"), s.hud_over_fullscreen),
             ],
         ),
@@ -902,6 +904,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::HudLanguage => s.hud_language = !s.hud_language,
         Key::HudBrightness => s.hud_brightness = !s.hud_brightness,
         Key::HudOverFullscreen => s.hud_over_fullscreen = !s.hud_over_fullscreen,
+        Key::HudHideBrightness => s.hud_hide_windows_brightness = !s.hud_hide_windows_brightness,
         Key::RememberPage => s.remember_page = !s.remember_page,
         Key::StartPage => {
             let pages = start_pages(st);
