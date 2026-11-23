@@ -158,7 +158,7 @@ impl PageKind {
     /// Notifications, which goes off with its tab (it's offered only where
     /// the copy can read notifications). The add-ons' pages come and go with
     /// their switches.
-    pub const HIDEABLE: [PageKind; 6] = [PageKind::Media, PageKind::Today, PageKind::Shelf, PageKind::Tasks, PageKind::Focus, PageKind::Notifications];
+    pub const HIDEABLE: [PageKind; 3] = [PageKind::Media, PageKind::Today, PageKind::Shelf];
 
     pub fn hideable(self) -> bool {
         Self::HIDEABLE.contains(&self)
@@ -175,17 +175,11 @@ pub fn tabs(st: &AppState) -> Vec<PageKind> {
     row(st, Some(st.page))
 }
 
-/// The tabs Settings can switch off in this copy (its tabs row, and Tabs in
-/// the Settings window): the island's own pages, and Notifications, the
-/// last of [`PageKind::HIDEABLE`], only where the copy can read them
-/// (`AppState::notify_can`).
-pub fn hideable_tabs(st: &AppState) -> &'static [PageKind] {
-    let all = &PageKind::HIDEABLE;
-    if st.notify_can {
-        all
-    } else {
-        &all[..all.len() - 1]
-    }
+/// The tabs Settings can switch off (its tabs row, and Tabs in the Settings
+/// window): Music, Today and Shelf. Every other page is an add-on's, and
+/// goes with its switch on the Add-ons page.
+pub fn hideable_tabs(_st: &AppState) -> &'static [PageKind] {
+    &PageKind::HIDEABLE
 }
 
 /// Where the island goes when its page leaves the row (an add-on switched
@@ -203,6 +197,8 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::Script => st.script_on(),
             PageKind::Downloads => st.downloader_on(),
             PageKind::Notifications => st.notifications_on(),
+            PageKind::Tasks => st.tasks_on(),
+            PageKind::Focus => st.focus_on(),
             p if p.hideable() => !st.tab_hidden(p) || open == Some(p),
             p => p.tabbed(),
         })
@@ -639,7 +635,10 @@ mod tests {
         let mut st = state();
         st.settings.hidden_tabs = vec!["today".into(), "tasks".into(), "addons".into()];
         st.page = Focus;
-        // The "+" can't be hidden.
+        // The "+" can't be hidden, nor an add-on's page as a tab: Tasks
+        // goes with its switch on the Add-ons page.
+        assert_eq!(tabs(&st), [Media, Shelf, Tasks, Focus, Addons]);
+        st.addons.insert("tasks", poni_core::addons::Status::Off);
         assert_eq!(tabs(&st), [Media, Shelf, Focus, Addons]);
         assert_eq!(first_tab(&st), Media);
         // Opened from elsewhere (a meeting's notice opens Today): its tab
@@ -649,8 +648,9 @@ mod tests {
         st.page = step_tab(Today, &st, true);
         assert_eq!(st.page, Shelf);
         assert!(!tabs(&st).contains(&Today));
-        // Every one of them hidden: the island opens on Add-ons.
+        // Every one of them hidden, every add-on off: the island opens on Add-ons.
         st.settings.hidden_tabs = PageKind::HIDEABLE.iter().map(|p| p.key().to_string()).collect();
+        st.addons.insert("focus", poni_core::addons::Status::Off);
         st.page = Addons;
         assert_eq!(tabs(&st), [Addons]);
         assert_eq!(first_tab(&st), Addons);
@@ -700,14 +700,13 @@ mod tests {
         // The download can't read other apps' notifications: no tab, nothing listens.
         let mut st = state();
         assert!(!st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications));
-        assert_eq!(hideable_tabs(&st), &PageKind::HIDEABLE[..5], "Settings doesn't offer it");
-        // The Store copy: on for everyone, without an add-on to switch on.
+        // Settings' tabs row is Music, Today and Shelf: add-ons switch on Add-ons.
+        assert_eq!(hideable_tabs(&st), &[PageKind::Media, PageKind::Today, PageKind::Shelf]);
+        // The Store copy: on until its add-on is switched off.
         st.notify_can = true;
         assert!(st.notifications_on() && tabs(&st).contains(&PageKind::Notifications));
-        assert_eq!(hideable_tabs(&st).last(), Some(&PageKind::Notifications));
-        // Its chip in Settings' tabs row switches it off, tab and all, even
-        // while its page is open.
-        st.settings.hidden_tabs = vec!["notifications".into()];
+        // Switched off, tab and all, even while its page is open.
+        st.addons.insert("notifications", poni_core::addons::Status::Off);
         st.page = PageKind::Notifications;
         assert!(!st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications));
         assert_eq!(first_tab(&st), PageKind::Media);

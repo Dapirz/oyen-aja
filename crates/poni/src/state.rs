@@ -511,6 +511,8 @@ impl AppState {
             PageKind::Script => !st.script_on(),
             PageKind::Downloads => !st.downloader_on(),
             PageKind::Notifications => !st.notifications_on(),
+            PageKind::Tasks => !st.tasks_on(),
+            PageKind::Focus => !st.focus_on(),
             p => st.tab_hidden(p),
         };
         if off {
@@ -536,15 +538,25 @@ impl AppState {
     }
 
     /// Notifications is on: its tab shows, and new notifications from the
-    /// apps picked there show on the island. On by default wherever this copy
-    /// can read them (`notify_can`); its chip in Settings' tabs row switches
-    /// it off.
+    /// apps picked there show on the island. A built-in add-on, on until
+    /// switched off, where this copy can read them (`notify_can`).
     pub fn notifications_on(&self) -> bool {
-        self.notify_can && !self.tab_hidden(PageKind::Notifications)
+        self.notify_can && self.addon(poni_core::addons::NOTIFICATIONS.id) == AddonStatus::Ready
     }
 
-    /// Settings took this page's tab off the header's row (Music, Today,
-    /// Shelf, Tasks, Focus or Notifications).
+    /// The Tasks add-on is on (built in, on until switched off): its tab shows.
+    pub fn tasks_on(&self) -> bool {
+        self.addon(poni_core::addons::TASKS.id) == AddonStatus::Ready
+    }
+
+    /// The Focus add-on is on (built in, on until switched off): its tab
+    /// shows and its timer may run.
+    pub fn focus_on(&self) -> bool {
+        self.addon(poni_core::addons::FOCUS.id) == AddonStatus::Ready
+    }
+
+    /// Settings took this page's tab off the header's row (Music, Today or
+    /// Shelf; the add-ons' pages go with their switches).
     pub fn tab_hidden(&self, p: PageKind) -> bool {
         p.hideable() && self.settings.hidden_tabs.iter().any(|k| k == p.key())
     }

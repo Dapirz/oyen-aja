@@ -81,6 +81,8 @@ fn icon(a: &Addon) -> Icon {
         "sholat" => Icon::Moon,
         "ja" => Icon::Lyrics,
         "script" => Icon::Script,
+        "tasks" => Icon::ListChecks,
+        "focus" => Icon::Timer,
         "notifications" => Icon::Bell,
         "downloader" => Icon::Download,
         _ => Icon::Addons,
@@ -88,7 +90,7 @@ fn icon(a: &Addon) -> Icon {
 }
 
 pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
-    let intro = "Each one stays off until you switch it on, and switching off deletes any download.";
+    let intro = "Every feature's switch. Off, it doesn't run; switching off deletes any download.";
     ui.c.text(intro, Rect::new(area.x, area.y, area.w, INTRO_H), &TextStyle::footnote().color(palette::TEXT_DIM));
     // The last row's hover wash meets the Pill card's rounded corners.
     let card = super::card::pill_card(st, area);
@@ -150,7 +152,15 @@ fn addon_row(ui: &mut Ui, st: &AppState, r: Rect, i: usize, a: &Addon, card: Opt
     let x = r.x + TEXT_X;
     let w = (text_right - x).max(0.0);
     let line_color = if status == Status::Failed { palette::ORANGE } else { palette::TEXT_DIM };
-    let line = status.line(a, MAC);
+    // A built-in one says what it does, on or off; Notifications says where
+    // it works when this copy can't read notifications.
+    let line = if a.id == poni_core::addons::NOTIFICATIONS.id && !st.notify_can && !MAC {
+        "Only in the Microsoft Store copy: Windows lets only it read notifications.".to_string()
+    } else if !a.downloads() {
+        a.mac_blurb.filter(|_| MAC).unwrap_or(a.blurb).to_string()
+    } else {
+        status.line(a, MAC)
+    };
     let bar_y = if one_line {
         // The name, then the line after it while there is room.
         let title_w = ui.c.measure(a.title, &TextStyle::headline(), w.max(1.0)).0.ceil().min(w);

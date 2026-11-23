@@ -56,7 +56,7 @@ pub enum MonitorChoice {
 }
 
 /// Bumped when defaults change in a way existing files should pick up.
-pub const SETTINGS_VERSION: u32 = 5;
+pub const SETTINGS_VERSION: u32 = 6;
 
 fn version_zero() -> u32 {
     0
@@ -276,7 +276,7 @@ impl Default for Settings {
 impl Settings {
     /// Is the add-on `id` switched on?
     pub fn addon_on(&self, id: &str) -> bool {
-        self.addons.get(id).copied().unwrap_or(false)
+        self.addons.get(id).copied().unwrap_or_else(|| crate::addons::Addon::find(id).is_some_and(|a| a.on_by_default))
     }
 
     pub fn set_addon(&mut self, id: &str, on: bool) {
@@ -316,6 +316,20 @@ impl Settings {
         // doesn't know do.
         if self.settings_version < 5 && self.addons.get("notifications") == Some(&false) && !self.hidden_tabs.iter().any(|k| k == "notifications") {
             self.hidden_tabs.push("notifications".into());
+        }
+        // v6: Tasks, Focus and Notifications became add-ons (built in, on by
+        // default), so every feature switch is on the Add-ons page. A tab
+        // hidden before is that add-on switched off.
+        if self.settings_version < 6 {
+            // The old add-on key (before 0.2.24), unread since: only the
+            // hidden tab says Notifications is off.
+            self.addons.remove("notifications");
+            for key in ["tasks", "focus", "notifications"] {
+                if let Some(i) = self.hidden_tabs.iter().position(|k| k == key) {
+                    self.hidden_tabs.remove(i);
+                    self.addons.insert(key.to_string(), false);
+                }
+            }
         }
         self.settings_version = self.settings_version.max(SETTINGS_VERSION);
         // Step aside is no longer offered: the island stays over maximized windows.
@@ -549,19 +563,38 @@ mod tests {
 
     #[test]
     fn notifications_switched_off_as_an_add_on_stays_off() {
-        // Until 0.2.24 Notifications was an add-on, off by default. One switched
-        // off by hand stays off, as a hidden tab.
+        // Until 0.2.24 Notifications was an add-on, off by default; then a tab
+        // (v5); now an add-on again, on by default (v6). Switched off by hand
+        // in either, it stays off.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":4,"addons":{"notifications":false,"sholat":true}}"#).unwrap().sanitized();
-        assert_eq!(s.hidden_tabs, ["notifications"]);
+        assert!(!s.addon_on("notifications"));
+        assert!(s.hidden_tabs.is_empty());
         assert!(s.addon_on("sholat"));
-        // Switched on, or never touched: on, like everyone's now.
+        // Switched on, or never touched: on, like everyone's.
         for file in [r#"{"settings_version":4,"addons":{"notifications":true}}"#, r#"{"settings_version":4}"#] {
             let s = serde_json::from_str::<Settings>(file).unwrap().sanitized();
-            assert!(s.hidden_tabs.is_empty(), "{file}");
+            assert!(s.hidden_tabs.is_empty() && s.addon_on("notifications"), "{file}");
         }
-        // Once only: after that, the tabs row is its switch.
+        // In v5 the old key went unread: a stale one doesn't switch it off.
         let s = serde_json::from_str::<Settings>(r#"{"settings_version":5,"addons":{"notifications":false}}"#).unwrap().sanitized();
-        assert!(s.hidden_tabs.is_empty());
+        assert!(s.addon_on("notifications"));
+    }
+
+    #[test]
+    fn tabs_hidden_before_are_their_add_ons_switched_off() {
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":5,"hidden_tabs":["today","tasks","focus","notifications"]}"#).unwrap().sanitized();
+        assert_eq!(s.hidden_tabs, ["today"]);
+        for id in ["tasks", "focus", "notifications"] {
+            assert!(!s.addon_on(id), "{id}");
+        }
+        // Never hidden: on, as for everyone who never switched them off.
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":5}"#).unwrap().sanitized();
+        for id in ["tasks", "focus", "notifications"] {
+            assert!(s.addon_on(id), "{id}");
+        }
+        // Once only: a v6 file's switches are the add-ons'.
+        let s = serde_json::from_str::<Settings>(r#"{"settings_version":6,"addons":{"tasks":false}}"#).unwrap().sanitized();
+        assert!(!s.addon_on("tasks") && s.addon_on("focus"));
     }
 
     #[test]

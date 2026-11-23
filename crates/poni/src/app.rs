@@ -1776,9 +1776,14 @@ impl App {
                 }
             }
         }
-        // Notifications switched on in Settings' tabs row: listen, Windows'
+        // Focus switched off: no timer keeps running without its page.
+        let focus_id = poni_core::addons::FOCUS.id;
+        if before.addon_on(focus_id) && !self.st.settings.addon_on(focus_id) {
+            self.st.pomodoro.reset_all();
+        }
+        // Notifications switched on on the Add-ons page: listen, Windows'
         // question first; off: stop.
-        let notify_was = !before.hidden_tabs.iter().any(|k| k == PageKind::Notifications.key());
+        let notify_was = before.addon_on(poni_core::addons::NOTIFICATIONS.id);
         if self.st.notify_can && notify_was != self.st.notifications_on() && self.selftest.is_none() {
             if self.st.notifications_on() {
                 self.start_notify(true);

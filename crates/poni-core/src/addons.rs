@@ -76,6 +76,9 @@ pub struct Addon {
     /// The release that holds this version of the files.
     pub tag: &'static str,
     pub files: &'static [AddonFile],
+    /// On until the person switches it off (the built-in pages that were
+    /// tabs before they were add-ons: Tasks, Focus, Notifications).
+    pub on_by_default: bool,
 }
 
 impl Addon {
@@ -120,6 +123,7 @@ pub const PRAYER_TIMES: Addon = Addon {
     blurb: "Today's times for your city and a reminder in the island.",
     mac_blurb: None,
     tag: "addon-sholat-3",
+    on_by_default: false,
     files: &[
         AddonFile { name: "places.json", size: 79_687, sha256: "4d2e1cd6c277b97273f415cf0460579db143fe92ac88f6e4bddb79cdf8cbf69b", url: None },
         AddonFile { name: "adzan.m4a", size: 878_695, sha256: "6b8097fa7dfa43bd61ce65894396518ea65dd9d940e56b251ffc4ae5e78c7420", url: None },
@@ -144,6 +148,7 @@ pub const JAPANESE_READINGS: Addon = Addon {
     blurb: "Romaji under kanji in Japanese lyrics, where Windows can't read them.",
     mac_blurb: Some("Romaji under kanji in Japanese lyrics."),
     tag: "addon-ja-1",
+    on_by_default: false,
     files: &[
         AddonFile { name: JA_READINGS_FILE, size: 3_790_036, sha256: "4950e5e42a2a48ad50396304c6bfbb8f9a97b33947e147007943361d65d856c8", url: None },
         AddonFile { name: "NOTICE.txt", size: 4_786, sha256: "fb8cd0420c2a8b04404c17a1a2ada30e0e1bbd73e54ef548bb60ede42198e079", url: None },
@@ -160,6 +165,45 @@ pub const SCRIPT_READER: Addon = Addon {
     mac_blurb: Some("A teleprompter under your webcam."),
     tag: "",
     files: &[],
+    on_by_default: false,
+};
+
+/// Tasks: the Tasks page, a short to-do list. Built in and on until
+/// switched off; off, it has no tab (the list stays saved).
+pub const TASKS: Addon = Addon {
+    id: "tasks",
+    title: "Tasks",
+    blurb: "A short to-do list one hover away.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+    on_by_default: true,
+};
+
+/// Focus: the Focus page's Pomodoro timer. Built in and on until switched
+/// off; off, it has no tab and no timer runs (one running stops).
+pub const FOCUS: Addon = Addon {
+    id: "focus",
+    title: "Focus",
+    blurb: "A Pomodoro timer that counts down on the island.",
+    mac_blurb: None,
+    tag: "",
+    files: &[],
+    on_by_default: true,
+};
+
+/// Notifications: new notifications from the apps picked on its page, on
+/// the island. Built in and on until switched off; Windows lets only a
+/// packaged copy (the Microsoft Store's) read them, so elsewhere it has no
+/// tab and nothing listens either way.
+pub const NOTIFICATIONS: Addon = Addon {
+    id: "notifications",
+    title: "Notifications",
+    blurb: "Messages from the apps you pick, on the island (Microsoft Store copy).",
+    mac_blurb: Some("Messages from the apps you pick, on the island."),
+    tag: "",
+    files: &[],
+    on_by_default: true,
 };
 
 /// Downloader: the Downloads page, which saves the video or sound of a link
@@ -181,6 +225,7 @@ pub const DOWNLOADER_WINDOWS: Addon = Addon {
     blurb: "Save the video or sound of a link you paste, with yt-dlp.",
     mac_blurb: None,
     tag: "addon-downloader-1",
+    on_by_default: false,
     files: &[
         AddonFile {
             name: "yt-dlp.exe",
@@ -235,8 +280,9 @@ pub fn is_downloader_tool(name: &str) -> bool {
     [YTDLP_EXE, QJS_EXE, FFMPEG_EXE].contains(&name)
 }
 
-/// Every add-on, in the order the Add-ons page lists them.
-pub const ALL: [&Addon; 4] = [&PRAYER_TIMES, &JAPANESE_READINGS, &SCRIPT_READER, &DOWNLOADER];
+/// Every add-on, in the order the Add-ons page lists them: the built-in
+/// pages first, then the ones that download.
+pub const ALL: [&Addon; 7] = [&TASKS, &FOCUS, &NOTIFICATIONS, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS, &DOWNLOADER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -354,9 +400,12 @@ mod tests {
         }
         // Clipboard history left the app after 0.2.8: no add-on by that id.
         assert_eq!(Addon::find("clipboard"), None);
-        // Notifications left the add-ons after 0.2.24: it's on wherever Windows
-        // lets the copy read notifications, and Settings' tabs row switches it off.
-        assert_eq!(Addon::find("notifications"), None);
+        // The pages that were tabs are built in too, and on until switched off.
+        for a in [&TASKS, &FOCUS, &NOTIFICATIONS] {
+            assert!(!a.downloads() && a.size() == 0, "{}", a.id);
+            assert_eq!(Addon::find(a.id), Some(a));
+            assert!(Settings::default().addon_on(a.id), "{} is on until switched off", a.id);
+        }
     }
 
     #[test]
@@ -435,9 +484,9 @@ mod tests {
 
     #[test]
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
-        // The Add-ons page's order: the free ones, then Studio Pro's.
+        // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["sholat", "ja", "script", "downloader"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "script", "sholat", "ja", "downloader"]);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);
@@ -501,6 +550,7 @@ mod tests {
             blurb: "Not out yet.",
             mac_blurb: None,
             tag: "addon-soon-1",
+            on_by_default: false,
             files: &[
                 AddonFile { name: "tool.exe", size: 2_151_363, sha256: "2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77", url: None },
                 AddonFile { name: "NOTICE.txt", size: 0, sha256: "", url: None },
@@ -571,6 +621,7 @@ mod tests {
             blurb: "Big tools.",
             mac_blurb: None,
             tag: "addon-big-1",
+            on_by_default: false,
             files: &[AddonFile { name: "big.exe", size: 30_100_000, sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d", url: None }],
         };
         assert_eq!(fmt_bytes(BIG.size()), "30 MB", "its size on the page while it's off");

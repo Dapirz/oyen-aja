@@ -237,6 +237,7 @@ impl Section {
     pub fn shown(self, st: &AppState) -> bool {
         match self {
             Section::Prayer => st.prayer_on(),
+            Section::Focus => st.focus_on(),
             _ => true,
         }
     }
@@ -530,15 +531,12 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             if !s.remember_page {
                 open.push(item(Key::StartPage, "Opens on", None, Ctl::Stepper(start_name.to_string())));
             }
-            // Notifications only in a copy that can read them; off, nothing listens.
-            let tabs = crate::pages::hideable_tabs(st)
-                .iter()
-                .map(|&p| {
-                    let sub = (p == PageKind::Notifications).then_some("Messages from WhatsApp, Telegram and your phone");
-                    item(Key::Tab(p), p.title(), sub, Ctl::Switch(Some(!st.tab_hidden(p))))
-                })
-                .collect();
-            vec![Block::Group(Some("When the island opens"), open), Block::Group(Some("Tabs in the island"), tabs), Block::Note("The add-ons' pages always have a tab.")]
+            let tabs = crate::pages::hideable_tabs(st).iter().map(|&p| item(Key::Tab(p), p.title(), None, Ctl::Switch(Some(!st.tab_hidden(p))))).collect();
+            vec![
+                Block::Group(Some("When the island opens"), open),
+                Block::Group(Some("Tabs in the island"), tabs),
+                Block::Note("Tasks, Focus, Notifications and the other add-ons switch on and off in Add-ons, with their tabs."),
+            ]
         }
         Section::Addons => vec![Block::Addons],
         Section::Focus => {
@@ -1795,16 +1793,20 @@ mod tests {
     }
 
     #[test]
-    fn notifications_switches_off_under_tabs_only_where_the_copy_can_read_them() {
+    fn tabs_lists_the_island_s_own_pages_and_add_ons_switch_in_add_ons() {
         let mut st = state();
-        let listed = |st: &AppState| row(Section::Tabs, st, Key::Tab(PageKind::Notifications)).is_some();
-        assert!(!listed(&st), "the download has no Notifications");
         st.notify_can = true;
-        assert!(listed(&st) && st.notifications_on(), "on from the start in the Store copy");
-        apply(&mut st, Key::Tab(PageKind::Notifications), Act::Toggle);
-        assert!(!st.notifications_on() && st.cmds.iter().any(|c| matches!(c, Command::SaveSettings)));
-        apply(&mut st, Key::Tab(PageKind::Notifications), Act::Toggle);
-        assert!(st.notifications_on());
+        for p in [PageKind::Tasks, PageKind::Focus, PageKind::Notifications] {
+            assert!(row(Section::Tabs, &st, Key::Tab(p)).is_none(), "{p:?} switches in Add-ons");
+        }
+        for p in [PageKind::Media, PageKind::Today, PageKind::Shelf] {
+            assert!(row(Section::Tabs, &st, Key::Tab(p)).is_some(), "{p:?}");
+        }
+        assert!(st.notifications_on(), "on from the start in the Store copy");
+        // Focus's section goes with its add-on.
+        assert!(sections(&st).contains(&Section::Focus));
+        st.addons.insert("focus", poni_core::addons::Status::Off);
+        assert!(!sections(&st).contains(&Section::Focus));
     }
 
     #[test]
