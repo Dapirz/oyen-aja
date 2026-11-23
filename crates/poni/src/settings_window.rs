@@ -257,6 +257,7 @@ pub enum Key {
     ShowInCapture,
     Clock24,
     IdleLook,
+    SmokeOpacity,
     HoverDelay,
     MakeWay,
     CloseDelay,
@@ -385,6 +386,8 @@ const AUTOSTART: (&str, &str) = if cfg!(target_os = "macos") {
 };
 /// The closed island's size, in percent of its own.
 const CLOSED_SIZE: [(u32, &str); 3] = [(90, "Small"), (100, "Normal"), (115, "Large")];
+/// How opaque Smoke's black is while closed (%).
+const SMOKE_OPACITY: [(u32, &str); 3] = [(40, "Light"), (55, "Medium"), (75, "Strong")];
 const WIDTH_STEP: f32 = 20.0;
 const OFFSET_STEP: i32 = 100;
 fn chosen<T: PartialEq>(list: &[(T, &str)], v: T) -> Option<usize> {
@@ -469,6 +472,9 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             shows.push(item(Key::Position, "Position", Some("Across the top edge; 50 % is the middle"), Ctl::Stepper(position_text(s.island_x))));
             shows.push(switch(Key::LockPosition, "Lock position", Some("Dragging the island doesn't move it"), s.lock_position));
             shows.push(item(Key::Fullscreen, "In full-screen apps", Some("Games and videos that fill the screen"), Ctl::Choice(names(&FULLSCREEN), chosen(&FULLSCREEN, s.hide_in_fullscreen))));
+            // Smoke's transparency, by its size (Appearance has no room left).
+            let smoke = (s.theme == Theme::Smoke)
+                .then(|| item(Key::SmokeOpacity, "Transparency", Some("How dark Smoke's black is when closed"), Ctl::Choice(names(&SMOKE_OPACITY), chosen(&SMOKE_OPACITY, s.smoke_opacity_pct))));
             vec![
                 Block::Group(
                     Some("Opening and closing"),
@@ -477,8 +483,11 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                         switch(Key::MakeWay, "Make way for the pointer", Some("Steps aside when the pointer comes; push to the top to open"), s.make_way),
                         item(Key::CloseDelay, "Closes", Some("Once the pointer leaves the open island"), Ctl::Choice(names(&CLOSE), nearest(&CLOSE, s.collapse_delay_ms))),
                         item(Key::ClosedSize, "Size when closed", Some("The closed island and what's on it"), Ctl::Choice(names(&CLOSED_SIZE), chosen(&CLOSED_SIZE, s.island_scale_pct))),
-                        item(Key::Width, "Width when open", Some("Wider gives the pages more room"), Ctl::Stepper(format!("{:.0}", s.expanded_width))),
-                    ],
+                    ]
+                    .into_iter()
+                    .chain(smoke)
+                    .chain([item(Key::Width, "Width when open", Some("Wider gives the pages more room"), Ctl::Stepper(format!("{:.0}", s.expanded_width)))])
+                    .collect(),
                 ),
                 Block::Group(Some("Where it shows"), shows),
             ]
@@ -658,6 +667,10 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::Position if step != 0 => s.island_x = poni_core::spot::nudge(s.island_x, step),
         Key::Position => return,
         Key::LockPosition => s.lock_position = !s.lock_position,
+        Key::SmokeOpacity => match act {
+            Act::Pick(i) if i < SMOKE_OPACITY.len() => s.smoke_opacity_pct = SMOKE_OPACITY[i].0,
+            _ => return,
+        },
         Key::ClosedSize => match act {
             Act::Pick(i) if i < CLOSED_SIZE.len() => s.island_scale_pct = CLOSED_SIZE[i].0,
             _ => return,
@@ -1630,7 +1643,7 @@ fn draw_theme_preview(c: &mut Canvas, theme: Theme, screen: Rect) {
             let body = Rect::new(cx - 34.0, screen.y, 68.0, 20.0);
             let (fill, border) = match theme {
                 Theme::Glass => (Color::white(0.30), Some(Color::white(0.45))),
-                Theme::Smoke => (Color::black(crate::smoke::ALPHA_CLOSED), Some(Color::white(0.12))),
+                Theme::Smoke => (Color::black(0.55), Some(Color::white(0.12))),
                 _ => (palette::ISLAND, None),
             };
             c.notch(body, 9.0, 5.0, fill, border);

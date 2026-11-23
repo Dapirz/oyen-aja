@@ -98,6 +98,9 @@ pub struct Settings {
     /// The closed island's size, everything on it with it, in percent of
     /// its own (80..=150). The open island keeps `expanded_width`.
     pub island_scale_pct: u32,
+    /// How opaque the Smoke theme's black is while the island is closed,
+    /// in percent (30..=95). Open, it is at least 82 % so pages read.
+    pub smoke_opacity_pct: u32,
     /// Make way for the pointer: the closed island steps aside (flat into
     /// the top edge, see-through to clicks) when the pointer comes onto it,
     /// so a browser's tabs under it can be clicked, and opens only when the
@@ -242,6 +245,7 @@ impl Default for Settings {
             island_x: None,
             lock_position: false,
             island_scale_pct: 100,
+            smoke_opacity_pct: 55,
             make_way: false,
             show_media_activity: true,
             music_fps: 60,
@@ -320,6 +324,7 @@ impl Settings {
         self.lyrics_offset_ms = self.lyrics_offset_ms.clamp(-5000, 5000);
         self.lyrics_size = self.lyrics_size.clamp(11, 18);
         self.island_scale_pct = self.island_scale_pct.clamp(80, 150);
+        self.smoke_opacity_pct = self.smoke_opacity_pct.clamp(30, 95);
         self.paused_linger_s = self.paused_linger_s.map(|s| s.min(3600));
         if self.music_fps != 0 {
             self.music_fps = self.music_fps.clamp(15, 240);

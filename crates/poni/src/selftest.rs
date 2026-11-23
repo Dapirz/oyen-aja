@@ -2625,7 +2625,8 @@ impl SelfTest {
                 ));
             } else if crate::smoke::on(app.st.settings.theme) {
                 // Smoke: black, as translucent as the theme says (closed or open).
-                let want = [crate::smoke::ALPHA_CLOSED, crate::smoke::ALPHA_OPEN].map(|k| (k * 255.0).round() as u8);
+                let s = &app.st.settings;
+                let want = [crate::smoke::alpha_closed(s), crate::smoke::alpha_open(s)].map(|k| (k * 255.0).round() as u8);
                 let ok = r.max(g).max(b) <= 2 && want.iter().any(|w| a.abs_diff(*w) <= 4);
                 checks.push(check("body-smoke-ground", ok, format!("pixel ({cx}, {top}) = rgba({r}, {g}, {b}, {a}), want black at alpha {want:?}")));
             } else {

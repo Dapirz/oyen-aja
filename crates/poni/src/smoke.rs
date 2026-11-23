@@ -23,9 +23,9 @@ use poni_core::datetime::fmt_clock;
 use poni_core::geom::{palette, Color, Rect};
 use poni_core::settings::Theme;
 
-/// How opaque the black is: closed, and open (the pages' text needs a
-/// steadier ground than a glance at the song does).
-pub const ALPHA_CLOSED: f32 = 0.55;
+/// How opaque the black is open, at least (the pages' text needs a
+/// steadier ground than a glance at the song does). Closed, it's the
+/// Transparency setting (`Settings::smoke_opacity_pct`).
 pub const ALPHA_OPEN: f32 = 0.82;
 
 /// The music island's width: at least this (room for the time, the art and
@@ -65,9 +65,20 @@ pub fn on(theme: Theme) -> bool {
     theme == Theme::Smoke
 }
 
+/// How opaque the closed island's black is (the Transparency setting).
+pub fn alpha_closed(s: &poni_core::settings::Settings) -> f32 {
+    s.smoke_opacity_pct as f32 / 100.0
+}
+
+/// How opaque the open island's black is: as closed, and never less than
+/// [`ALPHA_OPEN`].
+pub fn alpha_open(s: &poni_core::settings::Settings) -> f32 {
+    alpha_closed(s).max(ALPHA_OPEN)
+}
+
 /// The island's black: translucent, more so while closed.
-pub fn ground(expanded: bool) -> Color {
-    Color::black(if expanded { ALPHA_OPEN } else { ALPHA_CLOSED })
+pub fn ground(s: &poni_core::settings::Settings, expanded: bool) -> Color {
+    Color::black(if expanded { alpha_open(s) } else { alpha_closed(s) })
 }
 
 /// The music island's size.

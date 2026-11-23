@@ -2831,7 +2831,7 @@ impl App {
                     let island_color = if hidden_idle {
                         Color::black(1.0 / 255.0)
                     } else if crate::smoke::on(self.st.settings.theme) {
-                        crate::smoke::ground(self.expanded)
+                        crate::smoke::ground(&self.st.settings, self.expanded)
                     } else {
                         palette::ISLAND
                     };
