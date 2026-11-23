@@ -183,13 +183,6 @@ pub fn tabs(st: &AppState) -> Vec<PageKind> {
     row(st, Some(st.page))
 }
 
-/// The tabs Settings can switch off (its tabs row, and Tabs in the Settings
-/// window): Music, Today and Shelf. Every other page is an add-on's, and
-/// goes with its switch on the Add-ons page.
-pub fn hideable_tabs(_st: &AppState) -> &'static [PageKind] {
-    &PageKind::HIDEABLE
-}
-
 /// Where the island goes when its page leaves the row (an add-on switched
 /// off, a tab hidden): the first tab, Music unless it's hidden.
 pub fn first_tab(st: &AppState) -> PageKind {

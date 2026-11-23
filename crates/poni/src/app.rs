@@ -69,7 +69,9 @@ const TIMER_SCREEN: usize = 11;
 /// A moment after a key that switches the keyboard's language: Windows has
 /// switched it by then, and the pop-up says which. One-shot.
 const TIMER_LANGUAGE: usize = 12;
-const LANGUAGE_WAIT_MS: u32 = 250;
+const LANGUAGE_WAIT_MS: u32 = 300;
+/// Looks after the keys before giving up (Windows can take a moment).
+const LANGUAGE_LOOKS: u8 = 3;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -480,6 +482,8 @@ pub struct App {
     /// brightness Windows last reported: a pop-up only for a change.
     keyboard_layout: Option<isize>,
     brightness: Option<u8>,
+    /// Looks left for a language switch after its keys.
+    language_looks: u8,
 }
 
 /// The island window: position and size in screen pixels.
@@ -666,6 +670,7 @@ impl App {
             banners: services::banners::Banners::load(),
             keyboard_layout: None,
             brightness: None,
+            language_looks: 0,
         })
     }
 
@@ -1675,13 +1680,23 @@ impl App {
             }
             TIMER_SCREEN => self.screen_check(),
             TIMER_LANGUAGE => {
-                unsafe {
-                    let _ = KillTimer(self.helper, TIMER_LANGUAGE);
-                }
-                if let Some((hkl, name)) = services::keys::language() {
-                    if self.keyboard_layout.replace(hkl).is_some_and(|was| was != hkl) && self.st.settings.hud_language {
+                self.language_looks = self.language_looks.saturating_sub(1);
+                let found = services::keys::language();
+                let changed = match (&found, self.keyboard_layout) {
+                    (Some((hkl, _)), Some(was)) => *hkl != was,
+                    _ => false,
+                };
+                if let Some((hkl, name)) = found {
+                    self.keyboard_layout = Some(hkl);
+                    if changed && self.st.settings.hud_language {
                         self.st.show_hud(HudKind::Language { name }, 1.6);
                         self.request_frame();
+                    }
+                }
+                if changed || self.language_looks == 0 {
+                    self.language_looks = 0;
+                    unsafe {
+                        let _ = KillTimer(self.hwnd, TIMER_LANGUAGE);
                     }
                 }
             }
@@ -4078,8 +4093,10 @@ impl App {
     fn on_key(&mut self, vk: usize, on: bool) {
         use windows::Win32::UI::Input::KeyboardAndMouse::{VK_CAPITAL, VK_NUMLOCK, VK_SCROLL};
         if vk == services::keys::LANGUAGE {
+            // The island's window: its timers are the ones the app hears.
+            self.language_looks = LANGUAGE_LOOKS;
             unsafe {
-                let _ = SetTimer(self.helper, TIMER_LANGUAGE, LANGUAGE_WAIT_MS, None);
+                let _ = SetTimer(self.hwnd, TIMER_LANGUAGE, LANGUAGE_WAIT_MS, None);
             }
             return;
         }
