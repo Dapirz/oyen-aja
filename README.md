@@ -32,7 +32,7 @@ It needs your Apple Music token, copied once from the web player:
 
 1. Open [music.apple.com](https://music.apple.com) in Chrome or Edge and sign in.
 2. Press F12, open **Application** → **Cookies** → `https://music.apple.com`, and copy the value of `media-user-token`.
-3. Right-click the island (or the tray icon) → **Apple Music lyrics** → **Use token from clipboard**.
+3. Open **Settings** → **Music and lyrics** → **Apple Music lyrics** → **Paste**.
 
 Hihu Island checks the token with Apple and says whether it worked. It stores the token encrypted for your Windows account (`%LOCALAPPDATA%\Hihu\apple-music-token.bin`) and clears it from the clipboard. If Windows clipboard history (Win+V) is on, delete it there too. When Apple stops accepting the token, the app says so and you copy a fresh one. **Remove token** in the same menu turns this off. It uses the web player's own API, which Apple doesn't publish for other apps, so it can stop working when Apple changes its site.
 
