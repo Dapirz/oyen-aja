@@ -121,7 +121,7 @@ pub struct Settings {
     pub clipboard_keep_s: Option<u32>,
     /// The Meeting notes add-on: the Gemini model that writes the notes
     /// (`poni_core::notes::MODELS`, or any name typed into the file) and
-    /// their language ("auto", "id" or "en").
+    /// their language ("id" or "en").
     pub notes_model: String,
     pub notes_lang: String,
     /// A song without synced lyrics keeps its title on the closed island
@@ -262,7 +262,7 @@ impl Default for Settings {
             clipboard_max: 25,
             clipboard_keep_s: Some(86_400),
             notes_model: crate::notes::DEFAULT_MODEL.to_string(),
-            notes_lang: "auto".to_string(),
+            notes_lang: "id".to_string(),
             song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,
@@ -362,8 +362,8 @@ impl Settings {
         if self.notes_model.is_empty() || !self.notes_model.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._".contains(&b)) {
             self.notes_model = crate::notes::DEFAULT_MODEL.to_string();
         }
-        if !matches!(self.notes_lang.as_str(), "auto" | "id" | "en") {
-            self.notes_lang = "auto".to_string();
+        if !matches!(self.notes_lang.as_str(), "id" | "en") {
+            self.notes_lang = "id".to_string();
         }
         self.island_scale_pct = self.island_scale_pct.clamp(80, 150);
         self.smoke_opacity_pct = self.smoke_opacity_pct.clamp(30, 95);

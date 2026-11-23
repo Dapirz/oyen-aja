@@ -2474,7 +2474,7 @@ impl App {
             }
             NotesCmd::Copy => {
                 if let Some(last) = &self.st.notes.last {
-                    let md = poni_core::notes::markdown(&last.notes, &last.started, false);
+                    let md = poni_core::notes::markdown(&last.notes, &last.started, false, poni_core::notes::Lang::from_key(&self.st.settings.notes_lang));
                     self.own_clip = Some(md.clone());
                     services::clipboard::set_text(self.helper, &md);
                     self.st.ui.notes_note = Some(("Copied".into(), now + 2.0));
@@ -2482,7 +2482,23 @@ impl App {
             }
             NotesCmd::PasteKey => {
                 // Only what looks like a key: anything else on the clipboard is left alone.
-                let pasted = services::clipboard::read_text(self.helper).map(|s| s.trim().to_string());
+                // The clipboard may be busy a moment (the app that copied still holds it).
+                let mut pasted = None;
+                for _ in 0..5 {
+                    pasted = services::clipboard::read_text(self.helper);
+                    if pasted.is_some() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(30));
+                }
+                let pasted = pasted.map(|s| s.trim().trim_matches('"').to_string());
+                match &pasted {
+                    None => pwarn!("notes: Paste key: no text on the clipboard"),
+                    Some(k) if !services::notes::looks_like_key(k) => {
+                        pwarn!("notes: Paste key: the clipboard's text ({} chars, spaces {}) isn't a key", k.chars().count(), k.contains(char::is_whitespace))
+                    }
+                    _ => {}
+                }
                 let line = match pasted.filter(|k| services::notes::looks_like_key(k)) {
                     Some(k) => match services::secret::save(&paths::gemini_key_path(), &k) {
                         Ok(()) => {

@@ -448,10 +448,11 @@ pub fn key() -> Option<String> {
     crate::services::secret::load(&crate::paths::gemini_key_path()).map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
 }
 
-/// What a pasted key looks like: one word of letters, digits, `-` and `_`.
+/// What a pasted key looks like: one word of printable ASCII, 20 to 300
+/// characters (Google's keys are `AIza…`, newer ones have dots in them).
 pub fn looks_like_key(s: &str) -> bool {
-    let s = s.trim();
-    (20..=200).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    let s = s.trim().trim_matches('"');
+    (20..=300).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_graphic())
 }
 
 struct Sender<'a> {
@@ -499,10 +500,23 @@ impl Sender<'_> {
         self.sink.send(AppEvent::Notes(Box::new(Reply::Writing)));
         let body = notes::generate_body(uploaded, self.job.lang);
         let headers = [("x-goog-api-key", key.as_str())];
-        let url = notes::generate_url(&self.job.model);
-        let (answer, _) = self.call(|| self.client.send_full(Method::Post, &url, &headers, Body::Json(&body), None, WRITE_TIMEOUT))?;
-        let n = notes::parse_notes(&answer)?;
-        self.save(n)
+        // The chosen model busy (or not there for this key): Flash-Lite next.
+        let mut last = Problem::Busy;
+        for model in notes::models_to_try(&self.job.model) {
+            let url = notes::generate_url(model);
+            match self.call(|| self.client.send_full(Method::Post, &url, &headers, Body::Json(&body), None, WRITE_TIMEOUT)) {
+                Ok((answer, _)) => {
+                    crate::pinfo!("notes: written by {model}");
+                    return self.save(notes::parse_notes(&answer)?);
+                }
+                Err(p @ (Problem::Busy | Problem::NoModel)) => {
+                    crate::pwarn!("notes: {model} couldn't take it ({p:?})");
+                    last = p;
+                }
+                Err(p) => return Err(p),
+            }
+        }
+        Err(last)
     }
 
     /// One part up to Gemini's Files API (a resumable upload in one go).
@@ -590,7 +604,7 @@ impl Sender<'_> {
             path = dir.join(name.replace(".md", &format!(" ({i}).md")));
         }
         // UTF-8 with its mark, so Notepad and Word read the Indonesian and the dashes right.
-        let md = format!("\u{feff}{}", notes::markdown(&n, &self.job.started, true));
+        let md = format!("\u{feff}{}", notes::markdown(&n, &self.job.started, true, self.job.lang));
         std::fs::write(&path, md).map_err(|e| {
             crate::pwarn!("notes: can't save the notes ({e})");
             Problem::Server

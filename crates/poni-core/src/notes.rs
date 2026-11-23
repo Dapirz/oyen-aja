@@ -87,11 +87,10 @@ fn push(q: &mut VecDeque<i16>, pcm: &[i16]) {
 
 // ---------------------------------------------------------------- settings
 
-/// The notes' language: the meeting's own, or always one of these.
+/// The notes' language (Settings): Indonesian, or English.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
     #[default]
-    Auto,
     Id,
     En,
 }
@@ -99,25 +98,36 @@ pub enum Lang {
 impl Lang {
     pub fn from_key(s: &str) -> Lang {
         match s {
-            "id" => Lang::Id,
             "en" => Lang::En,
-            _ => Lang::Auto,
+            _ => Lang::Id,
         }
     }
 
     fn rule(self) -> &'static str {
         match self {
-            Lang::Auto => "Write the notes in the language most of the meeting is spoken in.",
-            Lang::Id => "Write the notes in Indonesian (Bahasa Indonesia), whatever language is spoken.",
-            Lang::En => "Write the notes in English, whatever language is spoken.",
+            Lang::Id => "Write the title, summary, decisions, actions and topics in Indonesian (Bahasa Indonesia), whatever language is spoken. Keep the transcript as it was spoken.",
+            Lang::En => "Write the title, summary, decisions, actions and topics in English, whatever language is spoken. Keep the transcript as it was spoken.",
         }
     }
 }
 
 /// The models Settings offers: Google's names that always point at the
 /// newest of each kind, so they keep working as models come and go.
-pub const MODELS: [(&str, &str); 3] = [("gemini-flash-latest", "Flash"), ("gemini-pro-latest", "Pro"), ("gemini-flash-lite-latest", "Flash-Lite")];
+/// Pro isn't on Gemini's free tier.
+pub const MODELS: [(&str, &str); 3] = [("gemini-flash-latest", "Flash"), ("gemini-flash-lite-latest", "Flash-Lite"), ("gemini-pro-latest", "Pro (paid)")];
 pub const DEFAULT_MODEL: &str = MODELS[0].0;
+/// Asked when the chosen model is busy (503) or not there for the key:
+/// on the free tier too, and usually less in demand.
+pub const FALLBACK_MODEL: &str = "gemini-flash-lite-latest";
+
+/// The models to ask in turn: the chosen one, then the fallback.
+pub fn models_to_try(chosen: &str) -> Vec<&str> {
+    if chosen == FALLBACK_MODEL {
+        vec![chosen]
+    } else {
+        vec![chosen, FALLBACK_MODEL]
+    }
+}
 
 // ---------------------------------------------------------------- the calls
 
@@ -590,7 +600,9 @@ pub fn file_name(started: &LocalDateTime, title: &str) -> String {
 }
 
 /// The notes as Markdown: what Copy puts on the clipboard and the file holds.
-pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool) -> String {
+pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool, lang: Lang) -> String {
+    let id = lang == Lang::Id;
+    let h = |en: &'static str, ind: &'static str| if id { ind } else { en };
     let mut md = format!("# {}\n\n", n.title);
     let mins = ((n.secs as f64) / 60.0).round().max(1.0) as u32;
     md += &format!(
@@ -610,17 +622,17 @@ pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool) -> St
             }
         }
     };
-    list(&mut md, "Summary", &n.summary);
-    list(&mut md, "Decisions", &n.decisions);
+    list(&mut md, h("Summary", "Ringkasan"), &n.summary);
+    list(&mut md, h("Decisions", "Keputusan"), &n.decisions);
     if !n.actions.is_empty() {
-        md += "\n## Action items\n\n";
+        md += &format!("\n## {}\n\n", h("Action items", "Tugas"));
         for a in &n.actions {
             let by = [a.who.as_str(), a.when.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(", ");
             md += &if by.is_empty() { format!("- [ ] {}\n", a.what) } else { format!("- [ ] {} ({by})\n", a.what) };
         }
     }
     if !n.topics.is_empty() {
-        md += "\n## Notes\n";
+        md += &format!("\n## {}\n", h("Notes", "Catatan"));
         for t in &n.topics {
             md += &format!("\n### {}\n\n", t.title);
             for p in &t.points {
@@ -629,12 +641,12 @@ pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool) -> St
         }
     }
     if with_transcript && !n.transcript.is_empty() {
-        md += "\n## Transcript\n\n";
+        md += &format!("\n## {}\n\n", h("Transcript", "Transkrip"));
         for l in &n.transcript {
             md += &format!("**[{}] {}:** {}\n\n", fmt_length(l.t), l.who, l.text);
         }
     }
-    md += "\n---\nNotes by Gemini, in Hihu Island\n";
+    md += h("\n---\nNotes by Gemini, in Hihu Island\n", "\n---\nCatatan oleh Gemini, di Hihu Island\n");
     md
 }
 
@@ -705,11 +717,17 @@ mod tests {
         assert_eq!(parts[0]["file_data"]["file_uri"], "https://x/files/a");
         assert!(parts[1]["text"].as_str().unwrap().contains("Indonesian"));
         assert_eq!(one["generationConfig"]["responseMimeType"], "application/json");
-        let two: Value = serde_json::from_str(&generate_body(&[f, g], Lang::Auto)).unwrap();
+        let two: Value = serde_json::from_str(&generate_body(&[f, g], Lang::En)).unwrap();
         let parts = two["contents"][0]["parts"].as_array().unwrap();
         assert_eq!(parts.len(), 5);
         assert_eq!(parts[2]["text"], "Audio file 2 of 2, from 5:00:");
         assert!(parts[4]["text"].as_str().unwrap().contains("2 audio files in order"));
+    }
+
+    #[test]
+    fn a_busy_model_gives_way_to_flash_lite() {
+        assert_eq!(models_to_try("gemini-flash-latest"), ["gemini-flash-latest", "gemini-flash-lite-latest"]);
+        assert_eq!(models_to_try("gemini-flash-lite-latest"), ["gemini-flash-lite-latest"]);
     }
 
     #[test]
@@ -800,13 +818,14 @@ mod tests {
             secs: 1834,
             ..Default::default()
         };
-        let md = markdown(&n, &at(14, 5), true);
+        let md = markdown(&n, &at(14, 5), true, Lang::En);
+        assert!(markdown(&n, &at(14, 5), true, Lang::Id).contains("\n## Ringkasan\n\n- Rilis Jumat\n"));
         assert!(md.starts_with("# Launch plan\n\nThu 29 Oct 2026 · 14:05 · 31 min\n"), "{md}");
         assert!(md.contains("\n## Summary\n\n- Rilis Jumat\n"));
         assert!(!md.contains("## Decisions"), "nothing decided: no heading");
         assert!(md.contains("- [ ] Kirim deck (Budi, Kamis)\n- [ ] Cek harga\n"));
         assert!(md.contains("### Harga\n\n- 49rb\n"));
         assert!(md.contains("**[1:05] Budi:** Oke.\n"));
-        assert!(!markdown(&n, &at(14, 5), false).contains("Transcript"));
+        assert!(!markdown(&n, &at(14, 5), false, Lang::En).contains("Transcript"));
     }
 }

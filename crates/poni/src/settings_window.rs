@@ -387,7 +387,7 @@ const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
 const CLIP_MAX: [(u32, &str); 4] = [(10, "10"), (25, "25"), (50, "50"), (100, "100")];
 const CLIP_KEEP: [(Option<u32>, &str); 4] = [(Some(3_600), "1 hour"), (Some(86_400), "1 day"), (Some(7 * 86_400), "7 days"), (None, "Forever")];
 /// Meeting notes: the language the notes are written in.
-const NOTES_LANG: [(&str, &str); 3] = [("auto", "The meeting's"), ("id", "Indonesian"), ("en", "English")];
+const NOTES_LANG: [(&str, &str); 2] = [("id", "Indonesian"), ("en", "English")];
 /// How long a paused song stays on the closed island (s; None: while paused).
 /// A song without lyrics: its title on the closed island all song long, or
 /// only for the moment a new track starts.
@@ -578,13 +578,13 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     vec![
                         key,
                         item(Key::NotesGetKey, "Get a key", Some("Free at Google AI Studio"), Ctl::Button("Open")),
-                        item(Key::NotesModel, "Model", Some("Flash is quick; Pro writes better notes, more slowly"), Ctl::Choice(names(&models), chosen(&models, s.notes_model.as_str()))),
+                        item(Key::NotesModel, "Model", Some("Flash and Flash-Lite are free; when one is busy, Flash-Lite writes them"), Ctl::Choice(names(&models), chosen(&models, s.notes_model.as_str()))),
                     ],
                 ),
                 Block::Group(
                     Some("Notes"),
                     vec![
-                        item(Key::NotesLang, "Written in", Some("The meeting's own language, or always one"), Ctl::Choice(names(&NOTES_LANG), chosen(&NOTES_LANG, s.notes_lang.as_str()))),
+                        item(Key::NotesLang, "Written in", Some("The notes; the transcript stays as spoken"), Ctl::Choice(names(&NOTES_LANG), chosen(&NOTES_LANG, s.notes_lang.as_str()))),
                         item(Key::NotesFolder, "Saved notes", Some("Documents \u{203a} Hihu Island \u{203a} Notes"), Ctl::Button("Open")),
                     ],
                 ),
