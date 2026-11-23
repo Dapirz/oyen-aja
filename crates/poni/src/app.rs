@@ -550,7 +550,6 @@ impl App {
         let clock = FrameClock::start(SendHwnd::new(hwnd), monitor.handle);
         let taskbar_created_msg = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
         // The Downloader: not in the Microsoft Store build.
-        st.downloader_offered = !crate::autostart::store_packaged();
         let selftest = selftest_dir.map(selftest::SelfTest::new);
         let saved_settings = st.settings.clone();
         Ok(Self {
@@ -654,6 +653,15 @@ impl App {
             }
             if self.st.clipboard_on() {
                 self.clipboard_on();
+            }
+            // The Downloader left the app: the tools a copy from before kept
+            // (yt-dlp, QuickJS, FFmpeg, about 28 MB) go, once.
+            let tools = paths::addons_dir().join("downloader");
+            if tools.exists() {
+                std::thread::spawn(move || match std::fs::remove_dir_all(&tools) {
+                    Ok(()) => crate::plog::write("INFO", "add-ons: the Downloader's old tools deleted"),
+                    Err(e) => crate::plog::write("WARN", &format!("add-ons: the Downloader's old tools stay ({e})")),
+                });
             }
             self.try_add_tray();
             services::power::register_session(self.helper);
@@ -947,10 +955,6 @@ impl App {
                 }
                 None => {}
             }
-        }
-        // The download pill opens on its page.
-        if self.mode == Mode::Activity(activities::Activity::Download) {
-            self.st.page = PageKind::Downloads;
         }
         self.st.hud = None;
         if !opened {
@@ -1776,11 +1780,6 @@ impl App {
         if !before.prayer.follow_location && self.st.settings.prayer.follow_location && self.st.prayer_on() {
             self.locate();
         }
-        // The Downloader: off stops its downloads before its tools are deleted.
-        let downloader_id = poni_core::addons::DOWNLOADER.id;
-        if before.addon_on(downloader_id) && !self.st.settings.addon_on(downloader_id) {
-            self.downloads_off();
-        }
         // An add-on switched on downloads its files; off deletes them.
         for a in poni_core::addons::ALL {
             let on = self.st.settings.addon_on(a.id);
@@ -1924,10 +1923,6 @@ impl App {
         if let Some(w) = self.settings_win.as_mut().filter(|_| shown) {
             w.view.dirty = true;
         }
-        // A download's bytes coming in while nobody can see the island (locked,
-        // display off) wait for the next frame something else asks for: the
-        // pill catches up then, as nothing else of it moves on its own.
-        let unseen = matches!(ev, AppEvent::Download { line: poni_core::ytdlp::Line::Progress { .. }, .. }) && (self.locked || self.display_off);
         match ev {
             AppEvent::ClipboardText(t) => {
                 if self.own_clip.as_deref() == Some(t.as_str()) {
@@ -2117,16 +2112,12 @@ impl App {
             AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
             AppEvent::Notify(ev) => self.on_notify(ev),
             AppEvent::AdzanEnded => self.adzan_ended(),
-            AppEvent::Download { id, line } => self.download_line(id, line),
-            AppEvent::DownloadEnded { id, ok } => self.download_ended(id, ok),
             AppEvent::Log(s) => pinfo!("{s}"),
         }
         if let Some(before) = media_before {
             self.after_media_change(before, now);
         }
-        if !unseen {
-            self.request_frame();
-        }
+        self.request_frame();
     }
 
     /// (player, track, playing) of the current media session.
@@ -2730,10 +2721,9 @@ impl App {
         }
         self.prayer_tick();
         self.script_tick();
-        // Prayer times or Downloader switched off: its tab is gone.
+        // Prayer times or Notifications switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
-            PageKind::Downloads => !self.st.downloader_on(),
             PageKind::Notifications => !self.st.notifications_on(),
             _ => false,
         };
@@ -2812,9 +2802,6 @@ impl App {
             }
             self.mode = target;
             retarget = true;
-            if target == Mode::Expanded(PageKind::Downloads) {
-                self.downloads_page_shown();
-            }
         } else {
             // Size can change within a mode (a page's height, the hover lift); follow it.
             let g = self.geom_for(&self.mode);
@@ -3575,7 +3562,6 @@ impl App {
                         services::cities::fetch(file, self.sink.clone());
                     }
                 }
-                Command::Download(c) => self.download_cmd(c),
                 Command::Notify(c) => self.notify_cmd(c),
             }
         }
@@ -4380,10 +4366,6 @@ fn paired_phones(pairs: Vec<poni_core::pairdrop::Pair>) -> Vec<PairedPhone> {
 fn files_label(n: usize) -> String {
     format!("{n} {}", if n == 1 { "file" } else { "files" })
 }
-
-// The Downloads page's commands and yt-dlp's reports.
-#[path = "app_downloads.rs"]
-mod downloads;
 
 #[cfg(test)]
 mod tests {

@@ -269,13 +269,6 @@ fn ensure(shared: &Shared, client: &Client, sink: &EventSink, dir: &Path, addon:
     let missing: Vec<&AddonFile> = addon.files.iter().filter(|f| !present(&folder.join(f.name), f, &stamp, &mut lines)).collect();
     // Kept now, so tries while the rest can't come don't read these again.
     let stamp = save_stamp(&folder, &stamp, &mut lines);
-    // A Mac runs the Downloader's tools only with their execute bit, which
-    // each gets as it is saved (below); one that lost it gets it back.
-    for f in addon.files.iter().filter(|f| runs(addon, f) && !missing.contains(f)) {
-        if let Err(e) = make_runnable(&folder.join(f.name)) {
-            crate::pwarn!("add-ons: {}: {} can't be made runnable ({e})", addon.id, f.name);
-        }
-    }
     let mut done = total - missing.iter().map(|f| f.size).sum::<u64>();
     if !missing.is_empty() {
         if let Err(e) = fs::create_dir_all(&folder) {
@@ -307,7 +300,7 @@ fn ensure(shared: &Shared, client: &Client, sink: &EventSink, dir: &Path, addon:
             Ok((200, bytes)) if file.matches(&bytes) => {
                 let path = folder.join(file.name);
                 let part = folder.join(format!("{}.part", file.name));
-                let saved = fs::write(&part, &bytes).and_then(|_| if runs(addon, file) { make_runnable(&part) } else { Ok(()) }).and_then(|_| fs::rename(&part, &path));
+                let saved = fs::write(&part, &bytes).and_then(|_| fs::rename(&part, &path));
                 if let Err(e) = saved {
                     let _ = fs::remove_file(&part);
                     crate::pwarn!("add-ons: {}: could not save {} ({e})", addon.id, file.name);
@@ -352,30 +345,6 @@ fn ensure(shared: &Shared, client: &Client, sink: &EventSink, dir: &Path, addon:
     Have::Complete
 }
 
-/// Whether `file` is a program the app runs (the Downloader's tools).
-fn runs(addon: &Addon, file: &AddonFile) -> bool {
-    addon.id == addons::DOWNLOADER.id && addons::is_downloader_tool(file.name)
-}
-
-/// Make a downloaded program runnable. A file the app writes on a Mac can be
-/// read but not run (0644), and yt-dlp, QuickJS and FFmpeg only start with
-/// the execute bit; setting it changes the file's mode, not its bytes or its
-/// last write time, so the stamp still vouches for it. On Windows an .exe
-/// runs as it is.
-#[cfg(unix)]
-pub fn make_runnable(path: &Path) -> io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    if fs::metadata(path)?.permissions().mode() & 0o111 == 0o111 {
-        return Ok(());
-    }
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
-}
-
-#[cfg(not(unix))]
-pub fn make_runnable(_: &Path) -> io::Result<()> {
-    Ok(())
-}
-
 fn wait_retry(sink: &EventSink, addon: &Addon, backoff: Duration, why: &str) -> Have {
     crate::pinfo!("add-ons: {}: waiting ({why}); trying again in {} s", addon.id, backoff.as_secs());
     sink.send(AppEvent::Addon { id: addon.id, status: Status::Waiting });
@@ -392,9 +361,8 @@ fn clear_old_versions(dir: &Path, addon: &Addon) {
     }
 }
 
-/// Switched off: delete all of the add-on's files. A program of the add-on
-/// that was just stopped (the Downloader's yt-dlp) can hold its file for a
-/// moment after the stop, so a failed delete is tried again for about 2 s
+/// Switched off: delete all of the add-on's files. Something reading one at
+/// that moment can hold it, so a failed delete is tried again for about 2 s
 /// (this runs on the add-on thread, never the UI's).
 fn remove(dir: &Path, addon: &Addon) {
     let folder = dir.join(addon.id);

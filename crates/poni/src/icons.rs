@@ -61,8 +61,6 @@ pub enum Icon {
     Moon,
     /// Stop (the adzan): a rounded square.
     Stop,
-    /// A new version: an arrow down into a tray.
-    Download,
     /// Settings' Island section: an app window.
     AppWindow,
     /// The Notifications tab: a bell.
@@ -205,7 +203,6 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         Script => p![s("M10 6.5h10"), s("M10 12h10"), s("M10 17.5h6.5"), f("M3.6 9.3v5.4a.8.8 0 0 0 1.2.7l4.3-2.7a.8.8 0 0 0 0-1.4L4.8 8.6a.8.8 0 0 0-1.2.7z")],
         Stop => p![f("M8.2 6.5h7.6a1.7 1.7 0 0 1 1.7 1.7v7.6a1.7 1.7 0 0 1-1.7 1.7H8.2a1.7 1.7 0 0 1-1.7-1.7V8.2a1.7 1.7 0 0 1 1.7-1.7z")],
         AppWindow => p![s("M5 4.5h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2z"), s("M3 9h18"), f("M5.6 6.75a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z"), f("M8.6 6.75a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z")],
-        Download => p![s("M12 4v10.5"), s("M7.5 10L12 14.5 16.5 10"), s("M4.5 16v2.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V16")],
         Bell => p![s("M6 11a6 6 0 0 1 12 0v4.2l1.6 2.3H4.4L6 15.2z"), s("M10 20.3a2.2 2.2 0 0 0 4 0")],
         Message => p![s("M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z")],
     }
@@ -223,7 +220,7 @@ mod tests {
         Icon::Pin, Icon::PinFill, Icon::Folder, Icon::File, Icon::Trash, Icon::Undo, Icon::Reset,
         Icon::Sliders, Icon::Open, Icon::Phone, Icon::Eye,
         Icon::Gear,
-        Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script, Icon::Download,
+        Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message,
     ];
 

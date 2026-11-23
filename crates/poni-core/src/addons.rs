@@ -220,83 +220,9 @@ pub const NOTIFICATIONS: Addon = Addon {
     on_by_default: true,
 };
 
-/// Downloader: the Downloads page, which saves the video or sound of a link
-/// with yt-dlp (`ytdlp`, `downloads`). yt-dlp and QuickJS (which yt-dlp needs
-/// for YouTube) come from their own releases, unchanged; FFmpeg, which joins
-/// a video's picture and sound, is our own small build
-/// (`tools/build-ffmpeg-min.sh`, `addons/downloader/`). Not in the Microsoft
-/// Store build. Nothing runs at rest: the tools only run while a download
-/// does. Part of Studio Pro: its tools download, and it downloads, only for
-/// an account the server says has Pro. Each app has its own tools: this
-/// one, or [`DOWNLOADER_MAC`] on a Mac.
-pub const DOWNLOADER: Addon = if cfg!(target_os = "macos") { DOWNLOADER_MAC } else { DOWNLOADER_WINDOWS };
-
-/// The Downloader on Windows: yt-dlp.exe and QuickJS-ng's Windows build from
-/// their own releases, and our ffmpeg.exe.
-pub const DOWNLOADER_WINDOWS: Addon = Addon {
-    id: "downloader",
-    title: "Downloader",
-    blurb: "Save the video or sound of a link you paste, with yt-dlp.",
-    mac_blurb: None,
-    tag: "addon-downloader-1",
-    on_by_default: false,
-    files: &[
-        AddonFile {
-            name: "yt-dlp.exe",
-            size: 23_575_744,
-            sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
-            url: Some("https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe"),
-        },
-        AddonFile {
-            name: "qjs.exe",
-            size: 2_151_363,
-            sha256: "2aeabf0092c3262d6b2609824418f7dd7ed1f1df939f73b2b15645230cac0d77",
-            url: Some("https://github.com/quickjs-ng/quickjs/releases/download/v0.17.0/qjs-windows-x86_64.exe"),
-        },
-        // tools/build-ffmpeg-min.sh's build (FFmpeg 9.0.2, the same bytes every time).
-        AddonFile { name: "ffmpeg.exe", size: 2_298_880, sha256: "8a42638bc2c9bed20670a3e89ccb7117345a941e245d8151aa60066cac0b3993", url: None },
-        AddonFile { name: "NOTICE.txt", size: 32_624, sha256: "01fb0f44904d1f4789a5bc048fc1b2c29d1a36c25d91469632af03d2402331a0", url: None },
-    ],
-};
-
-/// The Downloader on a Mac: yt-dlp's own Mac build (one file for Apple
-/// silicon and Intel) from its release, unchanged, the same version as
-/// Windows'. QuickJS-ng's own Mac builds are one per chip and need macOS 26,
-/// so QuickJS-ng (the same version) and FFmpeg (the same build as Windows')
-/// are ours, one file each for both chips and macOS 14 and later, from
-/// mac.yml's downloader-tools job, on the add-on's own pre-release
-/// (`addons/downloader-mac/`).
-pub const DOWNLOADER_MAC: Addon = Addon {
-    tag: "addon-downloader-mac-1",
-    files: &[
-        AddonFile {
-            name: "yt-dlp",
-            size: 37_466_304,
-            sha256: "0f922c15ccc0b83eefa1c8bc9104e434318c4bf16e408e1ee93b7745a6efe0aa",
-            url: Some("https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp_macos"),
-        },
-        // mac.yml's downloader-tools job (QuickJS-ng v0.17.0; FFmpeg 9.0.2, tools/build-ffmpeg-min.sh darwin).
-        AddonFile { name: "qjs", size: 2_456_496, sha256: "d4526ffc81f4251e7e835d789a441e367b03ba1700bd111e9ce1a1a5bec0134a", url: None },
-        AddonFile { name: "ffmpeg", size: 4_307_968, sha256: "fb47d9aa82cf1e61aa49b54d1989fffef98571d1cec3d0f9a5133e0b63468724", url: None },
-        AddonFile { name: "NOTICE.txt", size: 33_065, sha256: "aac524dad1d9ce62dbf07b9e8a5bd597461d21443e75feca087fb207fe231704", url: None },
-    ],
-    ..DOWNLOADER_WINDOWS
-};
-
-/// The Downloader's tools, as this app saves them in the add-on's folder.
-pub const YTDLP_EXE: &str = if cfg!(target_os = "macos") { "yt-dlp" } else { "yt-dlp.exe" };
-pub const QJS_EXE: &str = if cfg!(target_os = "macos") { "qjs" } else { "qjs.exe" };
-pub const FFMPEG_EXE: &str = if cfg!(target_os = "macos") { "ffmpeg" } else { "ffmpeg.exe" };
-
-/// Whether `name` is one of the Downloader's programs, which a Mac only runs
-/// with its execute bit set (`services::addons`).
-pub fn is_downloader_tool(name: &str) -> bool {
-    [YTDLP_EXE, QJS_EXE, FFMPEG_EXE].contains(&name)
-}
-
 /// Every add-on, in the order the Add-ons page lists them: the built-in
 /// pages first, then the ones that download.
-pub const ALL: [&Addon; 8] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS, &DOWNLOADER];
+pub const ALL: [&Addon; 7] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -500,7 +426,9 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "script", "sholat", "ja", "downloader"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "script", "sholat", "ja"]);
+        // The Downloader left the app: a file that switched it on reads as off.
+        assert_eq!(Addon::find("downloader"), None);
         for (i, a) in ALL.iter().enumerate() {
             // The key in settings.json and the folder's name.
             assert!(!a.id.is_empty() && a.id.bytes().all(|b| b.is_ascii_lowercase()), "{}", a.id);
@@ -513,46 +441,6 @@ mod tests {
                 assert!(a.files[..j].iter().all(|g| g.name != f.name), "{}: {} twice", a.id, f.name);
                 assert!(!f.name.starts_with('.') && !f.name.ends_with(".part") && !f.name.contains(['/', '\\']), "{}: {}", a.id, f.name);
             }
-        }
-    }
-
-    #[test]
-    fn the_downloader_takes_its_tools_from_their_own_releases() {
-        // Each app has its own tools, under the names it runs them by.
-        assert_eq!(Addon::find("downloader"), Some(&DOWNLOADER));
-        let names = |d: &Addon| d.files.iter().map(|f| f.name).collect::<Vec<_>>();
-        assert_eq!(names(&DOWNLOADER), [YTDLP_EXE, QJS_EXE, FFMPEG_EXE, "NOTICE.txt"]);
-        assert_eq!(names(&DOWNLOADER_WINDOWS), ["yt-dlp.exe", "qjs.exe", "ffmpeg.exe", "NOTICE.txt"]);
-        assert_eq!(names(&DOWNLOADER_MAC), ["yt-dlp", "qjs", "ffmpeg", "NOTICE.txt"]);
-        assert!(names(&DOWNLOADER)[..3].iter().all(|n| is_downloader_tool(n)) && !is_downloader_tool("NOTICE.txt"));
-        // One add-on in both apps (its switch, its row), each with its own
-        // pre-release, so each keeps its own folder.
-        assert_eq!(DOWNLOADER_MAC, Addon { tag: DOWNLOADER_MAC.tag, files: DOWNLOADER_MAC.files, ..DOWNLOADER_WINDOWS });
-        assert_ne!(DOWNLOADER_MAC.tag, DOWNLOADER_WINDOWS.tag);
-        // yt-dlp, and QuickJS on Windows: their projects' own releases,
-        // unchanged, each from a fixed tag (a `latest` link would change
-        // under the pin); yt-dlp the same version on both.
-        let w = &DOWNLOADER_WINDOWS;
-        let m = &DOWNLOADER_MAC;
-        let mut ytdlp_tags = Vec::new();
-        for (d, f, project, asset) in
-            [(w, &w.files[0], "yt-dlp/yt-dlp", "yt-dlp.exe"), (w, &w.files[1], "quickjs-ng/quickjs", "qjs-windows-x86_64.exe"), (m, &m.files[0], "yt-dlp/yt-dlp", "yt-dlp_macos")]
-        {
-            let url = d.url(f);
-            let tag = url.strip_prefix(&format!("https://github.com/{project}/releases/download/")).and_then(|rest| rest.strip_suffix(&format!("/{asset}")));
-            assert!(tag.is_some_and(|t| !t.is_empty() && !t.contains('/')), "{url}");
-            assert!(f.pinned(), "{}: a tool from elsewhere is always pinned", f.name);
-            if project == "yt-dlp/yt-dlp" {
-                ytdlp_tags.extend(tag.map(str::to_string));
-            }
-        }
-        assert_eq!(ytdlp_tags[0], ytdlp_tags[1], "yt-dlp: the same version on Windows and the Mac");
-        // Our own builds and the notices: each add-on's own pre-release.
-        let ours = "https://github.com/lucacadalora/oyenza-studio/releases/download";
-        assert_eq!(w.url(&w.files[2]), format!("{ours}/addon-downloader-1/ffmpeg.exe"));
-        assert_eq!(w.url(&w.files[3]), format!("{ours}/addon-downloader-1/NOTICE.txt"));
-        for (f, name) in m.files[1..].iter().zip(["qjs", "ffmpeg", "NOTICE.txt"]) {
-            assert_eq!(m.url(f), format!("{ours}/addon-downloader-mac-1/{name}"));
         }
     }
 
@@ -583,7 +471,7 @@ mod tests {
         }
         // Everything in the app has its files pinned (built-ins have none to
         // pin), in both apps.
-        for a in ALL.iter().copied().chain([&DOWNLOADER_WINDOWS, &DOWNLOADER_MAC]) {
+        for a in ALL {
             assert!(a.pinned(), "{} ({})", a.id, a.tag);
         }
         // The switch stays off and the line says why; nothing comes in.
@@ -592,17 +480,6 @@ mod tests {
         assert_eq!(s.line(&SOON, false), "This version can't get its files yet, so it stays off.");
         assert_eq!(s.line(&SOON, true), s.line(&SOON, false));
         assert!(ja_offer(s).is_some_and(|(_, click)| !click));
-    }
-
-    #[test]
-    fn the_downloaders_notices_are_the_ones_in_the_repo() {
-        let windows: &[u8] = include_bytes!("../../../addons/downloader/NOTICE.txt");
-        let mac: &[u8] = include_bytes!("../../../addons/downloader-mac/NOTICE.txt");
-        for (d, bytes) in [(DOWNLOADER_WINDOWS, windows), (DOWNLOADER_MAC, mac)] {
-            let notice = d.files.iter().find(|f| f.name == "NOTICE.txt").unwrap();
-            assert!(notice.matches(bytes), "{}: size {} sha256 {}", d.tag, bytes.len(), sha256::hex(&sha256::sha256(bytes)));
-            assert_eq!(d.url(notice), format!("https://github.com/lucacadalora/oyenza-studio/releases/download/{}/NOTICE.txt", d.tag));
-        }
     }
 
     #[test]

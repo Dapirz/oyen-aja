@@ -61,7 +61,7 @@ use crate::state::{
     PhoneAsk, PairedPhone, PhoneDrop, PhoneTransfer, PhoneView, PowerState, PrayerState, VolumeState,
 };
 use crate::ui::wid;
-use poni_core::addons::{Status as AddonStatus, DOWNLOADER, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
+use poni_core::addons::{Status as AddonStatus, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
 use poni_core::notifications::NotificationSettings;
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
@@ -299,50 +299,6 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
     }
 }
 
-/// The Downloads page's list for its scenes, newest first: a YouTube link
-/// whose puzzle QuickJS is solving, a film coming in from PeerTube, a
-/// private video that failed and a finished film, moved along by yt-dlp's
-/// lines as the app moves them (`poni_core::downloads::Jobs`), so the bar and
-/// the island's pill count the bytes as they do for real; every other scene:
-/// none. No pictures, so nothing is fetched, and the self-test starts no
-/// downloader.
-fn seed_downloads(st: &mut AppState, scene: Scene) {
-    use poni_core::downloads::{Jobs, State};
-    use poni_core::ytdlp::{Line, Mode};
-    let ui = &mut st.ui.downloads;
-    ui.link.clear();
-    ui.mode = Mode::Video;
-    ui.scroll = 0.0;
-    ui.offer = None;
-    ui.note = None;
-    if !matches!(scene, Scene::Page(PageKind::Downloads) | Scene::DownloadActivity) {
-        st.downloads = Jobs::default();
-        return;
-    }
-    let unix = st.unix;
-    let info = |title: &str, site: &str| Line::Info { title: title.into(), site: site.into(), thumbnail: None, duration_s: None };
-    let mut jobs = Jobs::default();
-    // Oldest first: each one goes on top of the list.
-    let bunny = jobs.add("https://archive.org/details/BigBuckBunny_124".into(), Mode::Video, unix - 25 * 60);
-    jobs.starting(bunny);
-    jobs.apply(bunny, info("Big Buck Bunny", "Internet Archive"));
-    jobs.apply(bunny, Line::Done { path: "C:\\Users\\Sample\\Downloads\\Big Buck Bunny.mp4".into() });
-    jobs.set_size(bunny, 332_000_000);
-    let private = jobs.add("https://video.blender.org/w/4e0c1f7a-93b2-4d58-a6e1-2f8b9c3d7a51".into(), Mode::Video, unix - 4 * 60);
-    // yt-dlp's private video (`ytdlp::Problem::Private`), in the page's words.
-    if let Some(job) = jobs.list.iter_mut().find(|j| j.id == private) {
-        job.state = State::Failed("This video is private".into());
-    }
-    let film = jobs.add("https://video.blender.org/w/b29290cc-dc51-4a12-bcb2-2aa5fece7605".into(), Mode::Video, unix - 50);
-    jobs.starting(film);
-    jobs.apply(film, info("OVERGROWN: a feature film project by Blender Studio", "PeerTube"));
-    jobs.apply(film, Line::Progress { done: 8_600_000, total: Some(23_300_000), speed: Some(2_100_000.0), eta_s: Some(7) });
-    let youtube = jobs.add("https://www.youtube.com/watch?v=aqz-KE-bpKQ".into(), Mode::Video, unix - 20);
-    jobs.starting(youtube);
-    jobs.apply(youtube, Line::Solving);
-    st.downloads = jobs;
-}
-
 /// Prayer times for its scenes: on, in Kota Jakarta (Edinburgh, picked by
 /// hand, for `PrayerWorld`), its clock 8 minutes before today's Ashar (the
 /// real lists arrive with the add-on's download; these few places are
@@ -512,14 +468,6 @@ enum Scene {
     AsideHud,
     /// Settings with Step aside off (no row for it since 0.2.6).
     SettingsAsideStay,
-    /// The Downloads page before anything was downloaded (`Page(Downloads)`
-    /// shows one downloading, one waiting, one done and one failed).
-    DownloadsEmpty,
-    /// The Add-ons page where the Downloader is offered (Windows outside the
-    /// Store build): its row, off, with its size.
-    AddonsDownloader,
-    /// The closed island while a download runs: its pill.
-    DownloadActivity,
     /// Prayer times: the countdown 8 minutes before Ashar over a song with
     /// synced lyrics, its OK pressed (`Phase::PressOk`): the song's line again.
     PrayerOk,
@@ -613,7 +561,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 64] = [
+const SCENES: [Scene; 60] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -675,13 +623,6 @@ const SCENES: [Scene; 64] = [
     Scene::SettingsAsideStay,
     // The Today page signed in: the day, no app switched on, and a server
     // without the day (signed out, `Page(Today)` above shows the sign-in card).
-    // The Downloader: the Downloads page with a download running, one
-    // waiting, one done and one failed, then empty; the Add-ons page with
-    // its row; and the closed island while it downloads.
-    Scene::Page(PageKind::Downloads),
-    Scene::DownloadsEmpty,
-    Scene::AddonsDownloader,
-    Scene::DownloadActivity,
     // The prayer countdown's OK, pressed: the closed island sings again.
     Scene::PrayerOk,
     // Notifications (the Store copy): a message on the closed island (shown,
@@ -753,9 +694,6 @@ impl Scene {
             Scene::AsidePeek => "aside-new-song".into(),
             Scene::AsideHud => "aside-volume-hud".into(),
             Scene::SettingsAsideStay => "page-settings-maximized-stay".into(),
-            Scene::DownloadsEmpty => "page-downloads-empty".into(),
-            Scene::AddonsDownloader => "page-addons-downloader".into(),
-            Scene::DownloadActivity => "download-activity".into(),
             Scene::PrayerOk => "prayer-countdown-ok".into(),
             Scene::MessageNotice => "message-notice".into(),
             Scene::MessageHidden => "message-hidden-notice".into(),
@@ -784,19 +722,12 @@ impl Scene {
             Scene::JaOffer | Scene::JaGetting => Some(PageKind::Media),
             Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld | Scene::PrayerMuhammadiyah | Scene::PrayerPickerFollow => Some(PageKind::Prayer),
             Scene::ScriptReading => Some(PageKind::Script),
-            Scene::AddonsDownloader => Some(PageKind::Addons),
-            Scene::DownloadsEmpty => Some(PageKind::Downloads),
             Scene::NotifyAsk | Scene::NotifyNoPackage => Some(PageKind::Notifications),
             Scene::IslandOpenAtEdge => Some(PageKind::Media),
             _ => None,
         }
     }
 
-    /// The Downloader is offered (Windows outside the Store build), in its
-    /// own scenes only: the other Add-ons pictures keep their rows.
-    fn downloader(self) -> bool {
-        matches!(self, Scene::Page(PageKind::Downloads) | Scene::DownloadsEmpty | Scene::AddonsDownloader | Scene::DownloadActivity)
-    }
 
     fn expanded(self) -> bool {
         self.page().is_some()
@@ -1542,8 +1473,7 @@ impl SelfTest {
             let _ = std::thread::Builder::new().name("selftest-addon".into()).spawn(move || {
                 let (mut ok, mut said) = (true, Vec::new());
                 for a in poni_core::addons::ALL {
-                    // An add-on whose files aren't on their release yet (the
-                    // Downloader until addon-downloader-1 is published) has
+                    // An add-on whose files aren't on their release yet has
                     // nothing to check; its switch says so (`Status::Unpinned`).
                     if !a.pinned() {
                         said.push(format!("{}: not pinned yet", a.id));
@@ -2244,14 +2174,6 @@ impl SelfTest {
         st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore);
         // The PC's own clock (a Diorama run holds its own after this).
         clock::hold_local(None);
-        // The Downloader: offered in its own scenes, and on there (its tools
-        // in place, so the tab shows) except on the Add-ons page, whose row
-        // shows it off.
-        // Its setting stays as it is, as for Prayer times above.
-        st.downloader_offered = scene.downloader();
-        let tab = scene.downloader() && scene != Scene::AddonsDownloader;
-        st.addons.insert(DOWNLOADER.id, if tab { AddonStatus::Ready } else { AddonStatus::Off });
-        seed_downloads(st, scene);
         seed_notifications(st, scene);
         if scene.media_playing() {
             st.lyrics.wants_ja_readings = self.lyrics.wants_ja_readings || matches!(scene, Scene::JaOffer | Scene::JaGetting);
@@ -2756,12 +2678,6 @@ impl SelfTest {
             let wine = under_wine();
             let note = if wine { " (Wine, which can't leave a window out)" } else { "" };
             checks.push(check("script-hidden-from-capture", hidden == can || (wine && !hidden), format!("display affinity: {said}, Windows build {build:?}{note}")));
-        }
-        if scene.downloader() {
-            // The Downloads tab shows once the Downloader is on, not while it's off.
-            let shown = pages::tabs(&app.st).contains(&PageKind::Downloads);
-            let want = scene != Scene::AddonsDownloader;
-            checks.push(check("downloads-tab", shown == want, format!("Downloads tab shown: {shown}, want {want}")));
         }
 
         let ok = checks.iter().all(|c| c.ok);

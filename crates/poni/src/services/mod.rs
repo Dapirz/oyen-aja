@@ -11,9 +11,6 @@ pub mod bluetooth;
 pub mod clipboard;
 pub mod fullscreen;
 pub mod cities;
-pub mod downloader;
-#[cfg(test)]
-mod downloader_live;
 pub mod http;
 pub mod imaging;
 pub mod location;
@@ -44,9 +41,6 @@ pub struct Services {
     fullscreen: Option<fullscreen::FullscreenWatcher>,
     pairdrop: Option<pairdrop::PairDropService>,
     addons: Option<addons::AddonService>,
-    /// Started at the first download ([`Services::download`]).
-    downloader: std::cell::OnceCell<Option<downloader::DownloaderService>>,
-    sink: EventSink,
 }
 
 fn started<T, E: std::fmt::Display>(name: &str, r: Result<T, E>) -> Option<T> {
@@ -72,34 +66,18 @@ impl Services {
         // Asks nothing until a phone is paired.
         let pairdrop = started("pair drop", pairdrop::PairDropService::start(sink.clone()));
         // Asleep unless an add-on is on; then it only checks the files it has.
-        // The Microsoft Store build has no Downloader, whatever settings.json says.
-        let store = crate::autostart::store_packaged();
         let on = poni_core::addons::ALL
             .iter()
-            .filter(|a| settings.addon_on(a.id) && !(store && a.id == poni_core::addons::DOWNLOADER.id))
+            .filter(|a| settings.addon_on(a.id))
             .map(|a| a.id)
             .collect();
         let addons = started("add-ons", addons::AddonService::start(sink.clone(), on));
-        Self { media, lyrics, _audio: audio, _bluetooth: bluetooth, fullscreen, pairdrop, addons, downloader: std::cell::OnceCell::new(), sink: sink.clone() }
+        Self { media, lyrics, _audio: audio, _bluetooth: bluetooth, fullscreen, pairdrop, addons }
     }
 
     pub fn stop(self, _helper: HWND) {
         if let Some(f) = self.fullscreen {
             f.stop();
-        }
-    }
-
-    /// Run yt-dlp for `req` (the Downloader add-on's tools are in place).
-    pub fn download(&self, req: poni_core::ytdlp::Request) {
-        if let Some(d) = self.downloader.get_or_init(|| started("downloader", downloader::DownloaderService::start(self.sink.clone()))) {
-            d.run(req);
-        }
-    }
-
-    /// Stop download `id` (its yt-dlp and whatever yt-dlp started).
-    pub fn stop_download(&self, id: u64) {
-        if let Some(Some(d)) = self.downloader.get() {
-            d.stop(id);
         }
     }
 

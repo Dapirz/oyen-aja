@@ -12,8 +12,6 @@
 pub mod addons;
 pub mod card;
 pub mod clipboard;
-pub mod downloads;
-pub mod downloads_offer;
 pub mod focus;
 pub mod media;
 pub mod notifications;
@@ -60,8 +58,6 @@ pub enum PageKind {
     Script,
     /// Prayer times, while that add-on is on ([`tabs`]).
     Prayer,
-    /// Links to save as video or sound, while the Downloader add-on is on ([`tabs`]).
-    Downloads,
     /// Which apps' notifications show on the island, while Notifications is
     /// on ([`tabs`]; Windows' Store copy only).
     Notifications,
@@ -75,7 +71,7 @@ pub enum PageKind {
 impl PageKind {
     /// The tab row's order: the island's own pages, then the add-ons'
     /// pages and the "+".
-    pub const ALL: [PageKind; 12] = [
+    pub const ALL: [PageKind; 11] = [
         PageKind::Media,
         PageKind::Today,
         PageKind::Shelf,
@@ -84,7 +80,6 @@ impl PageKind {
         PageKind::Clipboard,
         PageKind::Script,
         PageKind::Prayer,
-        PageKind::Downloads,
         PageKind::Notifications,
         PageKind::Addons,
         PageKind::Settings,
@@ -100,7 +95,6 @@ impl PageKind {
             PageKind::Clipboard => "clipboard",
             PageKind::Script => "script",
             PageKind::Prayer => "prayer",
-            PageKind::Downloads => "downloads",
             PageKind::Notifications => "notifications",
             PageKind::Addons => "addons",
             PageKind::Settings => "settings",
@@ -122,7 +116,6 @@ impl PageKind {
             PageKind::Clipboard => "Clipboard",
             PageKind::Script => "Script",
             PageKind::Prayer => "Prayer",
-            PageKind::Downloads => "Downloads",
             PageKind::Notifications => "Notifications",
             PageKind::Addons => "Add-ons",
             PageKind::Settings => "Settings",
@@ -139,7 +132,6 @@ impl PageKind {
             PageKind::Clipboard => Icon::Clipboard,
             PageKind::Script => Icon::Script,
             PageKind::Prayer => Icon::Moon,
-            PageKind::Downloads => Icon::Download,
             PageKind::Notifications => Icon::Bell,
             PageKind::Addons => Icon::Addons,
             PageKind::Settings => Icon::Gear,
@@ -203,7 +195,6 @@ fn row(st: &AppState, open: Option<PageKind>) -> Vec<PageKind> {
             PageKind::Prayer => st.prayer_on(),
             PageKind::Clipboard => st.clipboard_on(),
             PageKind::Script => st.script_on(),
-            PageKind::Downloads => st.downloader_on(),
             PageKind::Notifications => st.notifications_on(),
             PageKind::Tasks => st.tasks_on(),
             PageKind::Focus => st.focus_on(),
@@ -236,7 +227,6 @@ pub fn content_height(p: PageKind, st: &AppState) -> f32 {
         PageKind::Clipboard => clipboard::height(st),
         PageKind::Script => script::height(st),
         PageKind::Prayer => prayer::height(st),
-        PageKind::Downloads => downloads::height(st),
         PageKind::Notifications => notifications::height(st),
         PageKind::Addons => addons::height(st),
         PageKind::Settings => settings::height(st),
@@ -255,7 +245,6 @@ pub fn next_wake(page: PageKind, st: &AppState) -> Option<f64> {
         PageKind::Script => script::next_wake(st),
         PageKind::Prayer => prayer::next_wake(st),
         PageKind::Today => today::next_wake(st),
-        PageKind::Downloads => downloads::next_wake(st),
         _ => None,
     }
 }
@@ -359,7 +348,6 @@ pub(crate) fn draw_page(ui: &mut Ui, st: &mut AppState, area: Rect, page: PageKi
         PageKind::Clipboard => clipboard::draw(ui, st, area),
         PageKind::Script => script::draw(ui, st, area),
         PageKind::Prayer => prayer::draw(ui, st, area),
-        PageKind::Downloads => downloads::draw(ui, st, area),
         PageKind::Notifications => notifications::draw(ui, st, area),
         PageKind::Addons => addons::draw(ui, st, area),
         PageKind::Settings => settings::draw(ui, st, area),
@@ -721,19 +709,6 @@ mod tests {
         st.page = PageKind::Notifications;
         assert!(!st.notifications_on() && !tabs(&st).contains(&PageKind::Notifications));
         assert_eq!(first_tab(&st), PageKind::Media);
-    }
-
-    #[test]
-    fn downloads_has_a_tab_while_its_add_on_is_on() {
-        let mut st = state();
-        st.downloader_offered = true;
-        st.settings.set_addon("downloader", true);
-        assert!(!tabs(&st).contains(&PageKind::Downloads), "its tools not in place yet");
-        st.addons.insert("downloader", poni_core::addons::Status::Ready);
-        assert!(tabs(&st).contains(&PageKind::Downloads));
-        // Not where it isn't offered (the Store build).
-        st.downloader_offered = false;
-        assert!(!tabs(&st).contains(&PageKind::Downloads));
     }
 
     #[test]

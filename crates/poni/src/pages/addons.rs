@@ -56,13 +56,11 @@ pub fn height(st: &AppState) -> f32 {
     ROWS_Y + n as f32 * row_h(n)
 }
 
-/// The page's rows: every add-on offered, Downloader only where it's
-/// offered (`AppState::downloader_offered`).
-fn rows(st: &AppState) -> Vec<&'static Addon> {
+/// The page's rows: every add-on offered.
+fn rows(_st: &AppState) -> Vec<&'static Addon> {
     OFFERED
         .iter()
         .copied()
-        .filter(|a| a.id != addons::DOWNLOADER.id || st.downloader_offered)
         .collect()
 }
 
@@ -84,7 +82,6 @@ fn icon(a: &Addon) -> Icon {
         "tasks" => Icon::ListChecks,
         "focus" => Icon::Timer,
         "notifications" => Icon::Bell,
-        "downloader" => Icon::Download,
         _ => Icon::Addons,
     }
 }
@@ -193,11 +190,7 @@ mod tests {
 
     #[test]
     fn every_row_offered_fits_the_page() {
-        let mut st = AppState::new(Settings::default(), Store::default());
-        let without = rows(&st).len();
-        // Where the Downloader is offered: it joins.
-        st.downloader_offered = true;
-        assert_eq!(rows(&st).len(), without + 1);
+        let st = AppState::new(Settings::default(), Store::default());
         assert!(height(&st) <= MAX_H, "the window never grows for this page");
         // Six rows at most now: each has room for its two lines; past seven
         // they'd be a line each, with the badges kept apart.

@@ -73,16 +73,6 @@ pub fn phone_inbox_dir() -> PathBuf {
     downloads.join(crate::version::APP_NAME)
 }
 
-/// Where the Downloader saves videos and sound: the user's Downloads folder
-/// (wherever they moved it), as a browser would. Under `PONI_HOME` for the
-/// self-test.
-pub fn media_downloads_dir() -> PathBuf {
-    if let Some(h) = home_override() {
-        return h.join("downloads");
-    }
-    downloads_dir().unwrap_or_else(|| env_dir("USERPROFILE").join("Downloads"))
-}
-
 fn downloads_dir() -> Option<PathBuf> {
     known_folder(&windows::Win32::UI::Shell::FOLDERID_Downloads)
 }
