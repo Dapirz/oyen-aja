@@ -55,6 +55,9 @@ pub struct NotificationSettings {
     pub who: bool,
     /// Show the message itself. Off: it waits for Show.
     pub text: bool,
+    /// An app the island hasn't seen joins the list switched on (off: only
+    /// the chat apps do, [`starts_on`]).
+    pub new_apps_on: bool,
     /// The apps that sent a notification since Notifications came on, in the
     /// order they first did.
     pub apps: Vec<AppChoice>,
@@ -62,14 +65,15 @@ pub struct NotificationSettings {
 
 impl Default for NotificationSettings {
     fn default() -> Self {
-        Self { who: true, text: true, apps: Vec::new() }
+        Self { who: true, text: true, new_apps_on: false, apps: Vec::new() }
     }
 }
 
 impl NotificationSettings {
     /// Whether the island shows `app_id`'s notifications. An app it hasn't
-    /// seen joins the list (on for the chat apps, off for the rest); one it
-    /// has keeps its switch and takes a new name. Returns (shows, list changed).
+    /// seen joins the list (on for the chat apps, and for every app with
+    /// [`Self::new_apps_on`]; off for the rest); one it has keeps its switch
+    /// and takes a new name. Returns (shows, list changed).
     pub fn remember(&mut self, app_id: &str, app: &str) -> (bool, bool) {
         let name = clean(app);
         if let Some(a) = self.apps.iter_mut().find(|a| a.id == app_id) {
@@ -79,7 +83,7 @@ impl NotificationSettings {
             }
             return (a.on, renamed);
         }
-        let on = starts_on(app_id, app);
+        let on = self.new_apps_on || starts_on(app_id, app);
         let name = if name.is_empty() { app_id.to_string() } else { name };
         self.apps.push(AppChoice { id: app_id.to_string(), name, on });
         if self.apps.len() > MAX_APPS {
@@ -250,6 +254,19 @@ mod tests {
         assert_eq!(s.apps.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), [WA, OUTLOOK], "in the order they came");
         s.remember("No.Name", " ");
         assert_eq!(s.apps[2].name, "No.Name", "an app without a name shows its id");
+    }
+
+    #[test]
+    fn new_apps_can_join_switched_on() {
+        let mut n = NotificationSettings::default();
+        assert_eq!(n.remember(OUTLOOK, "Outlook"), (false, true));
+        n.new_apps_on = true;
+        assert_eq!(n.remember("Discord.Id", "Discord"), (true, true));
+        // An app already listed keeps its own switch.
+        assert_eq!(n.remember(OUTLOOK, "Outlook"), (false, false));
+        // Files from before have it off.
+        let old: NotificationSettings = serde_json::from_str(r#"{"who":true}"#).unwrap();
+        assert!(!old.new_apps_on);
     }
 
     #[test]

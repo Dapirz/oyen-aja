@@ -119,7 +119,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let apps: Vec<(String, String, bool)> =
         st.settings.notifications.apps.iter().take(MAX_ROWS).map(|a| (a.id.clone(), a.name.clone(), a.on)).collect();
     if apps.is_empty() {
-        let note = "Apps show up here after their first notification. WhatsApp, Telegram and Phone Link start on.";
+        let note = "Apps show up here after their first notification. WhatsApp, Telegram and Phone Link start on, or every app with New apps start on.";
         let r = Rect::new(cols[0], area.y + ROWS_Y + 4.0, col_w, MIN_ROWS as f32 * ROW_H - 4.0);
         ui.c.text(note, r, &TextStyle::footnote().color(palette::TEXT_DIM).wrap().top());
     }
@@ -139,6 +139,12 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     }
     if switch_row(ui, wid("notify.text"), row(1, 1), "Message text", Some(text), accent) {
         st.settings.notifications.text = !text;
+        st.cmd(Command::SaveSettings);
+    }
+    // Which apps join the list switched on.
+    let new_on = st.settings.notifications.new_apps_on;
+    if switch_row(ui, wid("notify.new"), row(2, 1), "New apps start on", Some(new_on), accent) {
+        st.settings.notifications.new_apps_on = !new_on;
         st.cmd(Command::SaveSettings);
     }
 }
