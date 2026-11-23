@@ -38,6 +38,7 @@ Dipertahankan:
 - Island: Position dan Lock position, Size when closed (90/100/115 %), Transparency Smoke (40/55/75 %), Make way for the pointer (menyusut jadi garis tipis di tepi atas saat didekati mouse, terbuka saat mouse didorong ke tepi atas).
 - Clipboard history (add-on, mati sejak awal; selesai 23 Nov 2026): pengawas `WM_CLIPBOARDUPDATE` di thread sendiri yang hanya jalan saat nyala, menghormati format "jangan rekam" password manager; Settings → Clipboard: 10/25/50/100 item, 1 jam/1 hari/7 hari/Forever; disimpan terenkripsi DPAPI di `%LOCALAPPDATA%\Hihu\clipboard.bin`, dihapus saat add-on dimatikan. Kode dasarnya dari Oyenza sebelum `a30fcc4`.
 - Screen time (add-on, mati sejak awal; selesai 23 Nov 2026): menumpang hook `EVENT_SYSTEM_FOREGROUND` milik `services/fullscreen.rs` (`report_foreground`), nama app dari FileDescription exe, app Store lewat anak jendela ApplicationFrameHost; berhenti saat terkunci/layar mati/idle 5 menit; cek tiap 60 dtk hanya saat nyala dan ada orang; 7 hari di `%APPDATA%\Hihu\screentime.json`, dihapus saat add-on dimatikan.
+- Kartu notifikasi: foto pengirim (selesai 23 Nov 2026) dari gambar `appLogoOverride` toast, dibaca dari `wpndatabase.db` per id notifikasi lewat `winsqlite3.dll` bawaan Windows (`services/wpndb.rs`, exe hanya +18 KB); hanya file lokal, gambar internet tidak diambil.
 - General: Show in screenshots (mati = island tidak ikut screenshot, rekaman, screen share).
 - Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke), After pausing (0/5/10/30 dtk/Keep), Title without lyrics (Stays/A moment; Smoke jadi satu baris), running text untuk judul panjang.
 - Notifications: jalan di build non-Store lewat paket identitas sparse (selesai 23 Nov 2026): `tools\identity.ps1 register` (butuh Developer Mode, tanpa sertifikat/admin), manifest di `installer\identity`, elemen `<msix>` di `res/poni.manifest`. `autostart::packaged()` = punya identitas (Notifications); `store_packaged()` = copy Store (startup task, tanpa Downloader). Build ulang tetap terdaftar.
@@ -61,7 +62,6 @@ Nanti (belum dikerjakan):
 - Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
 - RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
 - Meeting notes versi sendiri.
-- Foto profil pengirim di kartu notifikasi: baca `wpndatabase.db` dan folder `wpnidm` seperti Poni (Poni portable memakai SQLite, tanpa API resmi). Exe sekitar +1 MB.
 
 Tidak dibuat: radio.
 
