@@ -73,7 +73,7 @@ impl Services {
         let pairdrop = started("pair drop", pairdrop::PairDropService::start(sink.clone()));
         // Asleep unless an add-on is on; then it only checks the files it has.
         // The Microsoft Store build has no Downloader, whatever settings.json says.
-        let store = crate::autostart::packaged();
+        let store = crate::autostart::store_packaged();
         let on = poni_core::addons::ALL
             .iter()
             .filter(|a| settings.addon_on(a.id) && !(store && a.id == poni_core::addons::DOWNLOADER.id))

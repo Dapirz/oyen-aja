@@ -127,8 +127,10 @@ pub fn main_entry() -> i32 {
         perror!("OleInitialize failed: {e}");
         return 2;
     }
-    if crate::autostart::packaged() {
+    if crate::autostart::store_packaged() {
         pinfo!("running as the Microsoft Store package");
+    } else if crate::autostart::packaged() {
+        pinfo!("running with the identity package (notifications can be read)");
     }
     let code = match run(selftest_dir) {
         Ok(code) => code,
@@ -542,7 +544,7 @@ impl App {
         let clock = FrameClock::start(SendHwnd::new(hwnd), monitor.handle);
         let taskbar_created_msg = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
         // The Downloader: not in the Microsoft Store build.
-        st.downloader_offered = !crate::autostart::packaged();
+        st.downloader_offered = !crate::autostart::store_packaged();
         let selftest = selftest_dir.map(selftest::SelfTest::new);
         let saved_settings = st.settings.clone();
         Ok(Self {

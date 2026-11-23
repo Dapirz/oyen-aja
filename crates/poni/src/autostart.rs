@@ -23,10 +23,25 @@ const TASK_ID: &str = "PoniStartup";
 /// Startup-task calls answer in milliseconds; never let one hang the UI thread.
 const TASK_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// True in the Microsoft Store build (the process has a package identity).
+/// The identity package `tools\identity.ps1` registers for this copy (a
+/// sparse package: the exe stays where it is, `res/poni.manifest` names the
+/// package). It lets the copy read notifications; everything else works as
+/// in the installer build (the Run value, the Downloader).
+pub const IDENTITY_PACKAGE: &str = "HihuIsland.Identity";
+
+/// True when the process has a package identity: the Microsoft Store build,
+/// or this copy with its identity package registered. What Notifications needs.
 pub fn packaged() -> bool {
     static PACKAGED: OnceLock<bool> = OnceLock::new();
     *PACKAGED.get_or_init(|| Package::Current().is_ok())
+}
+
+/// True in the Microsoft Store build: packaged, and not by the identity
+/// package. Start with Windows is its startup task there, and it has no
+/// Downloader.
+pub fn store_packaged() -> bool {
+    static STORE: OnceLock<bool> = OnceLock::new();
+    *STORE.get_or_init(|| Package::Current().and_then(|p| p.Id()).and_then(|id| id.Name()).is_ok_and(|n| n != IDENTITY_PACKAGE))
 }
 
 /// Set it (when `set` is Some), then read it, on a thread of its own, and
@@ -52,7 +67,7 @@ pub fn report(sink: EventSink, set: Option<bool>) {
 }
 
 pub fn is_enabled() -> bool {
-    if packaged() {
+    if store_packaged() {
         return task_state().is_ok_and(|s| s == StartupTaskState::Enabled || s == StartupTaskState::EnabledByPolicy);
     }
     let Ok(key) = open_run_key(KEY_READ) else { return false };
@@ -65,7 +80,7 @@ pub fn is_enabled() -> bool {
 }
 
 pub fn set_enabled(on: bool) -> Result<()> {
-    if packaged() {
+    if store_packaged() {
         return set_task_enabled(on);
     }
     let key = open_run_key(KEY_READ | KEY_WRITE)?;
@@ -90,7 +105,7 @@ pub fn set_enabled(on: bool) -> Result<()> {
 /// How "Start with Windows" works in this copy, for the self-test report.
 /// Err when the Store build can't reach its startup task.
 pub fn describe() -> std::result::Result<String, String> {
-    if !packaged() {
+    if !store_packaged() {
         let set = if is_enabled() { "set" } else { "not set" };
         return Ok(format!("installer build: Run value {set}"));
     }

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hihu Island's identity package: a sparse package that gives the poni.exe
+  you built a package identity where it is (target\release), so Windows lets
+  it read other apps' notifications (the Notifications add-on). Nothing is
+  copied or installed: the package holds this manifest and its logos, and
+  points at the exe's folder (its external location).
+
+  tools\identity.ps1 registers it (Developer Mode: as loose files, no
+  certificate) and removes it again. Identity Name and Publisher must match
+  the <msix> element in crates\poni\res\poni.manifest.
+
+  RuntimeBehavior win32App with mediumIL: the exe runs as before, unpackaged
+  in every way but its identity (no file or registry virtualization, so it
+  keeps %APPDATA%\Hihu and %LOCALAPPDATA%\Hihu).
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap10 rescap">
+
+  <Identity Name="HihuIsland.Identity" Publisher="CN=Hihu Island Local" Version="1.0.0.0" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Hihu Island</DisplayName>
+    <PublisherDisplayName>Hihu Island</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Hihu" Executable="poni.exe" uap10:TrustLevel="mediumIL" uap10:RuntimeBehavior="win32App">
+      <!-- No Start menu entry of its own: the exe is started as before. -->
+      <uap:VisualElements
+        AppListEntry="none"
+        DisplayName="Hihu Island"
+        Description="Hihu Island's package identity, for reading notifications."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- The Notifications add-on: other apps' notifications on the island, read
+         on the PC and never sent anywhere. Windows asks before it allows it. -->
+    <uap3:Capability Name="userNotificationListener" />
+    <!-- A desktop app, outside the app sandbox, as it runs without the package. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

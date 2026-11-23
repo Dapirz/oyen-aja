@@ -1,0 +1,67 @@
+# Hihu Island's identity package: lets the poni.exe you built read other
+# apps' notifications (the Notifications add-on), which Windows allows only
+# for an app with a package identity.
+#
+#   powershell -ExecutionPolicy Bypass -File tools\identity.ps1 register
+#   powershell -ExecutionPolicy Bypass -File tools\identity.ps1 status
+#   powershell -ExecutionPolicy Bypass -File tools\identity.ps1 unregister
+#
+# register: stages installer\identity\AppxManifest.xml with its logos in
+# target\identity, then registers it for your Windows account as loose files
+# pointing at the exe's folder (-ExeDir, default target\release). That needs
+# Developer Mode (Settings > System > For developers), not a certificate or
+# admin rights. Nothing is copied: the exe stays where it is, with its data in
+# %APPDATA%\Hihu. Close Hihu first, start it again after.
+#
+# Rebuilding poni.exe keeps the registration. Moving the exe (another
+# -ExeDir) means register again. unregister removes it; the exe then runs
+# without identity, as before, and Notifications is off.
+param(
+    [Parameter(Position = 0)][ValidateSet('register', 'unregister', 'status')][string]$Action = 'status',
+    [string]$ExeDir
+)
+$ErrorActionPreference = 'Stop'
+$root = Split-Path -Parent $PSScriptRoot
+$name = 'HihuIsland.Identity'
+if (-not $ExeDir) { $ExeDir = Join-Path $root 'target\release' }
+
+function Get-Registered { Get-AppxPackage -Name $name }
+
+switch ($Action) {
+    'status' {
+        $p = Get-Registered
+        if ($p) { "registered: $($p.PackageFullName)"; "exe folder: $ExeDir" } else { 'not registered' }
+        $dev = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
+        "Developer Mode: $(if ($dev -eq 1) { 'on' } else { 'off' })"
+    }
+    'unregister' {
+        $p = Get-Registered
+        if (-not $p) { 'not registered'; return }
+        Remove-AppxPackage -Package $p.PackageFullName
+        'unregistered: restart Hihu to run without identity'
+    }
+    'register' {
+        $exe = Join-Path $ExeDir 'poni.exe'
+        if (-not (Test-Path $exe)) { throw "no poni.exe in $ExeDir (build it first: cargo build -p poni --release)" }
+        if (Get-Process poni -ErrorAction SilentlyContinue) { throw 'close Hihu first (tray > Quit), then run this again' }
+        $stage = Join-Path $root 'target\identity'
+        New-Item -ItemType Directory -Force (Join-Path $stage 'Assets') | Out-Null
+        Copy-Item (Join-Path $root 'installer\identity\AppxManifest.xml') $stage -Force
+        # The logos the manifest names, from the Hihu icon.
+        Add-Type -AssemblyName System.Drawing
+        $src = [System.Drawing.Image]::FromFile((Join-Path $root 'design\hihu\hihu-1024.png'))
+        foreach ($l in @(@('StoreLogo.png', 50), @('Square150x150Logo.png', 150), @('Square44x44Logo.png', 44))) {
+            $bmp = New-Object System.Drawing.Bitmap $l[1], $l[1]
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.DrawImage($src, 0, 0, $l[1], $l[1])
+            $bmp.Save((Join-Path $stage "Assets\$($l[0])"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose()
+        }
+        $src.Dispose()
+        if (Get-Registered) { Remove-AppxPackage -Package (Get-Registered).PackageFullName }
+        Add-AppxPackage -Register (Join-Path $stage 'AppxManifest.xml') -ExternalLocation $ExeDir
+        "registered: $((Get-Registered).PackageFullName)"
+        "Start Hihu again ($exe), then switch Notifications on in Add-ons."
+    }
+}

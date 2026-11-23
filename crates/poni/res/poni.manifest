@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity type="win32" name="Jatevo.Poni" version="0.2.30.0" processorArchitecture="*"/>
-  <description>Poni - a living notch for Windows</description>
+  <description>Hihu Island - a light notch for Windows</description>
+  <!-- The identity package tools\identity.ps1 registers (installer\identity):
+       with it, Windows gives this exe a package identity, so it may read other
+       apps' notifications. Without it the exe runs as before. publisher and
+       packageName must match that manifest's Identity. -->
+  <msix xmlns="urn:schemas-microsoft-com:msix.v1" publisher="CN=Hihu Island Local" packageName="HihuIsland.Identity" applicationId="Hihu"/>
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
