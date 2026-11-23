@@ -112,6 +112,11 @@ pub struct Settings {
     /// The Smoke theme's closed music island shows how far the song has
     /// played along its bottom.
     pub music_progress: bool,
+    /// A song without synced lyrics keeps its title on the closed island
+    /// for as long as it plays (true), or shows it only for the moment a
+    /// new track starts (false). Where the theme shows the song there
+    /// (Smoke, Pill); Classic only ever shows it for that moment.
+    pub song_title_stays: bool,
     /// How long (seconds) the closed island keeps showing a paused song
     /// before it rests as if nothing played: 0 at once, `None` for as long
     /// as the song stays paused. At most an hour.
@@ -237,6 +242,7 @@ impl Default for Settings {
             show_media_activity: true,
             music_fps: 60,
             music_progress: true,
+            song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,
             lyrics_bold: true,

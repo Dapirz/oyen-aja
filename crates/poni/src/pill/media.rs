@@ -256,6 +256,11 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64, so
         ui.request_anim();
     }
     let song = Rect::new(area.center().x - song_w / 2.0, area.y, song_w, area.h);
+    if !sung && !shows_song(st) {
+        // A song without lyrics, past its new-track moment, set to show its
+        // title only then: nothing in the middle.
+        return MIN_W;
+    }
     if !sung {
         // A line that just ended can't be drawn fading out (the lyric lane
         // has let go of it), so the title fades in on its own.
@@ -266,6 +271,13 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64, so
     }
     // The line's width, or its reading's when that is wider.
     line_w.map_or(FIT_W.get(), |w| fit(widest_line(st, w), MAX_W))
+}
+
+/// Whether the middle shows the song when nothing is sung: always for a
+/// song with synced lyrics (its intro and breaks), and for one without
+/// unless set to show its title only for the moment a new track starts.
+pub(crate) fn shows_song(st: &AppState) -> bool {
+    st.settings.song_title_stays || super::lyric::sings(st) || st.now < st.ui.peek_until
 }
 
 /// The widest line sung so far in this track, with one `w` wide now. The

@@ -40,6 +40,10 @@ const PAD: f32 = 18.0;
 /// lines needs a little more for the second row.
 const H: f32 = 70.0;
 const H_READS: f32 = 84.0;
+/// One row (and the progress bar) while there's nothing to show under it:
+/// a song without lyrics whose title shows only for a moment.
+const H_ONE: f32 = 46.0;
+const RADIUS_ONE: f32 = 18.0;
 const RADIUS: f32 = 22.0;
 /// The first row's middle, from the top.
 const ROW1_Y: f32 = 19.0;
@@ -70,6 +74,9 @@ pub fn ground(expanded: bool) -> Color {
 pub fn media_geom(st: &AppState) -> Geom {
     let text = (crate::pill::media::fit_w() - MIDDLE_SIDES).max(0.0);
     let w = (((text + 2.0 * PAD) / W_STEP).ceil() * W_STEP).clamp(MIN_W, MAX_W);
+    if !crate::pill::media::shows_song(st) {
+        return Geom::new(w, H_ONE, RADIUS_ONE);
+    }
     let h = if crate::pill::lyric::reads(st) { H_READS } else { H };
     Geom::new(w, h, RADIUS)
 }
