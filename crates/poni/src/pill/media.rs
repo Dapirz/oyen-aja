@@ -83,6 +83,14 @@ pub(crate) const PAUSED_TEXT: f32 = 0.65;
 /// The title and the sung line cross-fade over this long when one takes
 /// over from the other (the peek ending, the first line after an intro).
 const HANDOFF: f64 = 0.15;
+/// The room the song gets in the middle of a one-row music pill.
+pub(crate) const SONG_W: f32 = SONG_MAX_W - SIDES;
+/// A song too long for its room runs across it while it plays: it waits
+/// this long at the start of each pass, moves this fast (DIPs a second),
+/// and comes round again this far behind itself.
+const RUN_HOLD: f64 = 2.0;
+const RUN_SPEED: f64 = 30.0;
+const RUN_GAP: f32 = 40.0;
 
 thread_local! {
     /// The pill width the text asked for on the last frame. `geom` has no
@@ -137,23 +145,24 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, body: Rect) -> bool {
     // The open card's equalizer colour, so the bars keep it through a morph.
     let bars = super::music::eq_color(accent, ui.c.look().light);
     equalizer(ui, eq_x, cy, bars, level, moving, now);
-    middle(ui, st, body, art.right() + TEXT_CLEAR, eq_x - TEXT_CLEAR, lerp(PAUSED_TEXT, 1.0, level));
+    middle(ui, st, body, art.right() + TEXT_CLEAR, eq_x - TEXT_CLEAR, lerp(PAUSED_TEXT, 1.0, level), SONG_W);
     true
 }
 
 /// The middle of a music pill, in this theme and in the others while a song
 /// sings (`activities::draw_music`): the line being sung, or the song,
 /// centred on `body` and cut to `x0..x1`, where the art and the bars
-/// are. `alpha` dims it while paused. The width the text asks for is
-/// kept for [`fit_w`].
-pub(crate) fn middle(ui: &mut Ui, st: &AppState, body: Rect, x0: f32, x1: f32, alpha: f32) {
+/// are. `alpha` dims it while paused. The song gets `song_w` of room
+/// ([`SONG_W`] in a one-row pill). The width the text asks for is kept for
+/// [`fit_w`].
+pub(crate) fn middle(ui: &mut Ui, st: &AppState, body: Rect, x0: f32, x1: f32, alpha: f32, song_w: f32) {
     // The text centres on the pill in a box as wide as the widest pill's
     // text, so its layout doesn't change with the pill's width on each
     // frame of a morph, cut where the art and the bars are.
     let h = height(st);
     let area = Rect::new(body.center().x - (MAX_W - SIDES) / 2.0, body.center().y - h / 2.0, MAX_W - SIDES, h);
     ui.c.clip(Rect::new(x0, body.y, (x1 - x0).max(0.0), body.h));
-    let want = draw_text(ui, st, area, alpha, st.now);
+    let want = draw_text(ui, st, area, alpha, st.now, song_w);
     ui.c.unclip();
     if want != FIT_W.get() {
         FIT_W.set(want);
@@ -226,7 +235,7 @@ fn faded<R>(ui: &mut Ui, a: f32, f: impl FnOnce(&mut Ui) -> R) -> R {
 /// The middle: the line being sung, or the song (dimmed by `paused_a` while
 /// paused). The two cross-fade when one takes over from the other. Returns
 /// the pill width the text needs.
-fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64) -> f32 {
+fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64, song_w: f32) -> f32 {
     // The title holds the middle while a new track peeks. The line still
     // draws then, unseen, so the lyric lane keeps its fade state frame to
     // frame. A paused line dims with `paused_a`, as the song does.
@@ -246,7 +255,7 @@ fn draw_text(ui: &mut Ui, st: &AppState, area: Rect, paused_a: f32, now: f64) ->
     if k < 1.0 {
         ui.request_anim();
     }
-    let song = Rect::new(area.center().x - (SONG_MAX_W - SIDES) / 2.0, area.y, SONG_MAX_W - SIDES, area.h);
+    let song = Rect::new(area.center().x - song_w / 2.0, area.y, song_w, area.h);
     if !sung {
         // A line that just ended can't be drawn fading out (the lyric lane
         // has let go of it), so the title fades in on its own.
@@ -314,6 +323,31 @@ fn draw_song(ui: &mut Ui, st: &AppState, area: Rect, alpha: f32) -> f32 {
     let room = area.w - mw;
     let shown = if room > 0.0 && rw > 0.0 && (rw <= room || room >= ARTIST_MIN) { rw.min(room) } else { 0.0 };
     let alpha = alpha * k;
+    // Too long for its room while it plays: the whole song runs across it,
+    // on the frames the bars already ask for (paused, it rests cut short).
+    let playing = m.is_playing();
+    if playing && mw + rw > area.w + 1.0 && alpha > 0.002 {
+        let lap = f64::from(mw + rw + RUN_GAP);
+        let t = (st.now - since - RUN_HOLD).max(0.0);
+        // Each pass: hold at the start, then run one lap.
+        let pass = RUN_HOLD + lap / RUN_SPEED;
+        let into = (st.now - since).rem_euclid(pass);
+        let off = if t <= 0.0 || into < RUN_HOLD { 0.0 } else { ((into - RUN_HOLD) * RUN_SPEED) as f32 };
+        ui.c.clip(area);
+        ui.c.with_alpha(alpha, |c| {
+            for start in [area.x - off, area.x - off + lap as f32] {
+                if start > area.right() {
+                    continue;
+                }
+                c.text(main, Rect::new(start, area.y, mw + 2.0, area.h), &main_st);
+                if rw > 0.0 {
+                    c.text(&rest, Rect::new(start + mw, area.y, rw + 2.0, area.h), &rest_st);
+                }
+            }
+        });
+        ui.c.unclip();
+        return area.w;
+    }
     if alpha > 0.002 {
         ui.c.with_alpha(alpha, |c| {
             if room <= 0.0 {

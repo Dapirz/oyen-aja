@@ -92,7 +92,8 @@ pub fn draw_media(ui: &mut Ui, st: &mut AppState, body: Rect) {
     let row_h = crate::pill::media::height(st);
     let row = Rect::new(body.x, row_y - row_h / 2.0, body.w, row_h);
     let alpha = if playing { 1.0 } else { crate::pill::media::PAUSED_TEXT };
-    crate::pill::media::middle(ui, st, row, body.x + PAD, body.right() - PAD, alpha);
+    // The song gets the whole row (a long one runs across it).
+    crate::pill::media::middle(ui, st, row, body.x + PAD, body.right() - PAD, alpha, body.w - 2.0 * PAD);
     // The progress bar.
     if let Some(m) = st.media.as_ref().filter(|m| st.settings.music_progress && m.timeline.has_duration()) {
         let track = Rect::new(body.x + BAR_INSET, body.bottom() - BAR_UP - BAR_H, (body.w - 2.0 * BAR_INSET).max(0.0), BAR_H);
