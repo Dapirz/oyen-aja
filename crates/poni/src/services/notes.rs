@@ -495,9 +495,16 @@ impl Sender<'_> {
     fn run(&self) -> Reply {
         let started = Instant::now();
         let mut uploaded = Vec::new();
-        let out = self.hand_over(&mut uploaded);
+        // One read of the key for the whole job: the uploads are deleted
+        // with the key that sent them, even if it's changed or removed
+        // meanwhile (audit N2).
+        let key = key();
+        let out = match key.as_deref() {
+            Some(k) => self.hand_over(k, &mut uploaded),
+            None => Err(Problem::NoKey),
+        };
         // Gemini keeps uploads for two days; they're done with now.
-        if let Some(key) = key() {
+        if let Some(key) = key {
             for f in &uploaded {
                 let _ = self.client.send(Method::Delete, &notes::file_url(&f.name), &[("x-goog-api-key", key.as_str())], None, CALL_TIMEOUT);
             }
@@ -515,21 +522,20 @@ impl Sender<'_> {
         }
     }
 
-    fn hand_over(&self, uploaded: &mut Vec<File>) -> Result<Saved, Problem> {
-        let key = key().ok_or(Problem::NoKey)?;
+    fn hand_over(&self, key: &str, uploaded: &mut Vec<File>) -> Result<Saved, Problem> {
         let parts = self.job.take.parts.len() as u32;
         for (n, path) in self.job.take.parts.iter().enumerate() {
             let bytes = std::fs::read(path).map_err(|_| Problem::Capture(CaptureIssue::Failed))?;
-            let file = self.upload(&key, &bytes, &format!("hihu-meeting-part-{}", n + 1))?;
+            let file = self.upload(key, &bytes, &format!("hihu-meeting-part-{}", n + 1))?;
             uploaded.push(file);
             self.sink.send(AppEvent::Notes(Box::new(Reply::Sent { sent: n as u32 + 1, parts })));
         }
         for f in uploaded.iter_mut() {
-            self.ready(&key, f)?;
+            self.ready(key, f)?;
         }
         self.sink.send(AppEvent::Notes(Box::new(Reply::Writing)));
         let body = notes::generate_body(uploaded, self.job.lang);
-        let headers = [("x-goog-api-key", key.as_str())];
+        let headers = [("x-goog-api-key", key)];
         // The chosen model busy (or not there for this key): Flash-Lite next.
         let mut last = Problem::Busy;
         for model in notes::models_to_try(&self.job.model) {
