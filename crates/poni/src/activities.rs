@@ -1184,6 +1184,9 @@ mod tests {
         assert_eq!(current_activity(&st), None, "a site's name and no artist");
         let mut st = playing(None);
         st.media.as_mut().unwrap().timeline = Timeline::new(0.5, 3.0, 0.0, true);
+        // A 3 s track with its artist (an intro) is music; with none, a sound.
+        assert_eq!(current_activity(&st), Some(Activity::Media), "a short track by its artist");
+        st.media.as_mut().unwrap().artist.clear();
         assert_eq!(current_activity(&st), None, "a 3 s sound");
     }
 
