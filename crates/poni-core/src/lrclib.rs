@@ -70,6 +70,14 @@ impl LrclibRecord {
             l.synced && l.text_lines() >= MIN_LINES && spans_song(&l, self.duration)
         })
     }
+    /// Synced lyrics, enough lines of them, all in the song's first part
+    /// ([`spans_song`]): a broken copy.
+    pub fn squeezed(&self) -> bool {
+        self.synced_lyrics.as_deref().is_some_and(|s| {
+            let l = parse_lrc(s);
+            l.synced && l.text_lines() >= MIN_LINES && !spans_song(&l, self.duration)
+        })
+    }
     /// Plain lyrics with at least [`MIN_LINES`] lines of text.
     pub fn has_full_plain(&self) -> bool {
         self.plain_lyrics.as_deref().is_some_and(|s| s.lines().filter(|l| !l.trim().is_empty()).count() >= MIN_LINES)

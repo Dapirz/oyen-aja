@@ -727,7 +727,12 @@ mod pure {
             // Synced lyrics and instrumental flags don't go stale, but for
             // lines squeezed into the song's start (looked up before that
             // was checked) another copy may be found now.
-            if r.instrumental || (r.has_synced() && (r.has_full_synced() || e.lookup >= CacheEntry::LOOKUP)) {
+            // Lines squeezed into the song's start, from a lookup that didn't
+            // check for that: look again now.
+            if r.squeezed() && e.lookup < CacheEntry::LOOKUP {
+                return false;
+            }
+            if r.has_synced() || r.instrumental {
                 return true;
             }
         } else if e.lookup < CacheEntry::LOOKUP {
@@ -915,6 +920,15 @@ mod pure {
             assert!(!is_fresh(&miss, now));
             let synced = CacheEntry::new(Some(rec(Some("[00:01.00]x"), None, false)), now - 900 * day);
             assert!(is_fresh(&synced, now));
+            // Lines squeezed into the song's start, cached by an older lookup:
+            // looked up again at once; by this one, kept.
+            let squeezed = "[00:01.00]one\n[00:02.00]two\n[00:03.00]three\n[00:04.00]four\n";
+            let old = CacheEntry { lookup: CacheEntry::LOOKUP - 1, ..CacheEntry::new(Some(rec(Some(squeezed), Some(PLAIN), false)), now - 3600) };
+            assert!(!is_fresh(&old, now));
+            let new = CacheEntry::new(Some(rec(Some(squeezed), Some(PLAIN), false)), now - 3600);
+            assert!(is_fresh(&new, now));
+            let old_full = CacheEntry { lookup: CacheEntry::LOOKUP - 1, ..CacheEntry::new(Some(rec(Some(SYNCED), None, false)), now - 900 * day) };
+            assert!(is_fresh(&old_full, now));
             let instrumental = CacheEntry::new(Some(rec(None, None, true)), now - 900 * day);
             assert!(is_fresh(&instrumental, now));
             let plain = CacheEntry::new(Some(rec(None, Some("row"), false)), now - 10 * day);
