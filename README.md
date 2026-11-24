@@ -10,13 +10,14 @@ It is not Oyenza Studio and is not made by its authors. It doesn't use Oyenza's 
 
 ## Features
 
-- **The island.** Grows when you hover, stays click-through around it, and shows a clock, eyes or nothing at rest. Pop-ups for volume (the volume keys taken over, so Windows' own flyout stays away), battery, Bluetooth, Caps/Num/Scroll Lock, the keyboard's language and brightness. Hides or stays on top over full-screen apps. Settings, a tray icon and Start with Windows.
-- **Music.** Any player Windows' media controls know (SMTC), synced lyrics from [LRCLIB](https://lrclib.net), Latin readings under lyrics in other scripts, and Apple Music lyrics with your own token.
-- **Today.** A calendar: the day, date, year, week number and five weeks starting this Monday. It reads nothing and only wakes at midnight.
+- **The island.** Opens when you hover or when you click (your choice), stays click-through around it, and shows a clock, eyes or nothing at rest. Hides or stays on top over full-screen apps. Themes: Classic, Smoke, Glass, Pill and Diorama. Put the tabs in your own order in Settings.
+- **Pop-ups** for volume, brightness, battery, Bluetooth, Caps/Num/Scroll Lock, the keyboard's language, the microphone and the camera. The volume keys are taken over and Windows' own volume and brightness bar is kept away, so they show once, on the island, even over full-screen apps.
+- **Music.** Any player Windows' media controls know (SMTC), in one row or two (the time over the line being sung), synced lyrics from [LRCLIB](https://lrclib.net), Latin readings under lyrics in other scripts, and Apple Music lyrics with your own token. The island grows with a long line and shrinks with a short one.
+- **Today.** A month's calendar with Indonesia's national holidays and the countdown to the next ones, your own events (once or repeating) and tasks due on a day, with reminders on the island.
+- **Notifications** from every app (or the ones you pick) on the island, with the sender's picture, in place of Windows' own pop-ups; the latest ones behind a bell. Windows lets only an app with a package identity read them: see [Notifications](#notifications).
 - **Shelf and phone drop.** Keep files on the island, send files from your phone over Wi-Fi, or pair a phone to send from any network.
-- **Add-ons**, every feature's switch in one place: Tasks, Focus and Notifications (on until switched off), Clipboard history (as many copies and for as long as you set), Screen time (how long each app was in front, today and this week), Meeting notes (records a call, then Gemini writes the notes and the transcript, with your own API key), the Script reader, Prayer times (your location or a place you pick) and Japanese readings. Off, a feature doesn't run.
-- **Notifications** from the apps you pick, on the island. Windows lets only an app with a package identity read them: see [Notifications](#notifications).
-- **Themes:** Classic, Glass, Pill and Diorama.
+- **Add-ons**, each with its switch: Tasks, Focus and Notifications (on until switched off), Clipboard history, Screen time, Meeting notes (records a call, then Gemini writes the notes and the transcript, with your own API key), the Script reader, Prayer times and Japanese readings. Off, a feature doesn't run.
+- **Settings** you can search, and a backup of your settings and data to take to another PC.
 
 ## Your data stays on your computer
 
