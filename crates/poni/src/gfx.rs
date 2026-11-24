@@ -508,7 +508,7 @@ impl GpuTarget {
             SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
             BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
             // Three: drawing the next frame never waits for DWM to let go of one.
-            BufferCount: 3,
+            BufferCount: SWAP_BUFFERS,
             Scaling: DXGI_SCALING_STRETCH,
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
@@ -528,7 +528,7 @@ impl GpuTarget {
         self.dc.SetTarget(None::<&ID2D1Image>);
         self.target_bmp = None;
         self.staging = None;
-        self.swap.ResizeBuffers(3, w as u32, h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_CHAIN_FLAG(0))?;
+        self.swap.ResizeBuffers(SWAP_BUFFERS, w as u32, h as u32, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SWAP_CHAIN_FLAG(0))?;
         self.w = w;
         self.h = h;
         Ok(())
@@ -692,6 +692,9 @@ pub fn px_rect(r: Rect, scale: f32, pad: i32, w: i32, h: i32) -> RECT {
     }
 }
 
+/// Back buffers in the GPU renderer's swap chain.
+const SWAP_BUFFERS: u32 = 3;
+
 /// Smallest pixel rectangle holding both.
 pub fn px_union(a: RECT, b: RECT) -> RECT {
     if a.right <= a.left || a.bottom <= a.top {
@@ -778,6 +781,18 @@ pub struct Gfx {
     frame_no: u64,
     /// Pixels the software present copies this frame.
     dirty: RECT,
+    /// GPU renderer: what changed in each of the last frames, newest first.
+    /// The back buffer drawn next still holds the frame from
+    /// [`SWAP_BUFFERS`] presents ago, so a frame redraws what changed since
+    /// then and leaves the rest (most of the window, at rest around the
+    /// closed island) as it is.
+    gpu_hist: [RECT; SWAP_BUFFERS as usize],
+    /// GPU frames still to draw in full (a new or resized swap chain).
+    gpu_full: u32,
+    /// The part of the surface this GPU frame redraws (pixels; clipped),
+    /// and what changed in it since the last frame.
+    gpu_drawn: Option<RECT>,
+    gpu_changed: RECT,
     /// The next software present must copy the whole surface.
     soft_full: bool,
     /// Rectangle to read back after this frame (self-test), and its pixels.
@@ -930,6 +945,10 @@ impl Gfx {
                 shadows: HashMap::new(),
                 frame_no: 0,
                 dirty: RECT::default(),
+                gpu_hist: [RECT::default(); SWAP_BUFFERS as usize],
+                gpu_full: SWAP_BUFFERS,
+                gpu_drawn: None,
+                gpu_changed: RECT::default(),
                 soft_full: true,
                 capture: None,
                 captured: Vec::new(),
@@ -1037,6 +1056,7 @@ impl Gfx {
         self.surf_h = h;
         self.layers.clear();
         self.soft_full = true;
+        self.gpu_full = SWAP_BUFFERS;
         self.soft.ensure_capacity(w, h)?;
         if let Some(g) = self.gpu.as_mut() {
             if let Err(e) = unsafe { g.resize(w, h) } {
@@ -1079,6 +1099,7 @@ impl Gfx {
                         crate::pinfo!("renderer: GPU ({}), DirectComposition, {}x{} px", if g.warp { "WARP" } else { "hardware" }, self.surf_w, self.surf_h);
                         crate::pinfo!("renderer: adapter {}{}", g.adapter, if g.soft_adapter { " (software rasterizer)" } else { "" });
                         self.gpu = Some(g);
+                        self.gpu_full = SWAP_BUFFERS;
                         self.visual_at = None;
                         self.renderer_changed = true;
                     }
@@ -1244,11 +1265,16 @@ impl Gfx {
         self.layers_used = 0;
         self.frame_no += 1;
         let full = RECT { left: 0, top: 0, right: self.surf_w, bottom: self.surf_h };
-        self.dirty = if self.soft_full { full } else { px_union(RECT::default(), dirty) };
+        let changed = px_union(RECT::default(), dirty);
+        self.dirty = if self.soft_full { full } else { changed };
+        self.gpu_drawn = None;
+        self.gpu_changed = changed;
         if let Some(g) = self.gpu.as_mut() {
             if let Err(e) = unsafe { g.begin(self.dpi) } {
                 self.gpu_lost("begin", e);
                 self.dirty = full;
+            } else if self.gpu_full == 0 {
+                self.gpu_drawn = Some(self.gpu_hist.iter().fold(changed, |a, b| px_union(a, *b)));
             }
         }
         unsafe {
@@ -1257,6 +1283,13 @@ impl Gfx {
             }
             self.main.SetTransform(&Matrix3x2::identity());
             if self.gpu.is_some() {
+                // Only what changed since this buffer was last shown; the
+                // clip stays until `end`, so nothing else is touched.
+                if let Some(d) = self.gpu_drawn {
+                    let s = self.scale();
+                    let r = D2D_RECT_F { left: d.left as f32 / s, top: d.top as f32 / s, right: d.right as f32 / s, bottom: d.bottom as f32 / s };
+                    self.main.PushAxisAlignedClip(&r, D2D1_ANTIALIAS_MODE_ALIASED);
+                }
                 self.main.Clear(Some(&CLEAR));
             } else {
                 // Only the dirty part: the rest of the DIB is already clear.
@@ -1283,6 +1316,9 @@ impl Gfx {
             }
         }
         self.rt = self.main.clone();
+        if self.gpu.is_some() && self.gpu_drawn.is_some() {
+            unsafe { self.main.PopAxisAlignedClip() };
+        }
         let r = unsafe { self.main.EndDraw(None, None) };
         let capture = self.capture.take();
         match self.gpu.as_mut() {
@@ -1321,10 +1357,23 @@ impl Gfx {
             self.place_visual(x, y);
         }
         if let Some(g) = self.gpu.as_ref() {
-            if let Err(e) = unsafe { g.swap.Present(1, DXGI_PRESENT(0)) }.ok() {
+            // Tell DWM what changed since the last frame, so it composes
+            // only that; a full frame says nothing (the whole buffer).
+            let mut rect = self.gpu_changed;
+            let params = DXGI_PRESENT_PARAMETERS {
+                DirtyRectsCount: u32::from(self.gpu_drawn.is_some() && rect.right > rect.left && rect.bottom > rect.top),
+                pDirtyRects: &mut rect,
+                pScrollRect: std::ptr::null_mut(),
+                pScrollOffset: std::ptr::null_mut(),
+            };
+            if let Err(e) = unsafe { g.swap.Present1(1, DXGI_PRESENT(0), &params) }.ok() {
                 self.gpu_lost("present", e.clone());
                 return Err(e);
             }
+            let n = self.gpu_hist.len();
+            self.gpu_hist.copy_within(0..n - 1, 1);
+            self.gpu_hist[0] = if self.gpu_drawn.is_some() { self.gpu_changed } else { RECT { left: 0, top: 0, right: self.surf_w, bottom: self.surf_h } };
+            self.gpu_full = self.gpu_full.saturating_sub(1);
             self.gpu_frames = self.gpu_frames.saturating_add(1);
             if self.gpu_frames > 600 {
                 self.gpu_failures = 0;
