@@ -316,18 +316,30 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
                 mic = bind_mic(&enumerator, &sink, &mic_last);
             }
             Msg::DefaultChanged => {
-                // One switch fires once per role; handle the burst once.
-                let mut shutdown = false;
+                // One switch fires once per role; handle the burst once. A
+                // microphone change in the burst (a headset brings both)
+                // is kept, not dropped with the rest (audit B1).
+                let (mut shutdown, mut mic_too) = (false, false);
                 while let Ok(m) = rx.try_recv() {
-                    if matches!(m, Msg::Shutdown) {
-                        shutdown = true;
-                        break;
+                    match m {
+                        Msg::Shutdown => {
+                            shutdown = true;
+                            break;
+                        }
+                        Msg::MicChanged => mic_too = true,
+                        _ => {}
                     }
                 }
                 if shutdown {
                     break;
                 }
                 binding = rebind(&enumerator, &gate, binding);
+                if mic_too {
+                    if let Some(b) = mic.take() {
+                        b.unbind();
+                    }
+                    mic = bind_mic(&enumerator, &sink, &mic_last);
+                }
             }
         }
     }
