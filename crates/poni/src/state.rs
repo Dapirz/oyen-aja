@@ -298,6 +298,12 @@ impl PhoneDrop {
 /// Transient per-page UI state (scroll offsets, text being typed, …).
 #[derive(Clone, Debug, Default)]
 pub struct PageUiState {
+    /// The Today page's calendar: the month on show and the day picked
+    /// (None: today's), the event being typed and how often it comes.
+    pub cal_month: Option<(i32, u8)>,
+    pub cal_day: Option<(i32, u8, u8)>,
+    pub cal_input: String,
+    pub cal_every: poni_core::agenda::Every,
     /// What's typed into the Settings window's search (empty: no search).
     pub settings_search: String,
     /// A prayer's moment glows round the island's edge until then (mono

@@ -30,7 +30,7 @@ Repo ini fork pribadi dari `lucacadalora/oyenza-studio` (remote `upstream`). Tuj
 Dipertahankan:
 - Inti island: hover membesar/mengecil, click-through, tampilan saat diam, pop-up volume/baterai/Bluetooth, perilaku layar penuh (Hide atau Stay on top), Settings, tray, start with Windows.
 - Music: SMTC, lirik sinkron (LRCLIB), bacaan latin, lirik Apple Music.
-- Today: kalender saja. Hari, tanggal, tahun, nomor minggu, dan lima minggu mulai Senin ini. Tidak membaca apa pun dan hanya bangun saat tengah malam. Tile CPU/RAM/disk sudah dihapus.
+- Today (24 Nov 2026): kalender sebulan (Senin pertama, panah bulan), tanggal merah libur nasional + Minggu, cuti bersama merah muda (`poni_core::agenda::HOLIDAYS` dari SKB 3 Menteri di setneg.go.id, lengkap 2026–2027; setelah itu hanya tanggal tetap, perlu ditambah tiap tahun), countdown sampai 3 tanggal merah dalam 60 hari, event sendiri (sekali atau tiap N hari/minggu/bulan/tahun) disimpan di `data.json` (`store.agenda`). Hanya bangun saat tengah malam.
 - Shelf + Phone drop + pairing HP.
 - Tasks, Focus, Notifications, Clipboard, Script, Bacaan Jepang, Waktu sholat: semua toggle ada di halaman Add-ons (selesai 23 Nov 2026). Tasks, Focus, Notifications add-on bawaan yang nyala sejak awal; yang mati tidak jalan (tab, section Settings, timer Focus, listener Notifications). Settings → Tabs tinggal Music, Today, Shelf.
 - Waktu sholat: lokasi otomatis dan pilih manual.

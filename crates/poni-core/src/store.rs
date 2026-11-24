@@ -43,6 +43,8 @@ pub struct Store {
     pub last_page: String,
     /// The Script page's script and its pace.
     pub script: crate::script::Script,
+    /// The Today page's own events.
+    pub agenda: crate::agenda::Agenda,
 }
 
 impl Default for Store {
@@ -55,6 +57,7 @@ impl Default for Store {
             focus_sessions: BTreeMap::new(),
             last_page: String::new(),
             script: crate::script::Script::default(),
+            agenda: crate::agenda::Agenda::default(),
         }
     }
 }
