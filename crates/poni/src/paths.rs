@@ -45,8 +45,6 @@ pub fn lyrics_cache_dir() -> PathBuf {
     cache_dir().join("lyrics")
 }
 
-/// The user's Apple Music token, sealed with DPAPI (never roams; uninstalling
-/// removes it with the cache).
 /// Screen time's counted days.
 pub fn screentime_path() -> PathBuf {
     data_dir().join("screentime.json")
@@ -90,6 +88,8 @@ pub fn clipboard_path() -> PathBuf {
     cache_dir().join("clipboard.bin")
 }
 
+/// The user's Apple Music token, sealed with DPAPI (never roams; uninstalling
+/// removes it with the cache).
 pub fn apple_music_token_path() -> PathBuf {
     cache_dir().join("apple-music-token.bin")
 }

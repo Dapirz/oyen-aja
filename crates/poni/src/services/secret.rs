@@ -1,6 +1,6 @@
 //! Small secrets on disk (the Apple Music token), sealed with DPAPI so only
 //! the same Windows user on this PC can read them back. Kept under
-//! `%LOCALAPPDATA%\Poni\`: never roams, and uninstalling removes it.
+//! `%LOCALAPPDATA%\Hihu\`: never roams, and uninstalling removes it.
 
 use std::fs;
 use std::io;

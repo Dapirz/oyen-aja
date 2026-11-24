@@ -1,11 +1,15 @@
-//! Tiny file logger: %LOCALAPPDATA%\Poni\poni.log (rotated at 1 MB).
+//! Tiny file logger: %LOCALAPPDATA%\Hihu\hihu.log (rotated at 1 MB, at start).
+//!
+//! The file stays open from `init` on (audit E1): a line is one write, not
+//! an open, a write and a close, and some come from the UI thread. Windows
+//! still lets the file be read, moved or deleted while it's open.
 
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-static LOG_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+static LOG: Mutex<Option<File>> = Mutex::new(None);
 
 pub fn init(path: PathBuf) {
     if let Ok(meta) = fs::metadata(&path) {
@@ -16,8 +20,9 @@ pub fn init(path: PathBuf) {
     if let Some(dir) = path.parent() {
         let _ = fs::create_dir_all(dir);
     }
-    if let Ok(mut g) = LOG_PATH.lock() {
-        *g = Some(path);
+    let file = OpenOptions::new().create(true).append(true).open(path).ok();
+    if let Ok(mut g) = LOG.lock() {
+        *g = file;
     }
 }
 
@@ -30,9 +35,8 @@ pub fn write(level: &str, msg: &str) {
     if cfg!(debug_assertions) {
         eprint!("{line}");
     }
-    let path = LOG_PATH.lock().ok().and_then(|g| g.clone());
-    if let Some(p) = path {
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(p) {
+    if let Ok(mut g) = LOG.lock() {
+        if let Some(f) = g.as_mut() {
             let _ = f.write_all(line.as_bytes());
         }
     }
