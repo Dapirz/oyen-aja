@@ -14,6 +14,60 @@ dikirim balik.
 
 ---
 
+## 0. Status perbaikan (diperbarui 25 Nov 2026)
+
+18 dari 20 temuan sudah diperbaiki dan ada di `main`. Dua sengaja tidak diubah.
+
+Keterangan: **selesai** = sudah di `main` dan di-push · **branch** = selesai di `audit-rest`,
+belum merge · **dilewati** = diputuskan tidak diubah · **⚠** = baru diuji lewat build/unit test,
+belum dicoba dengan kejadian nyata.
+
+Diverifikasi ulang oleh auditor (25 Nov 2026): hashes cocok dengan `git log`, tiap perbaikan
+ditemukan di kode (`Due::anchor_day`, `Server::busy`, `Msg::Cmd(cmd, app_id)`, `names::place`,
+`Msg::Key`, `is_blip`, `READY_WAIT`, `Mutex<Option<File>>`, `screen_writable`, `Listener::pictures`,
+`KillTimer(TIMER_WAKE)`), dan `cargo test --workspace --release` → 253 + 377 + 21 lulus, 0 gagal,
+exit 0.
+
+| # | Status | Commit | Catatan |
+|---|---|---|---|
+| A1 | selesai | `cf7bcc8` | `Due.anchor`; 31 Jan → 28 Feb → 31 Mar → 30 Apr → 31 Mei; tahunan 29 Feb kembali 29 di tahun kabisat |
+| A2 | selesai | `cf7bcc8` | `Event::on` memakai aturan yang sama dengan task (helper `in_month`) |
+| A3 | selesai | `6b08a33` | `busy()` membersihkan transfer basi; dipanggil dari `TIMER_MINUTE` yang sudah ada |
+| A4 | selesai | `4b7955f` | `Banners::load` memeriksa `LoadOutcome`; file tak terbaca tidak ditimpa/dihapus |
+| A5 | selesai | `0653e8e` | flag `screen_writable` seperti `settings_writable` |
+| A6 | dilewati | — | Pencarian jendela sekarang terbukti bekerja di PC pemakai; mengubahnya berisiko men-minimize jendela explorer yang salah |
+| A7 | selesai | `e2941e0` | `names::place()` mengklaim nama dengan `create_new` sebelum rename; tes `placing_never_replaces_a_file` · ⚠ |
+| A8 | selesai | `9159ecb` | id baru = `max(next_id, max id + 1)`; tes `ids_stay_apart_when_next_id_fell_behind` |
+| B1 | selesai | `ddd5718` | drain mencatat `MicChanged`, rebind dijalankan setelahnya · ⚠ |
+| B2 | selesai | `c1427f0` | `Msg::Key` ke thread audio; tombol saat rebind diantrekan; fallback ke lookup lama. Dites langsung 0,06 → 0,08 → 0,06 |
+| B3 | selesai | `4cef32a` | Dokumentasi saja: `ARCHITECTURE.md` menyebut Step aside tidak ditawarkan lagi; kodenya dibiarkan |
+| B4 | selesai | `6061459` | listener hanya mengirim `Seen`; foto/logo diambil lewat `Listener::pictures` setelah lolos filter Who/Message · ⚠ |
+| C1 | selesai | `e29baca` | `Msg::Cmd` membawa `app_id` yang tampil; seek clamp & `pending_seek` hanya untuk sesi yang diikuti · ⚠ |
+| C2 | selesai | `a6170c8` (+`d030b7f`) | Beda dari saran: `is_blip` = tanpa artis && (< 20 dtk ‖ judul nama situs), berlaku untuk semua app — lagu pendek ber-artis sekarang tampil |
+| D1 | selesai | `1f11549` | `KillTimer(TIMER_WAKE)` saat tidak ada jadwal |
+| E1 | selesai | `83d514f` | `File` dipegang di `Mutex`, dibuka sekali di `init` |
+| E2 | selesai | `83d514f` | Komentar menyebut `%LOCALAPPDATA%\Hihu`; doc-comment tertukar dipindah ke `apple_music_token_path` |
+| E3 | dilewati | — | `%APPDATA%` kosong sangat jarang di Windows normal |
+| N1 | selesai | `b802925` | `READY_WAIT` 15 menit; habis waktu = "Gemini sibuk", rekaman tetap disimpan |
+| N2 | selesai | `acb79f3` | `run()` membaca kunci sekali; `upload`/`ready`/`hand_over` menerima `&str` |
+
+**Belum dicoba dengan kejadian nyata** (hanya build + unit test): C1 (blip WhatsApp/HP saat lagu
+main), B1 (colok headset), B4 (notifikasi dari app yang disembunyikan), A7 (kiriman HP dengan
+nama yang sama). Kalau salah satu dari itu muncul lagi di pemakaian, itu petunjuk pertama bahwa
+perbaikannya kurang.
+
+**Perubahan perilaku yang perlu diketahui:** C2 — track di bawah 20 detik yang punya artis
+sekarang tampil (dulu tidak pernah). A1/A2 — tanggal 29/30/31 yang jatuh di bulan pendek
+sekarang memakai hari terakhir bulan itu lalu kembali ke tanggal aslinya; event bulanan ikut
+aturan yang sama (sebelumnya event tanggal 31 tidak muncul sama sekali di bulan pendek).
+
+**Sisa yang belum dikerjakan dari temuan ini:** B3 hanya memperbaiki dokumentasi, jadi ± 200
+baris jalur "Step aside" di `fullscreen.rs` masih ada dan tetap tidak pernah berjalan; dan
+`audio.rs` masih menyimpan fungsi lookup lama sebagai fallback B2 (dipakai bila thread audio
+tidak jalan) — keduanya sengaja dibiarkan, bukan terlewat.
+
+---
+
 ## 1. Aturan repo yang wajib diikuti
 
 Baca `CLAUDE.md` dan `AGENTS.md`; yang paling sering dilanggar saat memperbaiki bug:
