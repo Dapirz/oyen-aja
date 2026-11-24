@@ -191,6 +191,20 @@ pub fn first_tab(st: &AppState) -> PageKind {
     row(st, None)[0]
 }
 
+/// The page the island opens on next time, decided as it closes: the
+/// start page when Settings > Tabs > Opens on names one, else the page it
+/// was on; either way only while it still has a tab (an add-on switched
+/// off from the Settings window takes its page's tab, not the page).
+pub fn next_open(st: &AppState) -> PageKind {
+    let shown = row(st, None);
+    let want = if st.settings.remember_page { st.page } else { PageKind::from_key(&st.settings.start_page) };
+    if shown.contains(&want) {
+        want
+    } else {
+        shown[0]
+    }
+}
+
 /// Every page with a tab, in the row's order: as arranged in Settings >
 /// Tabs (`tab_order`), pages it doesn't name after in their own order, and
 /// Add-ons always last. Whether each shows is [`tabs`]'s business.
@@ -714,6 +728,24 @@ mod tests {
         settings.remember_page = false;
         settings.hidden_tabs = vec!["media".into(), "today".into()];
         assert_eq!(AppState::new(settings, Store::default()).page, Shelf);
+    }
+
+    #[test]
+    fn the_island_opens_on_its_start_page_or_a_tab_it_still_has() {
+        use PageKind::*;
+        let mut st = state();
+        // Left on Tasks, then Tasks switched off and Music made the start page.
+        st.page = Tasks;
+        st.settings.remember_page = true;
+        assert_eq!(next_open(&st), Tasks);
+        st.addons.insert("tasks", poni_core::addons::Status::Off);
+        assert_eq!(next_open(&st), Media);
+        st.settings.remember_page = false;
+        st.settings.start_page = "today".into();
+        assert_eq!(next_open(&st), Today);
+        // The start page's tab hidden: the first tab.
+        st.settings.hidden_tabs = vec!["today".into()];
+        assert_eq!(next_open(&st), Media);
     }
 
     #[test]
