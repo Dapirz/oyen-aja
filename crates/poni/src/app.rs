@@ -516,6 +516,8 @@ pub struct App {
     /// Reminders put off for 10 minutes: when (local minute), the notice's
     /// words, the task. In memory only.
     snoozed: Vec<(i64, String, String, Option<u64>)>,
+    /// screentime.json could be read (or wasn't there): it may be saved.
+    screen_writable: bool,
 }
 
 /// The island window: position and size in screen pixels.
@@ -710,6 +712,7 @@ impl App {
             media_wait: None,
             media_let: None,
             snoozed: Vec::new(),
+            screen_writable: true,
         })
     }
 
@@ -3013,7 +3016,12 @@ impl App {
     /// Screen time came on (or was on at start): its saved days back, the
     /// foreground hook reporting, and a stretch for what's in front.
     fn screentime_on(&mut self) {
-        let mut usage: poni_core::screentime::Usage = poni_core::store::load_json(&paths::screentime_path()).0;
+        let (mut usage, outcome): (poni_core::screentime::Usage, _) = poni_core::store::load_json(&paths::screentime_path());
+        // One that couldn't be read isn't saved over this run (audit A5).
+        self.screen_writable = outcome.writable();
+        if let Some(m) = outcome.message() {
+            pwarn!("screen time: {m}");
+        }
         usage.prune(&self.st.local.day_key());
         self.st.screen = usage;
         self.screen.get_or_insert_with(Default::default);
@@ -3148,7 +3156,7 @@ impl App {
     /// Write the counted days when they changed (`thread`: off the UI
     /// thread; at the end, right here).
     fn save_screentime(&mut self, thread: bool) {
-        if !std::mem::take(&mut self.screen_dirty) || self.screen.is_none() || self.selftest.is_some() {
+        if !std::mem::take(&mut self.screen_dirty) || self.screen.is_none() || self.selftest.is_some() || !self.screen_writable {
             return;
         }
         let usage = self.st.screen.clone();
