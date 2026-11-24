@@ -206,9 +206,13 @@ impl Server {
         self.shared.last_request.lock().map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0)
     }
 
-    /// A question is waiting or files are coming in.
+    /// A question is waiting or files are coming in. Accepted transfers
+    /// whose phone never sent are let go here too (audit A3): the island's
+    /// minute tick asks this, so a phone that went away before its first
+    /// file no longer keeps the server busy and its panel open for good.
     pub fn busy(&self) -> bool {
-        let st = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut st = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        drop_stale_transfers(&self.shared, &mut st);
         st.pending.is_some() || !st.transfers.is_empty()
     }
 
