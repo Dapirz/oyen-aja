@@ -45,14 +45,17 @@ impl MediaSession {
     pub fn make_track_key(title: &str, artist: &str, album: &str) -> String {
         format!("{title}\u{1}{artist}\u{1}{album}")
     }
-    /// Not music: a sound a few seconds long, or a page that names only its
-    /// site (WhatsApp Web's notification sound in a browser reports itself
-    /// as "web.whatsapp.com"). The island doesn't show it as music.
+    /// Not music: a sound a few seconds long with no artist, or a page that
+    /// names only its site (WhatsApp Web's notification sound in a browser
+    /// reports itself as "web.whatsapp.com"). The island doesn't show it as
+    /// music. A short track with its artist (an intro, a skit) is music
+    /// (audit C2).
     pub fn is_blip(&self) -> bool {
+        let no_artist = self.artist.trim().is_empty();
         let short = self.timeline.has_duration() && self.timeline.duration_s < 20.0;
         let t = self.title.trim();
         let site = !t.is_empty() && t.contains('.') && !t.contains(' ') && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
-        short || (site && self.artist.trim().is_empty())
+        no_artist && (short || site)
     }
 
     pub fn is_playing(&self) -> bool {
@@ -869,6 +872,9 @@ mod tests {
         let ping = session("web.whatsapp.com", "", 0.0, true);
         let next = session("Zona Nyaman", "Fourtwnty", 230.0, true);
         assert!(song.holds_over(&ping));
+        // A short track with its artist is music; a short sound with none isn't.
+        assert!(!session("Intro", "Fourtwnty", 15.0, true).is_blip());
+        assert!(session("Notification", "", 2.0, true).is_blip());
         // Another song, or the same one again, takes over as before.
         assert!(!song.holds_over(&next));
         assert!(!song.holds_over(&song.clone()));
