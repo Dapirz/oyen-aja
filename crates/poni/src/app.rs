@@ -4673,6 +4673,9 @@ impl App {
                     // Its sender's picture comes a moment later, if it has one.
                     self.st.notice_card_id = seen.id;
                     self.st.notice_photo = None;
+                    if let Some(l) = self.notify.as_ref() {
+                        l.pictures(&seen.app_id, seen.id);
+                    }
                     self.st.show_or_hold(n, self.fullscreen_hidden);
                 }
             }

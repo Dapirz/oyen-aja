@@ -151,12 +151,11 @@ impl Listener {
             // One that can't be read (gone already, no words) is skipped.
             let n = listener.GetNotification(args.UserNotificationId()?);
             match n.as_ref().map_err(|e| e.clone()).and_then(read) {
+                // Its logo and sender's picture only once the app shows it
+                // (`Listener::pictures`): not for apps the island leaves out.
                 Ok(mut seen) => {
                     seen.id = args.UserNotificationId().unwrap_or(0);
-                    let (app_id, id) = (seen.app_id.clone(), seen.id);
                     sink.send(AppEvent::Notify(NotifyEvent::Seen(seen)));
-                    fetch_logo(app_id, sink.clone());
-                    fetch_photo(id, sink.clone());
                 }
                 Err(e) => crate::pinfo!("notifications: one skipped: {e}"),
             }
@@ -202,6 +201,13 @@ impl Listener {
         if let Err(e) = spawned {
             crate::pwarn!("notifications: no thread to list the apps on: {e}");
         }
+    }
+
+    /// A notification the island shows: fetch its app's logo (once per app)
+    /// and its sender's picture, each on a thread of its own.
+    pub fn pictures(&self, app_id: &str, id: u32) {
+        fetch_logo(app_id.to_string(), self.sink.clone());
+        fetch_photo(id, self.sink.clone());
     }
 
     /// Stop hearing them (Notifications off, or Windows no longer allows it).
