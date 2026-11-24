@@ -307,7 +307,7 @@ fn submit(ui: &mut Ui, st: &mut AppState, anim: &mut ListAnim, day_start: i64) {
             let t = st.local;
             let day = poni_core::datetime::days_from_civil(t.year, t.month, t.day) + i64::from(n);
             let (year, month, d) = poni_core::datetime::civil_from_days(day);
-            let due = poni_core::agenda::Due { year, month, day: d, time: st.ui.task_time, remind: st.ui.task_remind, every: st.ui.task_every };
+            let due = poni_core::agenda::Due { year, month, day: d, time: st.ui.task_time, remind: st.ui.task_remind, every: st.ui.task_every, anchor: 0 };
             st.store.tasks.add_due(&st.ui.task_input, st.unix, due)
         }
     };

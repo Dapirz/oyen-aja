@@ -124,12 +124,27 @@ pub struct Due {
     /// A task that comes again: checked, it moves on to its next day.
     #[serde(default, skip_serializing_if = "Every::is_once")]
     pub every: Every,
+    /// The day of the month a monthly or yearly task was set for, while a
+    /// short month has it on an earlier one (31 Jan: 28 Feb, then 31 Mar
+    /// again); 0 when it's `day`. Not written then, so older files read
+    /// and stay as they were.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub anchor: u8,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
+}
+
+/// `want` in a month that may be shorter: its last day then.
+fn in_month(y: i32, m: u8, want: u8) -> u8 {
+    want.min(crate::datetime::days_in_month(y, m))
 }
 
 impl Due {
     /// A day, nothing else.
     pub fn on(year: i32, month: u8, day: u8) -> Due {
-        Due { year, month, day, time: None, remind: None, every: Every::Once }
+        Due { year, month, day, time: None, remind: None, every: Every::Once, anchor: 0 }
     }
 
     /// Whether it's due on `y-m-d`: its day, or (repeating) one of the days
@@ -144,33 +159,24 @@ impl Due {
             Every::Once => at == start,
             Every::Days(n) => (at - start) % i64::from(n.max(1)) == 0,
             Every::Weeks(n) => (at - start) % (7 * i64::from(n.max(1))) == 0,
-            // Months and years step as `next` does (a short month takes its
-            // last day), a step at a time up to the day asked about.
-            Every::Months(_) | Every::Years(_) => {
-                let mut due = *self;
-                for _ in 0..=1200 {
-                    let here = days_from_civil(due.year, due.month, due.day);
-                    if here >= at {
-                        return here == at;
-                    }
-                    match due.next() {
-                        Some(n) => due = n,
-                        None => return false,
-                    }
-                }
-                false
+            // Its day of the month, a short month's last day (as `next`).
+            Every::Months(n) => {
+                let months = i64::from(y - self.year) * 12 + i64::from(m) - i64::from(self.month);
+                months % i64::from(n.max(1)) == 0 && d == in_month(y, m, self.anchor_day())
             }
+            Every::Years(n) => m == self.month && i64::from(y - self.year) % i64::from(n.max(1)) == 0 && d == in_month(y, m, self.anchor_day()),
         }
     }
 
     /// The next time it's due (its time and reminder kept), if it repeats.
     /// A month without its day takes that month's last day.
     pub fn next(&self) -> Option<Due> {
-        use crate::datetime::{civil_from_days, days_in_month};
+        use crate::datetime::civil_from_days;
+        let want = self.anchor_day();
         let months = |n: u16| {
             let at = self.year * 12 + i32::from(self.month) - 1 + i32::from(n.max(1));
             let (y, m) = (at.div_euclid(12), (at.rem_euclid(12) + 1) as u8);
-            (y, m, self.day.min(days_in_month(y, m)))
+            (y, m, in_month(y, m, want))
         };
         let day = days_from_civil(self.year, self.month, self.day);
         let (year, month, d) = match self.every {
@@ -180,7 +186,17 @@ impl Due {
             Every::Months(n) => months(n),
             Every::Years(n) => months(n.max(1) * 12),
         };
-        Some(Due { year, month, day: d, ..*self })
+        let anchor = if matches!(self.every, Every::Months(_) | Every::Years(_)) && d != want { want } else { 0 };
+        Some(Due { year, month, day: d, anchor, ..*self })
+    }
+
+    /// The day of the month it was set for (see `anchor`).
+    pub fn anchor_day(&self) -> u8 {
+        if self.anchor == 0 {
+            self.day
+        } else {
+            self.anchor
+        }
     }
 
     /// Its reminder's minute (local, from 1970), if it has one.
@@ -275,9 +291,10 @@ impl Event {
             Every::Once => at == start,
             Every::Days(n) => (at - start) % n.max(1) as i64 == 0,
             Every::Weeks(n) => (at - start) % (7 * n.max(1) as i64) == 0,
-            // A month without its day (the 31st in April) has none.
-            Every::Months(n) => d == self.day && months % n.max(1) as i64 == 0,
-            Every::Years(n) => d == self.day && m == self.month && (y - self.year) as i64 % n.max(1) as i64 == 0,
+            // A month without its day (the 31st in April) has it on its last
+            // day, as a repeating task does.
+            Every::Months(n) => d == in_month(y, m, self.day) && months % n.max(1) as i64 == 0,
+            Every::Years(n) => d == in_month(y, m, self.day) && m == self.month && (y - self.year) as i64 % n.max(1) as i64 == 0,
         }
     }
 }
@@ -474,9 +491,10 @@ mod tests {
         assert!(!ev(Every::Days(1)).on(2026, 1, 30), "not before it starts");
         assert!(ev(Every::Days(3)).on(2026, 2, 3) && !ev(Every::Days(3)).on(2026, 2, 2));
         assert!(ev(Every::Weeks(2)).on(2026, 2, 14) && !ev(Every::Weeks(2)).on(2026, 2, 7));
-        // Every month on the 31st: none in February, March's 31st.
-        assert!(!ev(Every::Months(1)).on(2026, 2, 28) && ev(Every::Months(1)).on(2026, 3, 31));
-        assert!(ev(Every::Months(2)).on(2026, 3, 31) && !ev(Every::Months(2)).on(2026, 4, 30));
+        // Every month on the 31st: February's last day, then March's 31st.
+        assert!(ev(Every::Months(1)).on(2026, 2, 28) && !ev(Every::Months(1)).on(2026, 2, 27) && ev(Every::Months(1)).on(2026, 3, 31));
+        assert!(ev(Every::Months(1)).on(2026, 4, 30) && !ev(Every::Months(1)).on(2026, 3, 30));
+        assert!(ev(Every::Months(2)).on(2026, 3, 31) && !ev(Every::Months(2)).on(2026, 4, 30) && ev(Every::Months(2)).on(2026, 5, 31));
         assert!(ev(Every::Years(1)).on(2027, 1, 31) && !ev(Every::Years(2)).on(2027, 1, 31));
         assert_eq!(Every::Weeks(2).label(), "Every 2 weeks");
         assert_eq!(Every::Weeks(2).short(), "2 wks");
@@ -561,8 +579,9 @@ mod tests {
             assert!(monthly.falls_on(d.year, d.month, d.day), "{d:?}");
             d = d.next().unwrap();
         }
-        // From then on the 28th, as checking it moves it.
-        assert!(monthly.falls_on(2026, 3, 28) && !monthly.falls_on(2026, 3, 31));
+        // Back on its own day once the month has it.
+        assert!(monthly.falls_on(2026, 3, 31) && !monthly.falls_on(2026, 3, 28));
+        assert!(monthly.falls_on(2026, 4, 30) && monthly.falls_on(2026, 5, 31));
         let yearly = Due { every: Every::Years(1), ..Due::on(2026, 8, 17) };
         assert!(yearly.falls_on(2030, 8, 17) && !yearly.falls_on(2030, 8, 18));
         assert!(Due::on(2026, 11, 28).falls_on(2026, 11, 28) && !Due::on(2026, 11, 28).falls_on(2026, 12, 5));
@@ -580,6 +599,27 @@ mod tests {
         assert_eq!(t.due.map(|d| (d.year, d.month, d.day, d.time)), Some((2026, 2, 28, Some(540))));
         assert_eq!(Due { every: Every::Weeks(2), ..Due::on(2026, 12, 28) }.next().map(|d| (d.year, d.month, d.day)), Some((2027, 1, 11)));
         assert_eq!(Due { every: Every::Years(1), ..Due::on(2028, 2, 29) }.next().map(|d| (d.year, d.month, d.day)), Some((2029, 2, 28)));
+        // Monthly from the 31st keeps it: 28 Feb, 31 Mar, 30 Apr, 31 May.
+        let mut d = Due { every: Every::Months(1), ..Due::on(2026, 1, 31) };
+        let mut days = Vec::new();
+        for _ in 0..5 {
+            days.push((d.month, d.day));
+            d = d.next().unwrap();
+        }
+        assert_eq!(days, [(1, 31), (2, 28), (3, 31), (4, 30), (5, 31)]);
+        // Yearly from 29 Feb: 28 Feb, until the next leap year has the 29th.
+        let mut d = Due { every: Every::Years(1), ..Due::on(2028, 2, 29) };
+        let mut leap = Vec::new();
+        for _ in 0..5 {
+            leap.push(d.day);
+            d = d.next().unwrap();
+        }
+        assert_eq!(leap, [29, 28, 28, 28, 29]);
+        // The anchor is written only while it differs from the day.
+        let feb = Due { every: Every::Months(1), ..Due::on(2026, 1, 31) }.next().unwrap();
+        assert!(serde_json::to_string(&feb).unwrap().contains("\"anchor\":31"));
+        let mar = feb.next().unwrap();
+        assert!(!serde_json::to_string(&mar).unwrap().contains("anchor"));
         // A task due once is checked as before.
         let once = tasks.add_due("Sekali", 0, Due::on(2026, 1, 5)).unwrap();
         tasks.toggle(once, 10);
