@@ -489,10 +489,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
     let stacked = stacks(m, st);
     let top = if stacked { Rect::new(body.x, body.y, body.w, (body.h - STACK_ROW).max(0.0)) } else { body };
     match m {
-        Mode::Idle => {
-            draw_idle(ui, st, body);
-            draw_unseen(ui, st, body);
-        }
+        Mode::Idle => draw_idle(ui, st, body),
         Mode::Activity(a) => draw_activity(ui, st, *a, top),
         Mode::Hud(_) => draw_hud(ui, st, top),
         Mode::Notice => draw_notice(ui, st, top),
@@ -512,19 +509,6 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
 fn snap(ui: &Ui, v: f32) -> f32 {
     let s = ui.c.scale().max(0.1);
     (v * s).round() / s
-}
-
-/// New notifications since the list was looked at: a small red count at
-/// the resting island's right end (the bell in the open island's header
-/// has the list).
-fn draw_unseen(ui: &mut Ui, st: &AppState, body: Rect) {
-    if st.recent_unseen == 0 || !st.notifications_on() || body.h < 20.0 {
-        return;
-    }
-    let c = Point::new(body.right() - 14.0, body.center().y);
-    ui.c.fill_circle(c, 7.0, palette::RED);
-    let n = st.recent_unseen.min(9).to_string();
-    ui.c.text(&n, Rect::from_center(c, 14.0, 14.0), &TextStyle::caption().weight(Weight::Bold).center().color(palette::ON_ACCENT));
 }
 
 fn draw_idle(ui: &mut Ui, st: &mut AppState, body: Rect) {
