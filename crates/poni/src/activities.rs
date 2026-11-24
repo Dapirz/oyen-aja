@@ -149,6 +149,15 @@ pub fn prayer_countdown(st: &AppState) -> Option<(poni_core::prayer::Prayer, i64
         .map(|(m, left)| (m.prayer, left))
 }
 
+/// The countdown's words: "Dzuhur in 1:59" (minutes and seconds left;
+/// past an hour, "1:02:03").
+pub fn prayer_line(st: &AppState) -> Option<String> {
+    let (prayer, _) = prayer_countdown(st)?;
+    let left = (prayer_countdown_at(st)? - st.prayer_now()).max(0);
+    let clock = if left >= 3600 { format!("{}:{:02}:{:02}", left / 3600, left / 60 % 60, left % 60) } else { format!("{}:{:02}", left / 60, left % 60) };
+    Some(format!("{} in {clock}", prayer.name()))
+}
+
 pub fn current_activity(st: &AppState) -> Option<Activity> {
     // The few minutes before a prayer come first: they don't come back.
     if prayer_countdown(st).is_some() {
@@ -450,6 +459,10 @@ pub fn next_wake(m: &Mode, st: &AppState) -> Option<f64> {
     if let Some(t) = crate::pill::next_wake(m, st) {
         consider(t);
     }
+    // The prayer countdown's seconds: the next one.
+    if *m == Mode::Activity(Activity::Prayer) {
+        consider(now + 1.0 - (now.fract()).min(0.99));
+    }
     // The meeting's time moves on each second while it records.
     if *m == Mode::Activity(Activity::Notes) {
         if let Some(b) = st.notes.next_second(now) {
@@ -688,11 +701,10 @@ fn draw_activity(ui: &mut Ui, st: &mut AppState, a: Activity, body: Rect) {
             // The moon, the minutes and OK only, even about the middle: the
             // moon sits in a slot as wide as OK's, as far in from the left
             // end as OK is from the right, and the words centre between.
-            let Some((prayer, left)) = prayer_countdown(st) else { return };
+            let Some(text) = prayer_line(st) else { return };
             let col = st.accent;
             let slot = Rect::new(body.x + PRAYER_OK_INSET, cy - PRAYER_OK_H / 2.0, PRAYER_OK_W, PRAYER_OK_H);
             ui.c.icon(Icon::Moon, Rect::from_center(slot.center(), 16.0, 16.0), col);
-            let text = format!("{} {left} min", prayer.name());
             let ts = TextStyle::body().weight(Weight::Semibold).tabular().color(col).center();
             let end = draw_prayer_ok(ui, body);
             let start = slot.right() + 12.0;

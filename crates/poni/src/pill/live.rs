@@ -195,7 +195,7 @@ fn prayer_style(col: Color) -> TextStyle {
 
 /// The line's slot: the prayer's name and two digits of minutes.
 fn prayer_slot_text(p: Prayer) -> String {
-    format!("{} 00 min", p.name())
+    format!("{} in 00:00", p.name())
 }
 
 fn prayer_w(st: &AppState) -> f32 {
@@ -227,17 +227,15 @@ pub(crate) fn moon(ui: &mut Ui, c: Point, d: f32, col: Color) {
 }
 
 fn draw_prayer(ui: &mut Ui, st: &AppState, body: Rect) {
-    let Some((prayer, left)) = prayer_countdown(st) else { return };
+    let Some((prayer, _)) = prayer_countdown(st) else { return };
     let col = st.accent;
     let ts = prayer_style(col);
     let (slot, _) = ui.c.measure(&prayer_slot_text(prayer), &ts, 400.0);
     let w = (GLYPH_INSET + MOON + MOON_GAP + slot + PRAYER_OK_ROOM).ceil();
     PRAYER_FIT.with(|f| f.set(Some((prayer, w))));
-    // The pill keeps the two-digit width; the moon and the line centre
-    // left of the OK as one group, so "8 min" doesn't leave a gap before
-    // it. They shift half a digit once, at "10 min" to "9 min", as the
-    // text changes.
-    let text = format!("{} {left} min", prayer.name());
+    // The pill keeps the width of "00:00"; the moon and the line centre
+    // left of the OK as one group.
+    let text = crate::activities::prayer_line(st).unwrap_or_default();
     let (tw, _) = ui.c.measure(&text, &ts, 400.0);
     let end = draw_prayer_ok(ui, body);
     let content = MOON + MOON_GAP + tw;
