@@ -93,6 +93,8 @@ pub enum Command {
     Play(Sound),
     /// Open a URL in the default browser.
     OpenUrl(String),
+    /// The song's lyrics are wrong: show another LRCLIB copy of it.
+    OtherLyrics,
     /// Start with Windows on or off (the Settings page's switch).
     SetAutostart(bool),
     Phone(PhoneCmd),

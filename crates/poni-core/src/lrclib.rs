@@ -145,6 +145,41 @@ pub fn best_match<'a>(records: &'a [LrclibRecord], q: &TrackQuery) -> Option<&'a
         .map(|(_, r)| r)
 }
 
+/// Every search hit that [`best_match`] would accept, best first: the copies
+/// to offer when the shown one has the wrong lyrics.
+pub fn ranked<'a>(records: &'a [LrclibRecord], q: &TrackQuery) -> Vec<&'a LrclibRecord> {
+    let mut hits: Vec<(i32, &LrclibRecord)> = records
+        .iter()
+        .filter_map(|r| {
+            let synced = r.has_full_synced();
+            if !(synced || r.has_full_plain() || r.instrumental) {
+                return None;
+            }
+            match_score(q, &r.track_name, &r.artist_name, r.duration, synced).filter(|s| *s >= MIN_SCORE).map(|s| (s, r))
+        })
+        .collect();
+    // Stable: equal scores keep LRCLIB's order, as `best_match` does.
+    hits.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+    let mut seen = Vec::new();
+    hits.into_iter().filter(|(_, r)| r.id == 0 || !seen.contains(&r.id) && { seen.push(r.id); true }).map(|(_, r)| r).collect()
+}
+
+/// The copy to show next when `current` has the wrong lyrics: the best one
+/// not tried yet (`tried`), else, all tried, the best other than `current`
+/// (round again). The new list of tried ids comes with it; `None` when no
+/// other copy exists.
+pub fn next_copy<'a>(ranked: &[&'a LrclibRecord], current: i64, tried: &[i64]) -> Option<(&'a LrclibRecord, Vec<i64>)> {
+    let mut tried = tried.to_vec();
+    if current != 0 && !tried.contains(&current) {
+        tried.push(current);
+    }
+    if let Some(r) = ranked.iter().find(|r| r.id != current && !tried.contains(&r.id)) {
+        return Some((r, tried));
+    }
+    let r = ranked.iter().find(|r| r.id != current)?;
+    Some((r, if current != 0 { vec![current] } else { Vec::new() }))
+}
+
 /// How well a candidate fits the query; `None` when the title doesn't match
 /// at all. Title, artist, duration and synced lyrics add up; compare with
 /// [`MIN_SCORE`].
@@ -508,6 +543,38 @@ mod tests {
         // A length LRCLIB doesn't know, or a short song: as before.
         assert!(rec(squeezed, None).has_full_synced());
         assert!(rec(squeezed, Some(50.0)).has_full_synced());
+    }
+
+    #[test]
+    fn wrong_lyrics_steps_through_the_other_copies() {
+        let whole = "[00:04.41] Separuh nafasku\n[01:14.74] Terbang bersama dirimu\n[02:30.00] Saat kautinggalkanku\n[03:05.00] Salahkanku\n";
+        let squeezed = "[00:04.41] Separuh nafasku\n[00:14.74] Terbang bersama dirimu\n[00:30.00] Saat kautinggalkanku\n[00:45.00] Salahkanku\n";
+        let rec = |id: i64, lrc: &str, d: f64| LrclibRecord {
+            id,
+            track_name: "Separuh Nafas".into(),
+            artist_name: "Dewa 19".into(),
+            duration: Some(d),
+            synced_lyrics: Some(lrc.into()),
+            plain_lyrics: Some(lrc.into()),
+            ..Default::default()
+        };
+        let other_song = LrclibRecord { id: 9, track_name: "Kangen".into(), ..rec(9, whole, 222.0) };
+        let found = [rec(1, squeezed, 222.0), rec(2, whole, 222.0), rec(3, whole, 226.0), rec(2, whole, 222.0), other_song];
+        let query = q("Separuh Nafas", "Dewa 19", "", 222);
+        let ranked = ranked(&found, &query);
+        // Best first, each copy once, another song left out.
+        assert_eq!(ranked.iter().map(|r| r.id).collect::<Vec<_>>(), [2, 3, 1]);
+        // Showing 2: 3, then 1, then round again to 2.
+        let (r, tried) = next_copy(&ranked, 2, &[]).unwrap();
+        assert_eq!((r.id, tried.clone()), (3, vec![2]));
+        let (r, tried) = next_copy(&ranked, 3, &tried).unwrap();
+        assert_eq!((r.id, tried.clone()), (1, vec![2, 3]));
+        let (r, tried) = next_copy(&ranked, 1, &tried).unwrap();
+        assert_eq!((r.id, tried), (2, vec![1]));
+        // A copy the search didn't return (from /api/get) counts as shown.
+        assert_eq!(next_copy(&ranked, 7, &[]).map(|(r, _)| r.id), Some(2));
+        // Only the copy shown: nothing else.
+        assert!(next_copy(&ranked[..1], 2, &[]).is_none());
     }
 
     #[test]

@@ -116,6 +116,12 @@ impl Services {
         }
     }
 
+    pub fn other_lyrics(&self, s: &MediaSession) {
+        if let Some(l) = &self.lyrics {
+            l.other_copy(s);
+        }
+    }
+
     pub fn request_lyrics(&self, s: &MediaSession) {
         if let Some(l) = &self.lyrics {
             l.request(s);

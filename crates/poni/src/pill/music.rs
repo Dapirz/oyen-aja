@@ -268,6 +268,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
     // The lyrics: Classic's column, as Classic draws it, with its offer of
     // the Japanese readings add-on.
     let mut open_credit = false;
+    let mut other_copy = false;
     let mut synced_shown = false;
     let mut get_ja_readings = false;
     if let Some(lyr_w) = cols.lyrics_w {
@@ -278,6 +279,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
         anim |= out.animating;
         synced_shown = out.synced;
         open_credit = out.open_credit;
+        other_copy = out.other_copy;
         get_ja_readings = out.get_ja_readings;
     }
 
@@ -302,6 +304,9 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
 
     for c in acts {
         classic::push_media(st, c);
+    }
+    if other_copy {
+        st.cmd(Command::OtherLyrics);
     }
     if open_credit {
         let url = classic::source_url(classic::lyrics_source(&st.lyrics)).to_string();

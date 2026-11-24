@@ -115,6 +115,10 @@ const CREDIT_FADE_S: f32 = 0.15;
 /// The Japanese readings offer shrinks to fit the column, to no less than this
 /// of the caption size (beyond that it's cut).
 const OFFER_MIN_SCALE: f32 = 0.85;
+/// In "Wrong lyrics?"'s place while another copy is looked for.
+pub(crate) const OTHER_LOOKING: &str = "Looking\u{2026}";
+const OTHER_LABEL: &str = "Wrong lyrics?";
+
 /// Credited when a result doesn't name its source.
 const DEFAULT_SOURCE: &str = "LRCLIB";
 
@@ -451,6 +455,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
 
     // Lyrics.
     let mut open_credit = false;
+    let mut other_copy = false;
     let mut synced_shown = false;
     let mut get_ja_readings = false;
     if show_lyrics {
@@ -463,6 +468,7 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
         anim |= out.animating;
         synced_shown = out.synced;
         open_credit = out.open_credit;
+        other_copy = out.other_copy;
         get_ja_readings = out.get_ja_readings;
     }
 
@@ -481,6 +487,9 @@ fn draw_session(ui: &mut Ui, st: &mut AppState, area: Rect, a: &mut Anim, fr: &F
     if open_credit {
         let url = source_url(lyrics_source(&st.lyrics)).to_string();
         st.cmd(Command::OpenUrl(url));
+    }
+    if other_copy {
+        st.cmd(Command::OtherLyrics);
     }
     // The same switch as the Add-ons tab's row: the app downloads it, then
     // reads the song again.
@@ -611,6 +620,8 @@ pub(crate) struct LyricsOut {
     pub(crate) open_credit: bool,
     /// The offer was clicked: switch the Japanese readings add-on on.
     pub(crate) get_ja_readings: bool,
+    /// "Wrong lyrics?" was clicked: show another LRCLIB copy.
+    pub(crate) other_copy: bool,
 }
 
 enum View<'a> {
@@ -676,6 +687,8 @@ pub(crate) fn draw_lyrics(
     let vp = Rect::new(col.x, col.y, col.w, col.h - CREDIT_H - CREDIT_GAP);
     let mut out = LyricsOut::default();
     let source = lyrics_source(lyr);
+    // LRCLIB holds several copies of many songs; Apple Music has one.
+    let other = source == DEFAULT_SOURCE && !matches!(view, View::Status { .. });
     let credit = match view {
         View::Status { msg, busy } => {
             let pulse = if busy && ctx.live { Some(ctx.now) } else { None };
@@ -707,9 +720,34 @@ pub(crate) fn draw_lyrics(
     if let Some((line, click)) = &ctx.offer {
         out.get_ja_readings = draw_offer(ui, col, line, *click);
     } else if a.credit_k > 0.0 {
-        out.open_credit = draw_credit(ui, col, &credit, smoothstep(a.credit_k));
+        let k = smoothstep(a.credit_k);
+        out.open_credit = draw_credit(ui, col, &credit, k);
+        if other {
+            out.other_copy = draw_other(ui, col, &credit, &lyr.other_note, k);
+        }
     }
     out
+}
+
+/// "Wrong lyrics?" at the credit's right end, or how asking went; left out
+/// where the column is too narrow for both.
+fn draw_other(ui: &mut Ui, col: Rect, credit: &str, note: &str, alpha: f32) -> bool {
+    let ts = TextStyle::caption();
+    let label = if note.is_empty() { OTHER_LABEL } else { note };
+    let (cw, _) = ui.c.measure(credit, &ts, col.w);
+    let (tw, _) = ui.c.measure(label, &ts, col.w);
+    if cw + tw + 16.0 > col.w {
+        return false;
+    }
+    let r = Rect::new(col.right() - tw - 2.0, col.bottom() - CREDIT_H, tw + 2.0, CREDIT_H);
+    if note == OTHER_LOOKING {
+        ui.c.with_alpha(alpha, |c| c.text(label, r, &ts.color(palette::TEXT_FAINT).right()));
+        return false;
+    }
+    let resp = ui.button(wid("media_lyrics_other"), r.inset(-6.0, -5.0));
+    let color = if resp.hovered { palette::TEXT } else { palette::TEXT_DIM };
+    ui.c.with_alpha(alpha, |c| c.text(label, r, &ts.color(color).right()));
+    resp.clicked
 }
 
 /// Centred icon + message for loading / missing lyrics.

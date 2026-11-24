@@ -75,6 +75,9 @@ pub enum LyricsResult {
     /// `wants_ja_readings`: kanji went unread for want of the Japanese
     /// readings add-on (`services::romanize::Pronounced`).
     Found { lyrics: Lyrics, source: String, ruby: Vec<Vec<Ruby>>, wants_ja_readings: bool },
+    /// Asked for another copy, none came: the lyrics shown stay, with this
+    /// line under them.
+    Kept(String),
     /// The song is marked instrumental (no words to show).
     Instrumental,
     NotFound,

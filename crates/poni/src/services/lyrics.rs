@@ -72,6 +72,9 @@ const MSG_TIMEOUT: &str = "LRCLIB didn't answer in time";
 const MSG_UNREACHABLE: &str = "Can't reach LRCLIB";
 /// "LRCLIB error 503": its HTTP status follows.
 const MSG_HTTP: &str = "LRCLIB error";
+/// Under the lyrics when "Wrong lyrics?" found nothing else.
+const OTHER_NONE: &str = "No other copy";
+const OTHER_FAILED: &str = "Try again later";
 
 /// A lookup that failed with `msg` failed on LRCLIB's side: it was busy,
 /// didn't answer in time, couldn't be reached or had a server error. The
@@ -100,6 +103,16 @@ impl LyricsService {
     /// Queue a lookup for `s` and return immediately (UI thread safe). The
     /// answer arrives as `AppEvent::Lyrics` with `s.track_key`.
     pub fn request(&self, s: &MediaSession) {
+        self.queue(s, false);
+    }
+
+    /// The lyrics shown for `s` are wrong: look for another LRCLIB copy of
+    /// the song. The answer is `LyricsResult::Found` with it, or `Kept`.
+    pub fn other_copy(&self, s: &MediaSession) {
+        self.queue(s, true);
+    }
+
+    fn queue(&self, s: &MediaSession, other: bool) {
         let job = Job {
             track_key: s.track_key.clone(),
             query: TrackQuery {
@@ -110,6 +123,7 @@ impl LyricsService {
             },
             browser: nowplaying::is_browser(&s.app_id),
             attempt: 0,
+            other,
         };
         {
             let mut q = self.shared.lock();
@@ -147,6 +161,8 @@ struct Job {
     browser: bool,
     /// 0 for a fresh request, n for the n-th delayed retry.
     attempt: u32,
+    /// Asked for another copy than the one shown ("Wrong lyrics?").
+    other: bool,
 }
 
 /// What the worker should do next.
@@ -279,7 +295,8 @@ impl Worker {
     }
 
     fn process(&mut self, job: Job) {
-        match self.lookup(&job) {
+        let res = if job.other { self.other_copy(&job) } else { self.lookup(&job) };
+        match res {
             Ok(LyricsResult::Found { lyrics, source, .. }) => {
                 // Readings for Japanese / Korean / Chinese lines, worked out
                 // here so the UI thread never waits on the analyzer.
@@ -288,6 +305,8 @@ impl Worker {
             }
             Ok(result) => self.deliver(&job, result),
             Err(Halt::Abandoned) => {}
+            // The lyrics shown stay; asked again by hand, not retried.
+            Err(Halt::Failed { .. }) if job.other => self.deliver(&job, LyricsResult::Kept(OTHER_FAILED.into())),
             Err(Halt::Failed { msg, retry_at }) => {
                 self.deliver(&job, LyricsResult::Error(msg));
                 if let Some(at) = retry_at {
@@ -390,7 +409,15 @@ impl Worker {
                 return Ok(to_result(entry.record.as_ref(), job, SOURCE));
             }
         }
+        let tried = cached.as_ref().map(|e| e.tried.clone()).unwrap_or_default();
         match self.fetch(job, q) {
+            // The copy found is one turned down with "Wrong lyrics?": keep
+            // the one picked instead.
+            Ok(Fetched::Found(record)) if tried.contains(&record.id) && cached.as_ref().is_some_and(|e| e.record.is_some()) => {
+                let kept = cached.and_then(|e| e.record).unwrap_or(record);
+                self.store(&path, &CacheEntry { tried, ..CacheEntry::new(Some(kept.clone()), crate::clock::unix_now()) });
+                Ok(to_result(Some(&kept), job, SOURCE))
+            }
             Ok(Fetched::Found(record)) => {
                 crate::pinfo!(
                     "lyrics {key}: {}",
@@ -416,6 +443,43 @@ impl Worker {
                 None => Err(Halt::Failed { msg, retry_at }),
             },
             Err(Halt::Abandoned) => Err(Halt::Abandoned),
+        }
+    }
+
+    /// "Wrong lyrics?": the next LRCLIB copy of the song, best first, then
+    /// round again (`lrclib::next_copy`). The pick and the copies turned
+    /// down are cached, so the song keeps them.
+    fn other_copy(&mut self, job: &Job) -> Result<LyricsResult, Halt> {
+        let q = lrclib::normalize_query(&job.query);
+        if q.title.trim().is_empty() {
+            return Ok(LyricsResult::Kept(OTHER_NONE.into()));
+        }
+        let key = lrclib::cache_key(&q);
+        let path = self.cache_dir.join(format!("{key}.json"));
+        let cached = read_cache(&path);
+        let current = cached.as_ref().and_then(|e| e.record.as_ref()).map_or(0, |r| r.id);
+        let tried = cached.as_ref().map(|e| e.tried.clone()).unwrap_or_default();
+        let mut searches = vec![q.clone()];
+        if job.browser {
+            searches.extend(lrclib::title_guesses(&q));
+        }
+        let mut found = Vec::new();
+        let mut server_failed = None;
+        for sq in &searches {
+            found.extend(self.search_all(job, sq, &mut server_failed)?);
+        }
+        let ranked = lrclib::ranked(&found, &q);
+        match lrclib::next_copy(&ranked, current, &tried) {
+            Some((record, tried)) => {
+                crate::pinfo!("lyrics {key}: copy {} instead of {current} ({} turned down)", record.id, tried.len());
+                let record = record.clone();
+                self.store(&path, &CacheEntry { tried, ..CacheEntry::new(Some(record.clone()), crate::clock::unix_now()) });
+                Ok(to_result(Some(&record), job, SOURCE))
+            }
+            None => match server_failed {
+                Some(h) => Err(h),
+                None => Ok(LyricsResult::Kept(OTHER_NONE.into())),
+            },
         }
     }
 
@@ -496,6 +560,12 @@ impl Worker {
     /// can answer 503 to a search it holds nothing for (a video title read
     /// the wrong way) while the next reading of the title works.
     fn search(&mut self, job: &Job, q: &TrackQuery, server_failed: &mut Option<Halt>) -> Result<Option<LrclibRecord>, Halt> {
+        let records = self.search_all(job, q, server_failed)?;
+        Ok(lrclib::best_match(&records, q).filter(|r| usable(r)).cloned())
+    }
+
+    /// `/api/search`'s hits for `q` (see `search`).
+    fn search_all(&mut self, job: &Job, q: &TrackQuery, server_failed: &mut Option<Halt>) -> Result<Vec<LrclibRecord>, Halt> {
         let search = TrackQuery {
             title: q.title.clone(),
             artist: lrclib::primary_artist(&q.artist),
@@ -505,14 +575,14 @@ impl Worker {
         let resp = self.call(job, &lrclib::search_url(&search))?;
         match resp.status {
             200 => match lrclib::parse_search(&resp.body) {
-                Ok(records) => Ok(lrclib::best_match(&records, q).filter(|r| usable(r)).cloned()),
+                Ok(records) => Ok(records),
                 Err(e) => Err(self.bad_reply(job, "/api/search", &e)),
             },
-            400 | 404 => Ok(None),
+            400 | 404 => Ok(Vec::new()),
             s if s >= 500 => {
                 let failed = self.http_error(job, s);
                 server_failed.get_or_insert(failed);
-                Ok(None)
+                Ok(Vec::new())
             }
             s => Err(self.http_error(job, s)),
         }
@@ -707,6 +777,10 @@ mod pure {
         /// The matched record; `None` records a miss.
         #[serde(default)]
         pub record: Option<LrclibRecord>,
+        /// LRCLIB ids of the copies turned down with "Wrong lyrics?" (the
+        /// record is the one picked instead). Not written while empty.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub tried: Vec<i64>,
     }
 
     impl CacheEntry {
@@ -717,7 +791,7 @@ mod pure {
         pub const LOOKUP: u32 = 3;
 
         pub fn new(record: Option<LrclibRecord>, now: i64) -> Self {
-            Self { v: Self::VERSION, lookup: Self::LOOKUP, fetched_at: now, record }
+            Self { v: Self::VERSION, lookup: Self::LOOKUP, fetched_at: now, record, tried: Vec::new() }
         }
     }
 

@@ -2264,6 +2264,7 @@ impl App {
                     match result {
                         crate::events::LyricsResult::Found { lyrics, source, ruby, wants_ja_readings } => {
                             self.st.lyrics.status = LyricsStatus::Found;
+                            self.st.lyrics.other_note.clear();
                             self.st.lyrics.lyrics = Some(lyrics);
                             self.st.lyrics.source = source;
                             self.st.lyrics.ruby = ruby;
@@ -2283,6 +2284,7 @@ impl App {
                         crate::events::LyricsResult::Instrumental => self.st.lyrics.status = LyricsStatus::Instrumental,
                         crate::events::LyricsResult::NotFound => self.st.lyrics.status = LyricsStatus::NotFound,
                         crate::events::LyricsResult::Error(e) => self.st.lyrics.status = LyricsStatus::Error(e),
+                        crate::events::LyricsResult::Kept(note) => self.st.lyrics.other_note = note,
                     }
                 }
             }
@@ -4408,6 +4410,16 @@ impl App {
                 }
                 Command::Play(s) => services::sound::play(s),
                 Command::OpenUrl(u) => shell::open(&u),
+                Command::OtherLyrics => {
+                    let m = self.st.media.clone().filter(|m| m.track_key == self.st.lyrics.track_key);
+                    if let (Some(m), Some(svc)) = (m, self.services.as_ref()) {
+                        // One look at a time.
+                        if self.st.lyrics.other_note != pages::media::OTHER_LOOKING {
+                            self.st.lyrics.other_note = pages::media::OTHER_LOOKING.into();
+                            svc.other_lyrics(&m);
+                        }
+                    }
+                }
                 Command::SetAutostart(on) => {
                     self.st.ui.autostart = Some(on);
                     crate::autostart::report(self.sink.clone(), Some(on));

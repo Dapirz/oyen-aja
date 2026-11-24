@@ -1455,7 +1455,7 @@ impl SelfTest {
             let ok = if matches!(analyzer.as_str(), "required" | "off") { lines_read == needing } else { lines_read > 0 };
             self.checks.push(check("lyrics-pronunciation", ok, format!("{lines_read} of {needing} {lang} lines read in Latin letters")));
         }
-        self.lyrics = LyricsState { track_key: self.track_key.clone(), status: LyricsStatus::Found, lyrics: Some(parsed), source: "Sample".into(), ruby, wants_ja_readings };
+        self.lyrics = LyricsState { track_key: self.track_key.clone(), status: LyricsStatus::Found, lyrics: Some(parsed), source: "Sample".into(), ruby, wants_ja_readings, other_note: String::new() };
 
         seed_tasks(st);
         let today = st.day_key();

@@ -97,11 +97,22 @@ pub struct LyricsState {
     /// switches the add-on on the first time, and the Music page shows how
     /// it comes in (or offers it, after a switch-off by hand).
     pub wants_ja_readings: bool,
+    /// Where the Music page's "Wrong lyrics?" stands: "" ready, else what to
+    /// show in its place ("Looking…", "No other copy").
+    pub other_note: String,
 }
 
 impl Default for LyricsState {
     fn default() -> Self {
-        Self { track_key: String::new(), status: LyricsStatus::Idle, lyrics: None, source: String::new(), ruby: Vec::new(), wants_ja_readings: false }
+        Self {
+            track_key: String::new(),
+            status: LyricsStatus::Idle,
+            lyrics: None,
+            source: String::new(),
+            ruby: Vec::new(),
+            wants_ja_readings: false,
+            other_note: String::new(),
+        }
     }
 }
 
