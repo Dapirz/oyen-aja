@@ -1500,18 +1500,23 @@ fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: b
 }
 
 /// The rows whose name or line has `query` in it (lower case), each under
-/// its section's name, there to use as they are.
+/// its section's name, there to use as they are. A section whose name
+/// matches but none of its rows (say "prayer") shows them all.
 pub fn search(st: &AppState, query: &str) -> Vec<Block> {
     let mut out = Vec::new();
     for s in sections(st) {
-        let hits: Vec<Item> = blocks(s, st)
+        let rows: Vec<Item> = blocks(s, st)
             .into_iter()
             .flat_map(|b| match b {
                 Block::Group(_, items) => items,
                 _ => Vec::new(),
             })
-            .filter(|it| it.label.to_lowercase().contains(query) || it.sub.as_deref().is_some_and(|x| x.to_lowercase().contains(query)) || s.title().to_lowercase().contains(query))
             .collect();
+        let own = |it: &Item| it.label.to_lowercase().contains(query) || it.sub.as_deref().is_some_and(|x| x.to_lowercase().contains(query));
+        let mut hits: Vec<Item> = rows.iter().filter(|it| own(it)).cloned().collect();
+        if hits.is_empty() && s.title().to_lowercase().contains(query) {
+            hits = rows;
+        }
         if !hits.is_empty() {
             out.push(Block::Group(Some(s.title()), hits));
         }
@@ -2396,7 +2401,13 @@ mod tests {
     fn search_finds_rows_in_every_section_under_its_name() {
         let st = state();
         let found = search(&st, "lyrics");
-        assert!(found.iter().any(|b| matches!(b, Block::Group(Some("Music and lyrics"), items) if items.iter().any(|i| i.key == Key::LyricsBold))));
+        let music = |key: Key| found.iter().any(|b| matches!(b, Block::Group(Some("Music and lyrics"), items) if items.iter().any(|i| i.key == key)));
+        assert!(music(Key::Lyrics));
+        // The section's name alone doesn't bring its other rows.
+        assert!(!music(Key::MusicTwoRows));
+        // A section's name with no row of its own matching: the whole section.
+        let found = search(&st, "general");
+        assert!(found.iter().any(|b| matches!(b, Block::Group(Some("General"), items) if items.len() > 1)));
         assert_eq!(search(&st, "zzzz"), vec![Block::Note("No setting matches.")]);
     }
 
