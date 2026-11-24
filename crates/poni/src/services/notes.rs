@@ -52,9 +52,11 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 const PART_TIMEOUT: Duration = Duration::from_secs(180);
 /// Gemini hearing up to two hours and writing its transcript.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
-/// An upload Gemini is still processing: looked at this often, this many times.
+/// An upload Gemini is still processing: looked at this often, for at
+/// most this long (a time, not a count: each look may itself wait and be
+/// tried again, audit N1).
 const READY_POLL: Duration = Duration::from_secs(2);
-const READY_TRIES: u32 = 90;
+const READY_WAIT: Duration = Duration::from_secs(15 * 60);
 /// Tries for each call before the meeting counts as not sent.
 const TRIES: u32 = 3;
 
@@ -574,7 +576,11 @@ impl Sender<'_> {
     /// Wait while Gemini still processes an upload.
     fn ready(&self, key: &str, f: &mut File) -> Result<(), Problem> {
         let headers = [("x-goog-api-key", key)];
-        for i in 0..READY_TRIES {
+        let until = std::time::Instant::now() + READY_WAIT;
+        for i in 0u32.. {
+            if std::time::Instant::now() >= until {
+                break;
+            }
             match f.state.as_str() {
                 "ACTIVE" => return Ok(()),
                 "FAILED" => return Err(Problem::AiFailed),
