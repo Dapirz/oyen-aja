@@ -132,6 +132,37 @@ impl Due {
         Due { year, month, day, time: None, remind: None, every: Every::Once }
     }
 
+    /// Whether it's due on `y-m-d`: its day, or (repeating) one of the days
+    /// it comes again after it, the same ones [`Due::next`] moves to.
+    pub fn falls_on(&self, y: i32, m: u8, d: u8) -> bool {
+        let start = days_from_civil(self.year, self.month, self.day);
+        let at = days_from_civil(y, m, d);
+        if at < start {
+            return false;
+        }
+        match self.every {
+            Every::Once => at == start,
+            Every::Days(n) => (at - start) % i64::from(n.max(1)) == 0,
+            Every::Weeks(n) => (at - start) % (7 * i64::from(n.max(1))) == 0,
+            // Months and years step as `next` does (a short month takes its
+            // last day), a step at a time up to the day asked about.
+            Every::Months(_) | Every::Years(_) => {
+                let mut due = *self;
+                for _ in 0..=1200 {
+                    let here = days_from_civil(due.year, due.month, due.day);
+                    if here >= at {
+                        return here == at;
+                    }
+                    match due.next() {
+                        Some(n) => due = n,
+                        None => return false,
+                    }
+                }
+                false
+            }
+        }
+    }
+
     /// The next time it's due (its time and reminder kept), if it repeats.
     /// A month without its day takes that month's last day.
     pub fn next(&self) -> Option<Due> {
@@ -168,16 +199,18 @@ pub struct Reminder {
     pub remind: Option<u16>,
     pub at: i64,
     pub task: bool,
+    /// The task's id (a task's reminder), for Done on its notice.
+    pub id: u64,
 }
 
 /// The events' and the open tasks' reminders after minute `after` up to and
 /// at `upto`, soonest first.
 pub fn reminders(agenda: &Agenda, tasks: &crate::todo::TaskList, after: i64, upto: i64) -> Vec<Reminder> {
-    let mut out: Vec<Reminder> = agenda.due(after, upto).into_iter().map(|(e, at)| Reminder { title: e.title.clone(), time: e.time, remind: e.remind, at, task: false }).collect();
+    let mut out: Vec<Reminder> = agenda.due(after, upto).into_iter().map(|(e, at)| Reminder { title: e.title.clone(), time: e.time, remind: e.remind, at, task: false, id: e.id }).collect();
     for t in tasks.tasks.iter().filter(|t| !t.done) {
         if let Some(d) = t.due {
             if let Some(at) = d.remind_at().filter(|at| *at > after && *at <= upto) {
-                out.push(Reminder { title: t.text.clone(), time: d.time, remind: d.remind, at, task: true });
+                out.push(Reminder { title: t.text.clone(), time: d.time, remind: d.remind, at, task: true, id: t.id });
             }
         }
     }
@@ -507,6 +540,32 @@ mod tests {
         tasks.toggle(id, 1);
         assert_eq!(next_reminder(&agenda, &tasks, day), None, "done: no reminder");
         assert_eq!(tasks.due_on(2026, 11, 25)[0].text, "Tanpa pengingat", "open ones first");
+    }
+
+    #[test]
+    fn a_repeating_task_falls_on_the_days_it_moves_to() {
+        let weekly = Due { every: Every::Weeks(1), ..Due::on(2026, 11, 28) };
+        assert!(weekly.falls_on(2026, 11, 28));
+        assert!(weekly.falls_on(2026, 12, 5));
+        assert!(weekly.falls_on(2027, 1, 2));
+        assert!(!weekly.falls_on(2026, 12, 4));
+        // Not before its day.
+        assert!(!weekly.falls_on(2026, 11, 21));
+        let every3 = Due { every: Every::Days(3), ..Due::on(2026, 11, 28) };
+        assert!(every3.falls_on(2026, 12, 1) && !every3.falls_on(2026, 11, 30));
+        // Monthly from the 31st: the last day of the short months, as checking it would.
+        let monthly = Due { every: Every::Months(1), ..Due::on(2026, 1, 31) };
+        assert!(monthly.falls_on(2026, 2, 28));
+        let mut d = monthly;
+        for _ in 0..14 {
+            assert!(monthly.falls_on(d.year, d.month, d.day), "{d:?}");
+            d = d.next().unwrap();
+        }
+        // From then on the 28th, as checking it moves it.
+        assert!(monthly.falls_on(2026, 3, 28) && !monthly.falls_on(2026, 3, 31));
+        let yearly = Due { every: Every::Years(1), ..Due::on(2026, 8, 17) };
+        assert!(yearly.falls_on(2030, 8, 17) && !yearly.falls_on(2030, 8, 18));
+        assert!(Due::on(2026, 11, 28).falls_on(2026, 11, 28) && !Due::on(2026, 11, 28).falls_on(2026, 12, 5));
     }
 
     #[test]

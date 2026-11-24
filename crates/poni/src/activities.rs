@@ -906,6 +906,8 @@ fn inline_done(st: &AppState, a: InlineAction) -> bool {
         // Done once clicked: the app puts the check in the notice's icon.
         // Hide and Open take the notice away at once.
         InlineAction::Hide | InlineAction::Open => false,
+        // Done once clicked, as Start: the notice's icon turns into a check.
+        InlineAction::TaskDone(_) | InlineAction::Snooze => st.notice.as_ref().is_some_and(|n| n.icon == Icon::Check),
     }
 }
 
@@ -1046,8 +1048,15 @@ fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
         (a, label, icon, color, r)
     });
 
+    // A second pill left of the first (a reminder's Snooze beside Done).
+    let also = n.also.zip(inline.as_ref().map(|(.., r)| *r)).map(|(a, first)| {
+        let (label, icon, color) = inline_look(st, &n, a);
+        let w = ui.pill_width(label, icon.is_some(), true);
+        (a, label, icon, color, Rect::new(first.x - 6.0 - w, cy - PILL_SMALL / 2.0, w, PILL_SMALL))
+    });
+
     let tx = c.x + 16.0 + 10.0;
-    let text_right = inline.as_ref().map_or(body.right() - 22.0, |(.., r)| r.x - 12.0);
+    let text_right = also.as_ref().or(inline.as_ref()).map_or(body.right() - 22.0, |(.., r)| r.x - 12.0);
     let tw = (text_right - tx).max(0.0);
     notice_title(ui, &n, Rect::new(tx, cy - 18.0, tw, 20.0), TextStyle::headline());
     ui.c.text(&n.subtitle, Rect::new(tx, cy + 1.0, tw, 16.0), &TextStyle::footnote().color(palette::TEXT_DIM));
@@ -1064,7 +1073,15 @@ fn draw_notice(ui: &mut Ui, st: &mut AppState, body: Rect) {
             ui.pill(wid("notice.act"), r, label, icon, style);
         }
     }
+    if let Some((a, label, icon, _, r)) = also {
+        if !inline_done(st, a) {
+            ui.pill(wid(NOTICE_ALSO_ID), r, label, icon, PillStyle::Utility);
+        }
+    }
 }
+
+/// The notice's second pill (beside its inline one).
+pub const NOTICE_ALSO_ID: &str = "notice.also";
 
 /// An inline action's label, icon and colour. Hide is a plain grey pill
 /// beside the notice's own words (no icon, no colour), as in Screen Studio.
@@ -1077,6 +1094,8 @@ pub(crate) fn inline_look(st: &AppState, n: &Notice, a: InlineAction) -> (&'stat
         // Another app's notification: open that app.
         InlineAction::Open => ("Open", Some(Icon::Open), n.color),
         InlineAction::Hide => ("Hide", None, palette::TEXT_DIM),
+        InlineAction::TaskDone(_) => ("Done", Some(Icon::Check), n.color),
+        InlineAction::Snooze => ("10 min", Some(Icon::Clock), palette::TEXT_DIM),
     }
 }
 

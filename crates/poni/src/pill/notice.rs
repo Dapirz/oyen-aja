@@ -60,7 +60,7 @@ fn subtitle_style() -> TextStyle {
 /// beside them. Never the hidden sum (`reveal`), so the pill's size gives
 /// nothing away before Show.
 fn key(n: &Notice) -> u64 {
-    wid(&n.title) ^ wid(&n.title_dim).rotate_left(42) ^ wid(&n.subtitle).rotate_left(21) ^ n.inline.map_or(0, |a| a as u64 + 1)
+    wid(&n.title) ^ wid(&n.title_dim).rotate_left(42) ^ wid(&n.subtitle).rotate_left(21) ^ n.inline.map_or(0, |a| wid(&format!("{a:?}")))
 }
 
 /// Whole even DIPs, so the centred body's edges stay on whole DIPs.
@@ -120,6 +120,7 @@ fn inline_done(st: &AppState, n: &Notice, a: InlineAction) -> bool {
         // Done once clicked: the app puts the check in the notice's icon.
         // Hide and Open take the notice away at once.
         InlineAction::Hide | InlineAction::Open => false,
+        InlineAction::TaskDone(_) | InlineAction::Snooze => n.icon == crate::icons::Icon::Check,
     }
 }
 
@@ -224,6 +225,7 @@ mod tests {
             action: None,
             inline: Some(InlineAction::ShowAmount),
             reveal: reveal.map(Into::into),
+            also: None,
         }
     }
 

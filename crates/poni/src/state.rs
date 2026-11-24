@@ -166,6 +166,10 @@ pub enum InlineAction {
     Hide,
     /// Open the app a notification came from (the notice's `OpenApp`).
     Open,
+    /// A task's reminder: check the task (a repeating one moves on).
+    TaskDone(u64),
+    /// A reminder: again in 10 minutes.
+    Snooze,
 }
 
 /// Whether this copy may read other apps' notifications (the Notifications
@@ -208,6 +212,8 @@ pub struct Notice {
     pub inline: Option<InlineAction>,
     /// The subtitle Show puts in place of `subtitle` ([`InlineAction::ShowAmount`]).
     pub reveal: Option<String>,
+    /// A second pill, left of `inline` (a reminder's Snooze beside Done).
+    pub also: Option<InlineAction>,
 }
 
 /// How long a notice with a sum or a message stays (seconds), and how much
@@ -800,7 +806,7 @@ impl AppState {
 
     /// Show a notice pill for `secs` seconds.
     pub fn notify(&mut self, icon: Icon, color: Color, title: impl Into<String>, subtitle: impl Into<String>, secs: f64, action: Option<NoticeAction>) {
-        self.notice = Some(Notice { icon, color, title: title.into(), title_dim: String::new(), subtitle: subtitle.into(), until: self.now + secs, action, inline: None, reveal: None });
+        self.notice = Some(Notice { icon, color, title: title.into(), title_dim: String::new(), subtitle: subtitle.into(), until: self.now + secs, action, inline: None, reveal: None, also: None });
     }
 
     /// Give the current notice a one-click inline action pill.
@@ -900,6 +906,7 @@ mod tests {
             action: None,
             inline: None,
             reveal: None,
+            also: None,
         };
         let held = |st: &AppState| st.held.as_ref().map(|(n, at)| (n.title.clone(), *at));
         // Hidden: it waits for the island instead of expiring unseen.

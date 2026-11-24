@@ -34,6 +34,7 @@ pub fn message_notice(seen: &Seen, choices: &NotificationSettings, accent: Color
         action: Some(NoticeAction::OpenApp(seen.app_id.clone())),
         inline: Some(if said.reveal.is_some() { InlineAction::ShowAmount } else { InlineAction::Open }),
         reveal: said.reveal,
+        also: None,
     })
 }
 

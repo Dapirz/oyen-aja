@@ -161,7 +161,7 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             let color = if day == today_n { palette::ON_ACCENT } else if inside { st.accent } else { st.accent.mul_alpha(0.4) };
             ui.c.text(name, Rect::new(cell.x - 8.0, cell.bottom() - 11.0, cell.w + 16.0, 10.0), &mark_st.color(color));
         }
-        let task_due = st.calendar_tasks() && st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| (x.year, x.month, x.day) == (dy, dm, dd)));
+        let task_due = st.calendar_tasks() && st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| x.falls_on(dy, dm, dd)));
         if (task_due || !st.store.agenda.on(dy, dm, dd).is_empty()) && !marked {
             let dot = if day == today_n { palette::ON_ACCENT } else { st.accent };
             ui.c.fill_circle(Point::new(c.x, cell.bottom() - 3.0), 1.8, dot);
@@ -326,7 +326,9 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         let thumb_y = track.y + (track.h - thumb_h) * (offset / max_scroll);
         ui.c.fill_rrect(Rect::new(track.x, thumb_y, track.w, thumb_h), 1.0, Color::white(0.25));
     }
-    if let Some(id) = checked {
+    // A repeating task's later day only shows it: checking happens on the
+    // day it's due now (then it moves on to its next).
+    if let Some(id) = checked.filter(|id| st.store.tasks.tasks.iter().any(|t| t.id == *id && t.due.is_some_and(|d| (d.year, d.month, d.day) == (py, pm, pd)))) {
         st.store.tasks.toggle(id, st.unix);
         st.save();
     }

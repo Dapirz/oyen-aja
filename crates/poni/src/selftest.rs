@@ -371,6 +371,7 @@ fn seed_prayer(st: &mut AppState, scene: Scene, until: f64) {
             action: Some(NoticeAction::OpenPage(PageKind::Prayer)),
             inline: Some(InlineAction::StopAdzan),
             reveal: None,
+            also: None,
         });
     }
 }
@@ -479,6 +480,8 @@ enum Scene {
     /// The message while a song with synced lyrics plays: the song stays
     /// above the card.
     MessageOverMusic,
+    /// A task's reminder: Done and 10 min.
+    TaskReminder,
     /// The Notifications page before Windows was asked: Allow, no apps yet.
     NotifyAsk,
     /// The Notifications page when Windows says this copy has no package (the
@@ -565,7 +568,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 61] = [
+const SCENES: [Scene; 62] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -635,6 +638,7 @@ const SCENES: [Scene; 61] = [
     Scene::MessageNotice,
     Scene::MessageHidden,
     Scene::MessageOverMusic,
+    Scene::TaskReminder,
     Scene::Page(PageKind::Notifications),
     Scene::NotifyAsk,
     Scene::NotifyNoPackage,
@@ -703,6 +707,7 @@ impl Scene {
             Scene::MessageNotice => "message-notice".into(),
             Scene::MessageHidden => "message-hidden-notice".into(),
             Scene::MessageOverMusic => "message-over-music".into(),
+            Scene::TaskReminder => "task-reminder".into(),
             Scene::NotifyAsk => "page-notifications-ask".into(),
             Scene::NotifyNoPackage => "page-notifications-download".into(),
             // "page-ai", "page-ai-troubles", ...: the page's own names.
@@ -2150,6 +2155,19 @@ impl SelfTest {
                 action: Some(NoticeAction::OpenPage(PageKind::Shelf)),
                 inline: None,
                 reveal: None,
+                also: None,
+            }),
+            Scene::TaskReminder => Some(Notice {
+                icon: Icon::Calendar,
+                color: st.accent,
+                title: "Bayar kos".into(),
+                title_dim: String::new(),
+                subtitle: "Task \u{b7} Now \u{b7} 09:00".into(),
+                until,
+                action: Some(NoticeAction::OpenPage(PageKind::Today)),
+                inline: Some(InlineAction::TaskDone(1)),
+                reveal: None,
+                also: Some(InlineAction::Snooze),
             }),
             Scene::MessageNotice | Scene::MessageHidden | Scene::MessageOverMusic => {
                 let choices = NotificationSettings { text: scene != Scene::MessageHidden, ..Default::default() };

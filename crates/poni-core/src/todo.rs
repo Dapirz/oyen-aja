@@ -56,7 +56,8 @@ impl TaskList {
 
     /// The tasks due on `y-m-d`, open ones first.
     pub fn due_on(&self, y: i32, m: u8, d: u8) -> Vec<&Task> {
-        let mut v: Vec<&Task> = self.tasks.iter().filter(|t| t.due.is_some_and(|x| (x.year, x.month, x.day) == (y, m, d))).collect();
+        // A repeating task shows on every day it comes again, too.
+        let mut v: Vec<&Task> = self.tasks.iter().filter(|t| t.due.is_some_and(|x| x.falls_on(y, m, d))).collect();
         v.sort_by_key(|t| (t.done, t.due.and_then(|x| x.time).map_or(-1, i32::from)));
         v
     }

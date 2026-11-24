@@ -16,7 +16,7 @@ use crate::services::{self, Services};
 use crate::settings_host::{self, SettingsWindow};
 use crate::settings_window::Section;
 use crate::state::{
-    AppState, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, Notice, NoticeAction, NotifyAccess, PairedPhone, PhoneAsk,
+    AppState, HudKind, InlineAction, Locate, LyricsState, LyricsStatus, MediaSession, Notice, NoticeAction, NotifyAccess, PairedPhone, PhoneAsk,
     PhoneDrop, PhoneTransfer, PhoneView, PrayerState,
 };
 use crate::tray::{self, Tray};
@@ -81,6 +81,12 @@ const OSD_LOOKS: u8 = 8;
 /// due (at most 6 hours ahead, then set again), only while there's one.
 const TIMER_AGENDA: usize = 14;
 const AGENDA_MAX_WAIT_MS: i64 = 6 * 3600 * 1000;
+/// Another app's media while a song plays: one-shot, set when it comes and
+/// gone when either one goes.
+const TIMER_MEDIA_WAIT: usize = 15;
+const MEDIA_WAIT_MS: u32 = 5000;
+/// A reminder's "10 min".
+const SNOOZE_MIN: i64 = 10;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -501,6 +507,15 @@ pub struct App {
     osd_looks: u8,
     /// The minute (local, from 1970) up to which event reminders were shown.
     agenda_done: i64,
+    /// Another app's media while a song plays, and since when: it takes the
+    /// song's place only once it has lasted MEDIA_WAIT_MS (a message's sound
+    /// in a browser, a game's chime, are gone by then).
+    media_wait: Option<(MediaSession, f64)>,
+    /// The app whose waiting media is now let through.
+    media_let: Option<String>,
+    /// Reminders put off for 10 minutes: when (local minute), the notice's
+    /// words, the task. In memory only.
+    snoozed: Vec<(i64, String, String, Option<u64>)>,
 }
 
 /// The island window: position and size in screen pixels.
@@ -692,6 +707,9 @@ impl App {
             language_looks: 0,
             osd_looks: 0,
             agenda_done: 0,
+            media_wait: None,
+            media_let: None,
+            snoozed: Vec::new(),
         })
     }
 
@@ -1158,7 +1176,15 @@ impl App {
                 self.input.pressed_id = self.hit_at(p).map(|h| h.id);
                 unsafe { SetCapture(self.hwnd) };
                 if !self.expanded {
-                    let inline = self.st.notice.as_ref().and_then(|n| n.inline).filter(|_| self.input.pressed_id == Some(wid("notice.act")));
+                    let inline = self.st.notice.as_ref().and_then(|n| {
+                        if self.input.pressed_id == Some(wid("notice.act")) {
+                            n.inline
+                        } else if self.input.pressed_id == Some(wid(activities::NOTICE_ALSO_ID)) {
+                            n.also
+                        } else {
+                            None
+                        }
+                    });
                     if let Some(a) = inline {
                         // The notice's inline pill acts in place without
                         // expanding. The press is consumed here, so the
@@ -1769,6 +1795,16 @@ impl App {
                 }
                 self.agenda_remind();
             }
+            TIMER_MEDIA_WAIT => {
+                unsafe {
+                    let _ = KillTimer(self.hwnd, TIMER_MEDIA_WAIT);
+                }
+                // It lasted: it's what plays now.
+                if let Some((s, _)) = self.media_wait.take() {
+                    self.media_let = Some(s.app_id.clone());
+                    self.on_event(AppEvent::Media(Some(s)));
+                }
+            }
             TIMER_OSD => {
                 self.osd_looks = self.osd_looks.saturating_sub(1);
                 services::osd::hide();
@@ -2154,6 +2190,25 @@ impl App {
                 if let (Some(song), Some(s)) = (self.st.media.as_ref(), session.as_ref()) {
                     if song.holds_over(s) {
                         return;
+                    }
+                    // Another app over a playing song waits a few seconds first.
+                    let other = s.app_id != song.app_id && song.is_playing() && !song.is_blip();
+                    if other && self.media_let.as_deref() != Some(s.app_id.as_str()) {
+                        let since = self.media_wait.as_ref().filter(|(w, _)| w.app_id == s.app_id).map_or(now, |(_, t)| *t);
+                        if self.media_wait.is_none() {
+                            unsafe {
+                                SetTimer(self.hwnd, TIMER_MEDIA_WAIT, MEDIA_WAIT_MS, None);
+                            }
+                        }
+                        self.media_wait = Some((s.clone(), since));
+                        return;
+                    }
+                }
+                // Taken, or the song came back: nothing waits any more.
+                self.media_let = None;
+                if self.media_wait.take().is_some() {
+                    unsafe {
+                        let _ = KillTimer(self.hwnd, TIMER_MEDIA_WAIT);
                     }
                 }
                 let prev_key = self.st.media.as_ref().map(|m| m.track_key.clone());
@@ -4040,8 +4095,24 @@ impl App {
         }
         match a {
             InlineAction::StartFocus => st.pomodoro.start(st.now),
+            InlineAction::TaskDone(id) => {
+                st.store.tasks.toggle(id, st.unix);
+                st.save();
+            }
+            InlineAction::Snooze => {
+                if let Some(n) = st.notice.as_ref() {
+                    let t = st.local;
+                    let now = poni_core::datetime::days_from_civil(t.year, t.month, t.day) * 1440 + i64::from(t.hour) * 60 + i64::from(t.minute);
+                    let task = n.inline.and_then(|i| if let InlineAction::TaskDone(id) = i { Some(id) } else { None });
+                    self.snoozed.push((now + SNOOZE_MIN, n.title.clone(), n.subtitle.clone(), task));
+                }
+            }
             InlineAction::ShowAmount | InlineAction::StopAdzan | InlineAction::Hide | InlineAction::Open => {}
         }
+        if matches!(a, InlineAction::Snooze | InlineAction::TaskDone(_)) {
+            self.agenda_schedule();
+        }
+        let st = &mut self.st;
         let until = st.now + INLINE_DONE_S;
         if let Some(n) = st.notice.as_mut() {
             n.icon = Icon::Check;
@@ -4381,7 +4452,9 @@ impl App {
         unsafe {
             let _ = KillTimer(self.hwnd, TIMER_AGENDA);
         }
-        let Some(at) = poni_core::agenda::next_reminder(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done) else { return };
+        let next = poni_core::agenda::next_reminder(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done);
+        let snoozed = self.snoozed.iter().map(|s| s.0).min();
+        let Some(at) = next.into_iter().chain(snoozed).min() else { return };
         let now = self.local_minute();
         let wait_ms = ((at - now) * 60 - i64::from(self.st.local.second)) * 1000 + 500;
         unsafe {
@@ -4393,7 +4466,7 @@ impl App {
     fn agenda_remind(&mut self) {
         self.st.local = clock::local_shown();
         let now = self.local_minute();
-        let due: Vec<(String, String)> = poni_core::agenda::reminders(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done, now)
+        let due: Vec<(String, String, Option<u64>)> = poni_core::agenda::reminders(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done, now)
             .into_iter()
             .map(|e| {
                 let line = match (e.time, e.remind) {
@@ -4403,13 +4476,25 @@ impl App {
                     (Some(t), Some(m)) => format!("In {m} min \u{b7} {}", poni_core::agenda::fmt_time(t)),
                 };
                 let line = if e.task { format!("Task \u{b7} {line}") } else { line };
-                (e.title, line)
+                (e.title, line, e.task.then_some(e.id))
             })
             .collect();
         self.agenda_done = now;
-        for (title, line) in due {
+        // Snoozed ones whose 10 minutes are up, after these (a task checked
+        // meanwhile doesn't come back).
+        let (back, wait): (Vec<_>, Vec<_>) = std::mem::take(&mut self.snoozed).into_iter().partition(|s| s.0 <= now);
+        self.snoozed = wait;
+        let tasks = &self.st.store.tasks;
+        let mut due = due;
+        due.extend(back.into_iter().filter(|s| s.3.is_none_or(|id| tasks.tasks.iter().any(|t| t.id == id && !t.done))).map(|s| (s.1, s.2, s.3)));
+        for (title, line, task) in due {
             pinfo!("agenda: a reminder");
             self.st.notify(Icon::Calendar, self.st.accent, title, line, 12.0, Some(crate::state::NoticeAction::OpenPage(PageKind::Today)));
+            // Done checks the task; 10 min brings it back then.
+            if let Some(n) = self.st.notice.as_mut() {
+                n.inline = Some(task.map_or(InlineAction::Snooze, InlineAction::TaskDone));
+                n.also = task.map(|_| InlineAction::Snooze);
+            }
             self.st.chime();
         }
         self.request_frame();
