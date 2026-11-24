@@ -102,6 +102,22 @@ fn build(menu: HMENU, items: &[MenuItem], cmds: &mut Vec<MenuCmd>) {
     }
 }
 
+/// A menu of `labels` (each checked or not) at `pt`; the one picked.
+pub fn pick(owner: HWND, pt: POINT, labels: &[(String, bool)]) -> Option<usize> {
+    let items: Vec<MenuItem> = labels.iter().map(|(l, on)| item(l, MenuCmd::ShowSettings, *on)).collect();
+    unsafe {
+        let menu = CreatePopupMenu().ok()?;
+        let mut cmds = Vec::new();
+        build(menu, &items, &mut cmds);
+        let _ = SetForegroundWindow(owner);
+        let chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0, owner, None);
+        let _ = PostMessageW(owner, WM_NULL, WPARAM(0), LPARAM(0));
+        let _ = DestroyMenu(menu);
+        let i = chosen.0 as usize;
+        (i > 0 && i <= labels.len()).then(|| i - 1)
+    }
+}
+
 /// Show the menu at `pt` (screen pixels); returns the chosen command.
 pub fn show_menu(owner: HWND, pt: POINT, items: &[MenuItem]) -> Option<MenuCmd> {
     unsafe {

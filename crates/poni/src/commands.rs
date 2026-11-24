@@ -106,6 +106,8 @@ pub enum Command {
     Notes(NotesCmd),
     /// Open the app with this AppUserModelID (a recent notification's).
     OpenApp(String),
+    /// Settings > Meeting notes: the microphone menu.
+    PickMic,
     /// What the tray's menu used to do, from Settings (Apple Music's token).
     Menu(crate::tray::MenuCmd),
 }

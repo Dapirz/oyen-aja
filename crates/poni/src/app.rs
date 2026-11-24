@@ -2695,6 +2695,29 @@ impl App {
         self.request_frame();
     }
 
+    /// Settings > Meeting notes > Microphone: a menu of Windows' default and
+    /// each microphone by its whole name, at the pointer; the one picked is saved.
+    fn pick_mic(&mut self) {
+        let Some(owner) = self.settings_win.as_ref().map(|w| w.hwnd) else { return };
+        self.st.microphones = services::mic::microphones();
+        let mut choices: Vec<(String, String)> = vec![(String::new(), "Windows' default".into())];
+        choices.extend(self.st.microphones.iter().cloned());
+        let labels: Vec<(String, bool)> = choices.iter().map(|(id, name)| (name.clone(), *id == self.st.settings.notes_mic)).collect();
+        let mut pt = POINT::default();
+        unsafe {
+            let _ = GetCursorPos(&mut pt);
+        }
+        if let Some(i) = tray::pick(owner, pt, &labels) {
+            let before = self.st.settings.clone();
+            self.st.settings.notes_mic = choices[i].0.clone();
+            self.settings_changed(&before);
+            self.save_settings();
+        }
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+    }
+
     /// What Settings and the page show of the key: its last four characters.
     fn notes_key_shown(&mut self) {
         self.st.ui.notes_key = services::notes::key().map(|k| k.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect());
@@ -2734,9 +2757,10 @@ impl App {
         let Some(rec) = self.notes_rec.take() else { return };
         match rec.stop() {
             Ok(take) if take.secs >= 1.0 && !take.parts.is_empty() => {
+                // Kept, and asked about first: Write notes sends it.
+                self.st.notes.recorded(take.secs);
                 self.notes_take = Some(take);
                 self.st.ui.notes_kept = true;
-                self.notes_send();
             }
             Ok(take) => {
                 let _ = std::fs::remove_dir_all(&take.dir);
@@ -4204,6 +4228,7 @@ impl App {
                 }
                 Command::Notify(c) => self.notify_cmd(c),
                 Command::Notes(c) => self.notes_cmd(c),
+                Command::PickMic => self.pick_mic(),
                 Command::OpenApp(id) => {
                     shell::open_app(&id);
                     self.collapse();

@@ -372,6 +372,8 @@ pub enum Ctl {
     Stepper(String),
     /// A button with this label.
     Button(&'static str),
+    /// What's picked, with a menu of the choices on a click (the app shows it).
+    Menu(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -682,7 +684,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     Some("Notes"),
                     vec![
                         item(Key::NotesLang, "Written in", Some("The notes; the transcript stays as spoken"), Ctl::Choice(names(&NOTES_LANG), chosen(&NOTES_LANG, s.notes_lang.as_str()))),
-                        item(Key::NotesMic, "Microphone", Some("What it records besides the PC's sound"), Ctl::Stepper(mic_name(st))),
+                        item(Key::NotesMic, "Microphone", Some("What it records besides the PC's sound"), Ctl::Menu(mic_name(st))),
                         item(Key::NotesFolder, "Saved notes", Some("Documents \u{203a} Hihu Island \u{203a} Notes"), Ctl::Button("Open")),
                     ],
                 ),
@@ -899,13 +901,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             _ => return,
         },
         Key::NotesMic => {
-            // Windows' default, then each microphone there is, round again.
-            let mut choices: Vec<String> = vec![String::new()];
-            choices.extend(st.microphones.iter().map(|m| m.0.clone()));
-            let at = choices.iter().position(|c| *c == st.settings.notes_mic).unwrap_or(0) as i32;
-            let next = (at + if step == 0 { 1 } else { step }).rem_euclid(choices.len() as i32) as usize;
-            st.settings.notes_mic = choices[next].clone();
-            st.cmd(Command::SaveSettings);
+            st.cmd(Command::PickMic);
             return;
         }
         Key::NotesLang => match act {
@@ -1639,6 +1635,7 @@ fn draw_row(ui: &mut Ui, it: &Item, at: (usize, usize), row: Rect, view: Rect, a
         Ctl::Choice(names, _) => picker_width(ui, names),
         Ctl::Stepper(_) => 2.0 * STEP_BTN + STEP_VALUE_W,
         Ctl::Button(label) => ui.pill_width(label, true, true),
+        Ctl::Menu(label) => ui.pill_width(label, true, true).min(240.0),
     };
     let ctl_x = inner.right() - ctl_w;
     match &it.ctl {
@@ -1700,6 +1697,16 @@ fn draw_row(ui: &mut Ui, it: &Item, at: (usize, usize), row: Rect, view: Rect, a
             }
             let vr = Rect::new(minus.right(), row.y, plus.x - minus.right(), row.h);
             ui.c.text(value, vr, &TextStyle::body().weight(Weight::Semibold).tabular().center());
+        }
+        Ctl::Menu(label) => {
+            let r = Rect::new(ctl_x, row.center().y - PILL_SMALL / 2.0, ctl_w, PILL_SMALL);
+            if visible(r, view).is_some_and(|v| v.h >= r.h - 0.5) {
+                ui.c.clip(r);
+                if ui.pill(id("menu"), r, label, Some(Icon::ChevronDown), PillStyle::Neutral).clicked {
+                    act = Some(Act::Press);
+                }
+                ui.c.unclip();
+            }
         }
         Ctl::Button(label) => {
             let r = Rect::new(ctl_x, row.center().y - PILL_SMALL / 2.0, ctl_w, PILL_SMALL);
@@ -2226,7 +2233,7 @@ mod tests {
                     Ctl::Switch(_) => Act::Toggle,
                     Ctl::Choice(..) => Act::Pick(0),
                     Ctl::Stepper(_) => Act::Step(1),
-                    Ctl::Button(_) => Act::Press,
+                    Ctl::Button(_) | Ctl::Menu(_) => Act::Press,
                 };
                 apply(&mut st, it.key, act);
                 let saved = st.cmds.iter().any(|c| matches!(c, Command::SaveSettings));
@@ -2237,6 +2244,7 @@ mod tests {
                     Key::SettingsFile | Key::DataFolder | Key::ReleaseNotes | Key::LyricsCredit | Key::NotesGetKey | Key::NotesFolder => assert!(opens, "{:?}", it.key),
                     Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
                     Key::NotifyAccess => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notify(_)))),
+                    Key::NotesMic => assert!(st.cmds.contains(&Command::PickMic)),
                     Key::AppleMusicToken | Key::AppleMusicHelp => assert!(st.cmds.iter().any(|c| matches!(c, Command::Menu(_)))),
                     _ => assert!(saved, "{:?} didn't save", it.key),
                 }

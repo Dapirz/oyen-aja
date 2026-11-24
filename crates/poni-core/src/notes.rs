@@ -469,6 +469,9 @@ pub enum Phase {
     Idle,
     /// Listening since `since` (mono seconds).
     Listening { since: f64 },
+    /// Stopped: the recording waits for Write notes (or Throw away), so
+    /// nothing goes to Gemini by a slip.
+    Recorded,
     /// The meeting is over and its audio goes up: `sent` of `parts`.
     Sending { sent: u32, parts: u32 },
     /// Gemini hears it and writes, since `since`.
@@ -538,6 +541,13 @@ impl Taker {
     pub fn started(&mut self, now: f64, mic: bool, pc: bool) {
         self.phase = Phase::Listening { since: now };
         (self.mic_on, self.pc_on, self.mic, self.pc, self.secs) = (mic, pc, 0.0, 0.0, 0.0);
+    }
+
+    /// Stopped with `secs` seconds recorded: waiting for Write notes.
+    pub fn recorded(&mut self, secs: f64) {
+        self.secs = secs;
+        self.phase = Phase::Recorded;
+        (self.mic, self.pc) = (0.0, 0.0);
     }
 
     /// Stopped with `parts` parts of `secs` seconds: on their way up.

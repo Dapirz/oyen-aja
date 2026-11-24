@@ -59,6 +59,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     match phase {
         Phase::Idle => draw_idle(ui, st, right),
         Phase::Listening { .. } => draw_listening(ui, st, right),
+        Phase::Recorded => draw_recorded(ui, st, right),
         Phase::Sending { sent, parts } => draw_sending(ui, right, sent, parts),
         Phase::Writing { since } => draw_writing(ui, st, right, since),
         Phase::Ready => draw_ready(ui, st, right),
@@ -71,7 +72,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 fn draw_button(ui: &mut Ui, st: &mut AppState, phase: &Phase, c: Point) {
     let listening = matches!(phase, Phase::Listening { .. });
     // A kept recording waits for Try again or Throw away before a new one.
-    let busy = matches!(phase, Phase::Sending { .. } | Phase::Writing { .. }) || (matches!(phase, Phase::Failed(_)) && st.ui.notes_kept);
+    let busy = matches!(phase, Phase::Sending { .. } | Phase::Writing { .. } | Phase::Recorded) || (matches!(phase, Phase::Failed(_)) && st.ui.notes_kept);
     let r = Rect::from_center(c, 2.0 * BUTTON_R, 2.0 * BUTTON_R);
     let resp = if busy { Default::default() } else { ui.button(wid("notes.button"), r) };
     let lift = |col: Color| if resp.pressed { Color::lerp(col, Color::white(1.0), 0.2) } else if resp.hovered { Color::lerp(col, Color::white(1.0), 0.1) } else { col };
@@ -236,6 +237,21 @@ fn draw_listening(ui: &mut Ui, st: &mut AppState, r: Rect) {
     para(ui, Rect::new(r.x, foot, r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
     // The bars follow the voices.
     ui.request_live();
+}
+
+/// Stopped: how long it is, and whether to write it up or throw it away.
+fn draw_recorded(ui: &mut Ui, st: &mut AppState, r: Rect) {
+    let r = Rect::new(r.x, r.y + 14.0, r.w.min(TEXT_W), r.h);
+    let y = headline(ui, r, &format!("Recorded {}", fmt_length(st.notes.secs)));
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Send it to Gemini for the notes and the transcript, or throw it away.", palette::TEXT_DIM) + 14.0;
+    let accent = st.accent;
+    let clicks = buttons(ui, r.x, y, &[("notes.write", "Write notes", None, PillStyle::Primary(accent)), ("notes.discard", "Throw away", Some(Icon::Trash), PillStyle::Utility)]);
+    if clicks[0] {
+        st.cmd(Command::Notes(NotesCmd::Retry));
+    }
+    if clicks[1] {
+        st.cmd(Command::Notes(NotesCmd::Discard));
+    }
 }
 
 fn draw_sending(ui: &mut Ui, r: Rect, sent: u32, parts: u32) {
