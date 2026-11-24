@@ -354,6 +354,8 @@ impl<'a, 'g> Ui<'a, 'g> {
         if self.hovered(r) && self.input.wheel != 0.0 {
             let w = self.input.wheel;
             self.input.wheel = 0.0;
+            // What it moved shows on the next frame, as after a click.
+            self.repaint = true;
             w
         } else {
             0.0
