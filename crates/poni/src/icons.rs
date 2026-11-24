@@ -83,6 +83,8 @@ pub enum Icon {
     Sun,
     /// An event's time (Today's time picker).
     Clock,
+    /// Edit (a calendar row).
+    Pencil,
     /// The microphone pop-up (on, and with a stroke across for muted).
     Mic,
     /// The camera pop-up.
@@ -248,6 +250,7 @@ pub fn parts(icon: Icon) -> &'static [Part] {
         ],
         Camera => p![s("M4.5 7h9A1.5 1.5 0 0 1 15 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 15.5v-7A1.5 1.5 0 0 1 4.5 7z"), s("M15 10.5l5-3v9l-5-3")],
         Mic => p![s("M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0z"), s("M5.5 11a6.5 6.5 0 0 0 13 0"), s("M12 17.5V21")],
+        Pencil => p![s("M15.5 5.5l3 3L9 18H6v-3z"), s("M13.5 7.5l3 3")],
         Clock => p![s("M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0"), s("M12 7v5l3 2")],
         Sun => p![
             s("M8.5 12a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0"),
@@ -289,7 +292,7 @@ mod tests {
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
-        Icon::ChevronUp, Icon::ChevronDown, Icon::ChevronLeft, Icon::ChevronRight, Icon::Grip, Icon::Keyboard, Icon::Sun, Icon::Clock, Icon::Mic, Icon::Camera,
+        Icon::ChevronUp, Icon::ChevronDown, Icon::ChevronLeft, Icon::ChevronRight, Icon::Grip, Icon::Keyboard, Icon::Sun, Icon::Clock, Icon::Pencil, Icon::Mic, Icon::Camera,
     ];
 
     #[test]

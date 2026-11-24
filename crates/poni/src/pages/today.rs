@@ -208,7 +208,9 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     let offset = st.ui.cal_scroll;
     ui.c.clip(list);
     let mut gone = None;
+    let mut gone_task = None;
     let mut checked = None;
+    let mut edit_row: Option<(bool, u64)> = None;
     for i in 0..rows {
         let row = Rect::new(r.x, list.y + i as f32 * EVENT_H - offset, r.w, EVENT_H);
         // Only rows (partly) in the list take the pointer.
@@ -223,14 +225,23 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
                 Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
                 None => name.clone(),
             };
+            let over = ui.hovered(hit);
+            if over {
+                ui.c.fill_rrect(row.inset(-4.0, 1.0), 6.0, Color::white(0.05));
+            }
             ui.c.fill_circle(Point::new(row.x + 4.0, row.center().y), 2.5, st.accent);
             let x = Rect::new(row.right() - 20.0, row.y + 1.0, 20.0, 20.0);
+            let pen = Rect::new(x.x - 22.0, x.y, 20.0, 20.0);
+            if over && in_list(pen, list) && ui.icon_button(wid_n("today.event.edit", *id), pen, Icon::Pencil, palette::TEXT_DIM, 12.0).clicked {
+                edit_row = Some((false, *id));
+            }
             let repeat = if *every == Every::Once { String::new() } else { every.label() };
             let rs = TextStyle::caption().color(palette::TEXT_FAINT).right();
             let rw = if repeat.is_empty() { 0.0 } else { ui.c.measure(&repeat, &rs, 140.0).0 + 8.0 };
-            ui.c.text(&name, Rect::new(row.x + 14.0, row.y, (x.x - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
+            let end = if over { pen.x } else { x.x };
+            ui.c.text(&name, Rect::new(row.x + 14.0, row.y, (end - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
             if !repeat.is_empty() {
-                ui.c.text(&repeat, Rect::new(x.x - rw, row.y, rw - 4.0, row.h), &rs);
+                ui.c.text(&repeat, Rect::new(end - rw, row.y, rw - 4.0, row.h), &rs);
             }
             let xr = Rect::new(x.x, x.y.max(list.y), x.w, (x.bottom().min(list.bottom()) - x.y.max(list.y)).max(0.0));
             if xr.h > 4.0 && ui.icon_button(wid_n("today.event.remove", *id), xr, Icon::Close, palette::TEXT_FAINT, 10.0).clicked {
@@ -253,8 +264,22 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
                 None => name.clone(),
             };
             let ink = if *done { palette::TEXT_FAINT } else { palette::TEXT };
-            ui.c.text(&name, Rect::new(row.x + 16.0, row.y, row.w - 20.0, row.h), &TextStyle::footnote().color(ink));
-            if resp.clicked {
+            let x = Rect::new(row.right() - 20.0, row.y + 1.0, 20.0, 20.0);
+            let pen = Rect::new(x.x - 22.0, x.y, 20.0, 20.0);
+            let end = if resp.hovered { pen.x - 4.0 } else { row.right() };
+            ui.c.text(&name, Rect::new(row.x + 16.0, row.y, (end - row.x - 20.0).max(0.0), row.h), &TextStyle::footnote().color(ink));
+            let mut used = false;
+            if resp.hovered && in_list(x, list) {
+                if ui.icon_button(wid_n("today.task.edit", *id), pen, Icon::Pencil, palette::TEXT_DIM, 12.0).clicked {
+                    edit_row = Some((true, *id));
+                    used = true;
+                }
+                if ui.icon_button(wid_n("today.task.remove", *id), x, Icon::Trash, palette::TEXT_DIM, 12.0).clicked {
+                    gone_task = Some(*id);
+                    used = true;
+                }
+            }
+            if resp.clicked && !used && !ui.hovered(pen) && !ui.hovered(x) {
                 checked = Some(*id);
             }
         }
@@ -274,6 +299,27 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     if let Some(id) = gone {
         st.store.agenda.remove(id);
         st.save();
+    }
+    if let Some(id) = gone_task {
+        st.store.tasks.remove(id);
+        st.save();
+    }
+    // Edit: the row's words, time, reminder and repeat go into the add line.
+    if let Some((task, id)) = edit_row {
+        if task {
+            if let Some(tk) = st.store.tasks.tasks.iter().find(|x| x.id == id) {
+                st.ui.cal_input = tk.text.clone();
+                st.ui.cal_time = tk.due.and_then(|d| d.time);
+                st.ui.cal_remind = Some(tk.due.and_then(|d| d.remind));
+            }
+        } else if let Some(e) = st.store.agenda.events.iter().find(|x| x.id == id) {
+            st.ui.cal_input = e.title.clone();
+            st.ui.cal_time = e.time;
+            st.ui.cal_remind = Some(e.remind);
+            st.ui.cal_every = e.every;
+        }
+        st.ui.cal_task = task;
+        st.ui.cal_editing = Some((task, id));
     }
 
     // The line to add one; over it, left to right: its time, its reminder
@@ -320,9 +366,39 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     }
     let input = Rect::new(r.x - 6.0, add_y, (r.right() - r.x + 6.0).max(0.0), PILL_SMALL);
     let accent = st.accent;
-    let placeholder = if st.ui.cal_task { "Add a task due this day" } else { "Add an event" };
+    let placeholder = match (st.ui.cal_editing, st.ui.cal_task) {
+        (Some(_), _) => "Edit, Enter to save",
+        (None, true) => "Add a task due this day",
+        (None, false) => "Add an event",
+    };
     let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, placeholder, MAX_TITLE, accent, Some(Icon::Plus));
+    if resp.cancelled {
+        st.ui.cal_editing = None;
+        st.ui.cal_input.clear();
+    }
     if resp.submitted {
+        if let Some((task, id)) = st.ui.cal_editing.take() {
+            let (typed, title) = agenda::split_time(&st.ui.cal_input);
+            let title: String = title.split_whitespace().collect::<Vec<_>>().join(" ");
+            let time = typed.or(st.ui.cal_time);
+            if !title.is_empty() {
+                if task {
+                    if let Some(tk) = st.store.tasks.tasks.iter_mut().find(|x| x.id == id) {
+                        tk.text = title;
+                        let d = tk.due.unwrap_or(agenda::Due { year: py, month: pm, day: pd, time: None, remind: None });
+                        tk.due = Some(agenda::Due { time, remind, ..d });
+                    }
+                } else if let Some(e) = st.store.agenda.events.iter_mut().find(|x| x.id == id) {
+                    e.title = title;
+                    e.time = time;
+                    e.remind = remind;
+                    e.every = st.ui.cal_every;
+                }
+                st.ui.cal_input.clear();
+                st.save();
+            }
+            return;
+        }
         let added = if st.ui.cal_task {
             let (typed, title) = agenda::split_time(&st.ui.cal_input);
             let due = agenda::Due { year: py, month: pm, day: pd, time: typed.or(st.ui.cal_time), remind };
@@ -375,6 +451,11 @@ fn draw_time_picker(ui: &mut Ui, st: &mut AppState, x: f32, y: f32) -> f32 {
         st.ui.cal_time = Some((t as i32 + step * TIME_STEP).rem_euclid(1440) as u16);
     }
     plus.right()
+}
+
+/// A button inside the day's list as it's scrolled (not cut by its edge).
+fn in_list(b: Rect, list: Rect) -> bool {
+    b.y >= list.y && b.bottom() <= list.bottom()
 }
 
 /// The app fills `local` from GetLocalTime; guard against the zeroed default.

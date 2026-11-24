@@ -312,6 +312,9 @@ pub struct PageUiState {
     pub cal_time: Option<u16>,
     /// What the add line makes: an event (false) or a task due that day.
     pub cal_task: bool,
+    /// The calendar row being edited in the add line: a task (true) or an
+    /// event, and its id.
+    pub cal_editing: Option<(bool, u64)>,
     /// How far the picked day's list is scrolled, and for which day.
     pub cal_scroll: f32,
     pub cal_scroll_day: Option<(i32, u8, u8)>,
