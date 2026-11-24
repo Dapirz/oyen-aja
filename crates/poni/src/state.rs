@@ -63,8 +63,10 @@ impl MediaSession {
     /// keeps the song (its time runs on by the clock, the lyrics with it),
     /// so a message's card comes in under the music, not instead of it.
     /// Windows hands the song back when the sound ends.
+    /// Paused from the island meanwhile, a song still holds over another
+    /// app's sound (audit C1); a paused song gives way to its own app's.
     pub fn holds_over(&self, new: &MediaSession) -> bool {
-        new.is_blip() && !self.is_blip() && self.is_playing() && new.track_key != self.track_key
+        new.is_blip() && !self.is_blip() && new.track_key != self.track_key && (self.is_playing() || new.app_id != self.app_id)
     }
 }
 
@@ -870,8 +872,10 @@ mod tests {
         // Another song, or the same one again, takes over as before.
         assert!(!song.holds_over(&next));
         assert!(!song.holds_over(&song.clone()));
-        // A paused song gives way.
+        // A paused song gives way to its own app's sound, not another's.
         assert!(!session("Mangu", "Fourtwnty", 240.0, false).holds_over(&ping));
+        let paused_elsewhere = MediaSession { app_id: "sonora.exe".into(), ..session("Mangu", "Fourtwnty", 240.0, false) };
+        assert!(paused_elsewhere.holds_over(&ping));
     }
 
     #[test]

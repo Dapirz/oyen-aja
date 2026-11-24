@@ -4336,7 +4336,8 @@ impl App {
                 }
                 Command::Media(m) => {
                     if let Some(s) = self.services.as_ref() {
-                        s.media_cmd(m.clone());
+                        // To the player on the island, not whatever Windows follows meanwhile.
+                        s.media_cmd(m.clone(), self.st.media.as_ref().map(|x| x.app_id.clone()));
                     }
                     // Optimistic UI for play/pause.
                     if m == MediaCmd::PlayPause {

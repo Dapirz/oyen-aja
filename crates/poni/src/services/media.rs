@@ -95,9 +95,10 @@ impl MediaService {
         Ok(Self { tx })
     }
 
-    /// Queue a transport command; never blocks.
-    pub fn send(&self, cmd: MediaCmd) {
-        let _ = self.tx.send(Msg::Cmd(cmd));
+    /// Queue a transport command for the player the island shows (its
+    /// AppUserModelID; None: the session followed); never blocks.
+    pub fn send(&self, cmd: MediaCmd, app_id: Option<String>) {
+        let _ = self.tx.send(Msg::Cmd(cmd, app_id));
     }
 }
 
@@ -111,7 +112,7 @@ impl Drop for MediaService {
 
 #[derive(Clone, Debug)]
 enum Msg {
-    Cmd(MediaCmd),
+    Cmd(MediaCmd, Option<String>),
     SessionsChanged,
     CurrentChanged,
     /// Session events carry our id for the session they were registered on.
@@ -477,7 +478,7 @@ impl Worker {
 
     fn on_msg(&mut self, msg: Msg) {
         match msg {
-            Msg::Cmd(c) => self.command(c),
+            Msg::Cmd(c, app) => self.command(c, app.as_deref()),
             Msg::SessionsChanged => {
                 self.dirty.sessions = true;
                 self.poke();
@@ -947,8 +948,17 @@ impl Worker {
 
     // -------------------------------------------------------------- commands
 
-    fn command(&mut self, cmd: MediaCmd) {
-        let Some(i) = self.chosen.and_then(|sid| self.index_of(sid)) else { return };
+    fn command(&mut self, cmd: MediaCmd, app: Option<&str>) {
+        // The player the island shows, which isn't the followed session
+        // while a site's sound or another app's media waits (audit C1).
+        let chosen = self.chosen.and_then(|sid| self.index_of(sid));
+        let shown = app.filter(|a| chosen.is_none_or(|i| self.sessions[i].aumid != *a)).and_then(|a| {
+            let live = |t: &Tracked| t.aumid == a && !t.dead;
+            self.sessions.iter().position(|t| live(t) && playback_status(&t.session) == PlaybackStatus::Playing).or_else(|| self.sessions.iter().position(live))
+        });
+        let Some(i) = shown.or(chosen) else { return };
+        // The followed session's length and seek check don't apply to another.
+        let followed = Some(i) == chosen;
         let session = self.sessions[i].session.clone();
         let apple = nowplaying::is_apple_music(&self.sessions[i].aumid);
         if cmd == MediaCmd::Prepare {
@@ -967,10 +977,12 @@ impl Worker {
                 if !s.is_finite() {
                     return;
                 }
-                let duration = self.shown.as_ref().map_or(0.0, |sh| sh.timeline.duration_s);
+                let duration = if followed { self.shown.as_ref().map_or(0.0, |sh| sh.timeline.duration_s) } else { 0.0 };
                 let secs = if duration > 0.0 { s.clamp(0.0, duration) } else { s.max(0.0) };
                 let result = if apple { self.apple_seek(&session, secs, duration) } else { self.session_seek(&session, secs) };
-                self.pending_seek = matches!(result, Ok(true)).then(|| PendingSeek::new(secs, crate::clock::mono()));
+                if followed {
+                    self.pending_seek = matches!(result, Ok(true)).then(|| PendingSeek::new(secs, crate::clock::mono()));
+                }
                 result
             }
         };

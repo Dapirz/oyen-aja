@@ -110,9 +110,9 @@ impl Services {
         }
     }
 
-    pub fn media_cmd(&self, c: MediaCmd) {
+    pub fn media_cmd(&self, c: MediaCmd, app_id: Option<String>) {
         if let Some(m) = &self.media {
-            m.send(c);
+            m.send(c, app_id);
         }
     }
 
