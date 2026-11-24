@@ -597,7 +597,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             Some("Instead of Windows"),
             vec![
                 switch(Key::HudVolumeKeys, "Take over the volume keys", Some("Windows' volume pop-up stays away; the keys move 2 % a press"), s.hud_volume_keys),
-                switch(Key::HudHideBrightness, "Hide Windows' brightness pop-up", Some("Experimental: Windows' own bar stays away while the island shows it"), s.hud_hide_windows_brightness),
+                switch(Key::HudHideBrightness, "Hide Windows' volume and brightness pop-ups", Some("Experimental: Windows' own bar stays away while the island shows them"), s.hud_hide_windows_brightness),
                 switch(Key::HudOverFullscreen, "Show over full-screen apps", Some("While the island hides for a game or video, pop-ups still show"), s.hud_over_fullscreen),
             ],
         ),

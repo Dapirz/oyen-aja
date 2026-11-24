@@ -14,7 +14,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use windows::core::{w, HSTRING};
-use windows::Win32::System::Registry::{RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD};
+use windows::Win32::System::Registry::{
+    RegCloseKey, RegDeleteKeyValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER, KEY_READ, REG_DWORD, RRF_RT_REG_DWORD,
+};
 
 const BASE: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\\";
 
@@ -64,6 +66,41 @@ impl Banners {
             crate::pwarn!("notifications: can't note the pop-ups hidden ({e})");
         }
     }
+}
+
+/// Pop-ups that need their own buttons (an alarm's Snooze and Dismiss, a
+/// call's Answer), which the island's card hasn't: Windows keeps showing them.
+pub fn keeps_its_popup(id: &str) -> bool {
+    let id = id.to_ascii_lowercase();
+    ["windowsalarms", "systemtoast.calling", "yourphone", "phoneexperiencehost"].iter().any(|k| id.contains(k))
+}
+
+/// Every app Windows has notification settings for (one key each under
+/// `Notifications\Settings`): the apps that ever sent one, so Every app can
+/// put their pop-ups away before their next notification, not after it.
+/// Ids with a `\` in them (a program path) are nested keys there, left out.
+pub fn known_apps() -> Vec<String> {
+    let mut out = Vec::new();
+    let base = HSTRING::from(BASE.trim_end_matches('\\'));
+    let mut key = HKEY::default();
+    unsafe {
+        if RegOpenKeyExW(HKEY_CURRENT_USER, &base, 0, KEY_READ, &mut key).is_err() {
+            return out;
+        }
+        for i in 0.. {
+            let mut name = [0u16; 512];
+            let mut len = name.len() as u32;
+            if RegEnumKeyExW(key, i, windows::core::PWSTR(name.as_mut_ptr()), &mut len, None, windows::core::PWSTR::null(), None, None).is_err() {
+                break;
+            }
+            let id = String::from_utf16_lossy(&name[..len as usize]);
+            if !id.starts_with('{') && !id.is_empty() {
+                out.push(id);
+            }
+        }
+        let _ = RegCloseKey(key);
+    }
+    out
 }
 
 /// An app's `ShowBanner` now.

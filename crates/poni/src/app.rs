@@ -690,7 +690,8 @@ impl App {
         if !fake {
             services::power::register_brightness(self.helper);
             self.sync_keys();
-            if self.st.settings.hud_brightness && self.st.settings.hud_hide_windows_brightness {
+            let s = &self.st.settings;
+            if (s.hud_brightness || s.hud_volume) && s.hud_hide_windows_brightness {
                 services::osd::hide();
             }
         }
@@ -1966,7 +1967,7 @@ impl App {
             }
         }
         // Windows' brightness pop-up: back when it's no longer kept away.
-        let osd = |s: &Settings| s.hud_brightness && s.hud_hide_windows_brightness;
+        let osd = |s: &Settings| (s.hud_brightness || s.hud_volume) && s.hud_hide_windows_brightness;
         if osd(&before) && !osd(&self.st.settings) && self.selftest.is_none() {
             services::osd::restore();
         }
@@ -2139,6 +2140,11 @@ impl App {
             AppEvent::Volume { level, muted } => {
                 let first = !self.st.volume.known;
                 self.st.volume = crate::state::VolumeState { level, muted, known: true };
+                // Headset buttons, media keys and other apps change it too:
+                // Windows' own bar stays away for those as well.
+                if !first {
+                    self.hide_windows_osd();
+                }
                 if !first && self.st.settings.hud_volume {
                     self.st.show_hud(HudKind::Volume { level, muted }, 1.6);
                     self.sync_fullscreen_hud();
@@ -4130,7 +4136,7 @@ impl App {
     /// second after, while the island shows brightness and it's set to.
     fn hide_windows_osd(&mut self) {
         let s = &self.st.settings;
-        if !(s.hud_brightness && s.hud_hide_windows_brightness) || self.selftest.is_some() {
+        if !((s.hud_brightness || s.hud_volume) && s.hud_hide_windows_brightness) || self.selftest.is_some() {
             return;
         }
         services::osd::hide();
@@ -4182,7 +4188,14 @@ impl App {
     fn sync_banners(&mut self) {
         let n = &self.st.settings.notifications;
         let want: std::collections::BTreeSet<String> = if self.st.notifications_on() && n.hide_banners && self.st.notify_access == NotifyAccess::Allowed && self.selftest.is_none() {
-            n.shown().map(str::to_string).collect()
+            let mut want: std::collections::BTreeSet<String> = n.shown().map(str::to_string).collect();
+            // Every app: also those Windows knows that haven't sent one since
+            // Notifications came on, so their next pop-up is the island's too.
+            if n.every_app {
+                want.extend(services::banners::known_apps());
+            }
+            want.retain(|id| !services::banners::keeps_its_popup(id));
+            want
         } else {
             Default::default()
         };
