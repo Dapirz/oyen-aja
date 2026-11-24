@@ -155,9 +155,10 @@ pub struct Agenda {
 
 impl Agenda {
     /// Add an event from what was typed: a time at its start ("09:30 …")
-    /// becomes its time.
-    pub fn add(&mut self, typed: &str, y: i32, m: u8, d: u8, every: Every, remind: Option<u16>) -> Option<u64> {
-        let (time, title) = split_time(typed);
+    /// becomes its time, else `time` (the page's time picker).
+    pub fn add(&mut self, typed: &str, y: i32, m: u8, d: u8, every: Every, remind: Option<u16>, time: Option<u16>) -> Option<u64> {
+        let (typed_time, title) = split_time(typed);
+        let time = typed_time.or(time).map(|t| t.min(23 * 60 + 59));
         let title: String = title.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
         if title.is_empty() {
             return None;
@@ -349,8 +350,8 @@ mod tests {
     #[test]
     fn the_agenda_keeps_its_events() {
         let mut a = Agenda::default();
-        assert_eq!(a.add("  ", 2026, 11, 24, Every::Once, None), None);
-        let id = a.add("Rapat  tim", 2026, 11, 24, Every::Weeks(1), None).unwrap();
+        assert_eq!(a.add("  ", 2026, 11, 24, Every::Once, None, None), None);
+        let id = a.add("Rapat  tim", 2026, 11, 24, Every::Weeks(1), None, None).unwrap();
         assert_eq!(a.on(2026, 12, 1)[0].title, "Rapat tim");
         a.remove(id);
         assert!(a.on(2026, 12, 1).is_empty());
@@ -367,9 +368,13 @@ mod tests {
         assert_eq!(split_time("Rapat 09:30").0, None);
         assert_eq!(remind_label(Some(60)), "1h");
         let mut a = Agenda::default();
-        a.add("09:30 Rapat", 2026, 11, 24, Every::Days(1), Some(30)).unwrap();
-        a.add("Ulang tahun", 2026, 11, 25, Every::Years(1), Some(10)).unwrap();
-        a.add("No reminder", 2026, 11, 24, Every::Once, None).unwrap();
+        a.add("09:30 Rapat", 2026, 11, 24, Every::Days(1), Some(30), Some(600)).unwrap();
+        a.add("Ulang tahun", 2026, 11, 25, Every::Years(1), Some(10), None).unwrap();
+        // A time from the picker, when none is typed.
+        let id = a.add("Picked", 2027, 1, 2, Every::Once, None, Some(615)).unwrap();
+        assert_eq!(a.events.iter().find(|e| e.id == id).and_then(|e| e.time), Some(615));
+        a.remove(id);
+        a.add("No reminder", 2026, 11, 24, Every::Once, None, None).unwrap();
         let day = days_from_civil(2026, 11, 24) * 1440;
         // 09:00 today: the meeting's reminder.
         assert_eq!(a.next_reminder(day + 8 * 60), Some(day + 9 * 60));

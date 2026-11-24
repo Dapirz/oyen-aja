@@ -34,7 +34,9 @@ const COUNTDOWN_DAYS: i64 = 60;
 const COUNTDOWN_MAX: usize = 3;
 const LINE_H: f32 = 18.0;
 const EVENT_H: f32 = 22.0;
-const EVENTS_SHOWN: usize = 3;
+const EVENTS_SHOWN: usize = 2;
+/// The time picker's step (minutes), by a button or a wheel notch.
+const TIME_STEP: i32 = 5;
 const MAX_TITLE: usize = 80;
 
 const MONTH_LONG: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -218,21 +220,23 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         st.save();
     }
 
-    // The line to add one, and how often it comes.
+    // The line to add one; over it, its time, its reminder and how often it comes.
     let add_y = r.bottom() - PILL_SMALL - 2.0;
+    let ctl_y = add_y - PILL_SMALL - 6.0;
+    draw_time_picker(ui, st, r.x - 2.0, ctl_y);
     let every = st.ui.cal_every;
     let label = every.label();
     let pw = ui.pill_width(&label, false, true);
     let steps = every != Every::Once;
     let steps_w = if steps { 2.0 * 22.0 + 4.0 } else { 0.0 };
-    let pill = Rect::new(r.right() - pw - steps_w, add_y, pw, PILL_SMALL);
+    let pill = Rect::new(r.right() - pw - steps_w, ctl_y, pw, PILL_SMALL);
     if ui.pill(wid("today.every"), pill, &label, None, PillStyle::Utility).clicked {
         st.ui.cal_every = every.next_kind();
     }
     if steps {
         let n = every.count();
-        let minus = Rect::new(pill.right() + 4.0, add_y + 3.0, 22.0, 22.0);
-        let plus = Rect::new(minus.right(), add_y + 3.0, 22.0, 22.0);
+        let minus = Rect::new(pill.right() + 4.0, ctl_y + 3.0, 22.0, 22.0);
+        let plus = Rect::new(minus.right(), ctl_y + 3.0, 22.0, 22.0);
         if ui.icon_button(wid("today.every.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
             st.ui.cal_every = every.with_count(n.saturating_sub(1));
         }
@@ -245,18 +249,55 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     let remind = st.ui.cal_remind.unwrap_or(Some(10));
     let rlabel = agenda::remind_label(remind);
     let bw = ui.pill_width(&rlabel, true, true);
-    let bell = Rect::new(pill.x - 6.0 - bw, add_y, bw, PILL_SMALL);
+    let bell = Rect::new(pill.x - 6.0 - bw, ctl_y, bw, PILL_SMALL);
     let bell_style = if remind.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
     if ui.pill(wid("today.remind"), bell, &rlabel, Some(Icon::Bell), bell_style).clicked {
         let i = agenda::REMINDERS.iter().position(|r| *r == remind).unwrap_or(0);
         st.ui.cal_remind = Some(agenda::REMINDERS[(i + 1) % agenda::REMINDERS.len()]);
     }
-    let input = Rect::new(r.x - 6.0, add_y, (bell.x - 8.0 - r.x + 6.0).max(0.0), PILL_SMALL);
+    let input = Rect::new(r.x - 6.0, add_y, (r.right() - r.x + 6.0).max(0.0), PILL_SMALL);
     let accent = st.accent;
-    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, "09:30 Add an event", MAX_TITLE, accent, Some(Icon::Plus));
-    if resp.submitted && st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every, remind).is_some() {
+    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, "Add an event", MAX_TITLE, accent, Some(Icon::Plus));
+    if resp.submitted && st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every, remind, st.ui.cal_time).is_some() {
         st.ui.cal_input.clear();
         st.save();
+    }
+}
+
+/// The next event's time: "All day" until clicked (then the next 5-minute
+/// mark from now), − and + a step each, the wheel over it too; a click on
+/// the time goes back to all day.
+fn draw_time_picker(ui: &mut Ui, st: &mut AppState, x: f32, y: f32) {
+    let time = st.ui.cal_time;
+    let label = time.map_or("All day".to_string(), agenda::fmt_time);
+    let w = ui.pill_width(&label, true, true);
+    let r = Rect::new(x, y, w, PILL_SMALL);
+    let style = if time.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("today.time"), r, &label, Some(Icon::Clock), style).clicked {
+        st.ui.cal_time = match time {
+            Some(_) => None,
+            None => {
+                let now = st.local.hour as i32 * 60 + st.local.minute as i32;
+                Some((((now / TIME_STEP) + 1) * TIME_STEP).rem_euclid(1440) as u16)
+            }
+        };
+    }
+    let Some(t) = st.ui.cal_time else { return };
+    let mut step = 0;
+    let minus = Rect::new(r.right() + 2.0, y + 3.0, 22.0, 22.0);
+    let plus = Rect::new(minus.right(), y + 3.0, 22.0, 22.0);
+    if ui.icon_button(wid("today.time.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
+        step = -1;
+    }
+    if ui.icon_button(wid("today.time.plus"), plus, Icon::Plus, palette::TEXT_DIM, 11.0).clicked {
+        step = 1;
+    }
+    let wheel = ui.wheel_in(Rect::new(r.x, r.y, plus.right() - r.x, r.h));
+    if wheel != 0.0 {
+        step += wheel.signum() as i32;
+    }
+    if step != 0 {
+        st.ui.cal_time = Some((t as i32 + step * TIME_STEP).rem_euclid(1440) as u16);
     }
 }
 
