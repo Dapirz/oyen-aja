@@ -37,6 +37,22 @@ impl Every {
         }
     }
 
+    /// Short, for a small button: "Once", "Daily", "Weekly", "2 wks".
+    pub fn short(self) -> String {
+        let (n, one, many) = match self {
+            Every::Once => return "Once".into(),
+            Every::Days(n) => (n, "Daily", "days"),
+            Every::Weeks(n) => (n, "Weekly", "wks"),
+            Every::Months(n) => (n, "Monthly", "mos"),
+            Every::Years(n) => (n, "Yearly", "yrs"),
+        };
+        if n <= 1 {
+            one.into()
+        } else {
+            format!("{n} {many}")
+        }
+    }
+
     /// The next kind (Once → days → weeks → months → years → Once), keeping
     /// the count.
     pub fn next_kind(self) -> Every {
@@ -342,6 +358,8 @@ mod tests {
         assert!(ev(Every::Months(2)).on(2026, 3, 31) && !ev(Every::Months(2)).on(2026, 4, 30));
         assert!(ev(Every::Years(1)).on(2027, 1, 31) && !ev(Every::Years(2)).on(2027, 1, 31));
         assert_eq!(Every::Weeks(2).label(), "Every 2 weeks");
+        assert_eq!(Every::Weeks(2).short(), "2 wks");
+        assert_eq!(Every::Days(1).short(), "Daily");
         assert_eq!(Every::Months(1).label(), "Every month");
         assert_eq!(Every::Once.next_kind(), Every::Days(1));
         assert_eq!(Every::Days(3).next_kind(), Every::Weeks(3));
