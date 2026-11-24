@@ -317,6 +317,7 @@ pub enum Key {
     NotesGetKey,
     NotesModel,
     NotesLang,
+    NotesMic,
     NotesFolder,
     MusicProgress,
     MusicTwoRows,
@@ -681,6 +682,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     Some("Notes"),
                     vec![
                         item(Key::NotesLang, "Written in", Some("The notes; the transcript stays as spoken"), Ctl::Choice(names(&NOTES_LANG), chosen(&NOTES_LANG, s.notes_lang.as_str()))),
+                        item(Key::NotesMic, "Microphone", Some("What it records besides the PC's sound"), Ctl::Stepper(mic_name(st))),
                         item(Key::NotesFolder, "Saved notes", Some("Documents \u{203a} Hihu Island \u{203a} Notes"), Ctl::Button("Open")),
                     ],
                 ),
@@ -896,6 +898,16 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             Act::Pick(i) if i < poni_core::notes::MODELS.len() => s.notes_model = poni_core::notes::MODELS[i].0.to_string(),
             _ => return,
         },
+        Key::NotesMic => {
+            // Windows' default, then each microphone there is, round again.
+            let mut choices: Vec<String> = vec![String::new()];
+            choices.extend(st.microphones.iter().map(|m| m.0.clone()));
+            let at = choices.iter().position(|c| *c == st.settings.notes_mic).unwrap_or(0) as i32;
+            let next = (at + if step == 0 { 1 } else { step }).rem_euclid(choices.len() as i32) as usize;
+            st.settings.notes_mic = choices[next].clone();
+            st.cmd(Command::SaveSettings);
+            return;
+        }
         Key::NotesLang => match act {
             Act::Pick(i) if i < NOTES_LANG.len() => s.notes_lang = NOTES_LANG[i].0.to_string(),
             _ => return,
@@ -1442,6 +1454,15 @@ pub fn search(st: &AppState, query: &str) -> Vec<Block> {
         out.push(Block::Note("No setting matches."));
     }
     out
+}
+
+/// The microphone Meeting notes records, by its name.
+fn mic_name(st: &AppState) -> String {
+    let id = &st.settings.notes_mic;
+    if id.is_empty() {
+        return "Windows' default".into();
+    }
+    st.microphones.iter().find(|m| m.0 == *id).map_or("Not plugged in".into(), |m| m.1.clone())
 }
 
 /// The close button at the card's top right (Windows). True when clicked.

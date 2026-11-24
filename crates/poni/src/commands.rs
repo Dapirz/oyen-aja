@@ -132,4 +132,7 @@ pub enum NotesCmd {
     /// saved one goes.
     PasteKey,
     RemoveKey,
+    /// A saved note from the list: open it, or to the Recycle Bin.
+    OpenSaved(usize),
+    RecycleSaved(usize),
 }

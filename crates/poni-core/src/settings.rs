@@ -129,6 +129,9 @@ pub struct Settings {
     /// their language ("id" or "en").
     pub notes_model: String,
     pub notes_lang: String,
+    /// The microphone Meeting notes records (Windows' device id); empty:
+    /// Windows' default, and whichever it switches to.
+    pub notes_mic: String,
     /// A song without synced lyrics keeps its title on the closed island
     /// for as long as it plays (true), or shows it only for the moment a
     /// new track starts (false). Where the theme shows the song there
@@ -294,6 +297,7 @@ impl Default for Settings {
             clipboard_keep_s: Some(86_400),
             notes_model: crate::notes::DEFAULT_MODEL.to_string(),
             notes_lang: "id".to_string(),
+            notes_mic: String::new(),
             song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,

@@ -471,6 +471,11 @@ pub struct AppState {
     pub clip: poni_core::cliphist::ClipHistory,
     /// The Notes page's meeting (the Meeting notes add-on).
     pub notes: poni_core::notes::Taker,
+    /// The notes saved lately, newest first (path, when, title), read when
+    /// the Notes page opens.
+    pub notes_saved: Vec<(std::path::PathBuf, String, String)>,
+    /// The microphones there are (id, name), read when Settings opens.
+    pub microphones: Vec<(String, String)>,
     /// The notifications shown lately, newest first, and how many came
     /// since the list was last looked at (the badge).
     pub recent: std::collections::VecDeque<Recent>,
@@ -577,6 +582,8 @@ impl AppState {
             notice_card_id: 0,
             notice_photo: None,
             notes: Default::default(),
+            notes_saved: Vec::new(),
+            microphones: Vec::new(),
             recent: Default::default(),
             recent_unseen: 0,
             shelf_thumbs: HashMap::new(),

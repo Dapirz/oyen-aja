@@ -599,6 +599,23 @@ pub fn file_name(started: &LocalDateTime, title: &str) -> String {
     format!("{:04}-{:02}-{:02} {:02}.{:02} {title}.md", started.year, started.month, started.day, started.hour, started.minute)
 }
 
+/// A saved file's name read back ("2026-10-29 14.05 Launch plan.md"): when
+/// ("29 Oct 14:05") and the title. None for a file not named that way.
+pub fn read_file_name(name: &str) -> Option<(String, String)> {
+    let stem = name.strip_suffix(".md")?;
+    let (date, rest) = stem.split_once(' ')?;
+    let (time, title) = rest.split_once(' ')?;
+    let mut d = date.split('-');
+    let (_y, m, day) = (d.next()?.parse::<i32>().ok()?, d.next()?.parse::<u8>().ok()?, d.next()?.parse::<u8>().ok()?);
+    let (h, min) = time.split_once('.')?;
+    let (h, min) = (h.parse::<u8>().ok()?, min.parse::<u8>().ok()?);
+    if !(1..=12).contains(&m) || h > 23 || min > 59 {
+        return None;
+    }
+    let when = format!("{day} {} {h:02}:{min:02}", MONTH_SHORT[(m - 1) as usize]);
+    Some((when, title.trim().to_string()))
+}
+
 /// The notes as Markdown: what Copy puts on the clipboard and the file holds.
 pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool, lang: Lang) -> String {
     let id = lang == Lang::Id;
@@ -805,6 +822,14 @@ mod tests {
         assert_eq!(file_name(&at(9, 0), "  "), "2026-10-29 09.00 Meeting.md");
         assert_eq!(file_name(&at(9, 0), "Ends with dots..."), "2026-10-29 09.00 Ends with dots.md");
         assert!(file_name(&at(9, 0), &"x".repeat(200)).chars().count() <= 80);
+    }
+
+    #[test]
+    fn saved_names_read_back() {
+        assert_eq!(read_file_name("2026-10-29 14.05 Launch plan.md"), Some(("29 Oct 14:05".into(), "Launch plan".into())));
+        assert_eq!(read_file_name("2026-10-29 14.05 Launch plan (2).md").map(|x| x.1), Some("Launch plan (2)".into()));
+        assert_eq!(read_file_name("notes.md"), None);
+        assert_eq!(read_file_name("2026-13-01 10.00 x.md"), None);
     }
 
     #[test]

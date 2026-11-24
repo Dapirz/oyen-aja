@@ -1492,6 +1492,10 @@ impl App {
         self.collapse();
         // Settings > Notifications says what Windows allows now (it may have changed there).
         self.notify_cmd(NotifyCmd::Check);
+        // Settings > Meeting notes lists the microphones there are now.
+        if self.st.notes_on() {
+            self.st.microphones = services::mic::microphones();
+        }
         self.open_settings_window(None, deferred);
     }
 
@@ -2669,6 +2673,19 @@ impl App {
                 self.st.ui.notes_note = Some((line.into(), now + 3.0));
                 self.notes_key_shown();
             }
+            NotesCmd::OpenSaved(i) => {
+                if let Some((p, ..)) = self.st.notes_saved.get(i) {
+                    shell::open(&p.to_string_lossy());
+                }
+            }
+            NotesCmd::RecycleSaved(i) => {
+                if let Some((p, ..)) = self.st.notes_saved.get(i).cloned() {
+                    if services::notes::recycle(&p) {
+                        pinfo!("notes: a saved note went to the Recycle Bin");
+                    }
+                    self.st.notes_saved = services::notes::saved(&paths::notes_dir(), 20);
+                }
+            }
             NotesCmd::RemoveKey => {
                 let _ = services::secret::delete(&paths::gemini_key_path());
                 pinfo!("notes: the Gemini key was removed");
@@ -2695,7 +2712,8 @@ impl App {
         services::notes::clear_audio(None);
         let now = self.st.now;
         let started = self.st.local;
-        match services::notes::Recording::start(&paths::notes_audio_dir(), &started, &self.sink) {
+        let mic = Some(self.st.settings.notes_mic.clone()).filter(|m| !m.is_empty());
+        match services::notes::Recording::start(&paths::notes_audio_dir(), &started, &self.sink, mic) {
             Ok((rec, mic, pc)) => {
                 pinfo!("notes: listening (microphone {}, the PC's sound {})", if mic { "on" } else { "off" }, if pc { "on" } else { "off" });
                 self.notes_started = started;
@@ -2764,6 +2782,7 @@ impl App {
         if saved {
             self.notes_take = None;
             self.st.ui.notes_kept = false;
+            self.st.notes_saved = services::notes::saved(&paths::notes_dir(), 20);
         }
         if let Some((title, subtitle, good)) = end {
             if !(self.expanded && self.st.page == PageKind::Notes) {
@@ -4096,6 +4115,9 @@ impl App {
             if p == PageKind::Notifications {
                 // Looked at: the badge goes.
                 self.st.recent_unseen = 0;
+            }
+            if p == PageKind::Notes {
+                self.st.notes_saved = services::notes::saved(&paths::notes_dir(), 20);
             }
         }
     }

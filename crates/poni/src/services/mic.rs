@@ -87,11 +87,16 @@ pub struct Device {
 /// a recording device (`eCapture`), or the playback device's own sound
 /// (`eRender`, WASAPI loopback: what the PC plays, a call's voices
 /// included). `what` names it in the log.
-pub fn open_endpoint(flow: EDataFlow, what: &str) -> Result<Device, MicError> {
+pub fn open_endpoint(flow: EDataFlow, what: &str, id: Option<&str>) -> Result<Device, MicError> {
     let loopback = flow != eCapture;
     unsafe {
         let devices: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(|e| mic_error("no Core Audio", &e))?;
-        let device = devices.GetDefaultAudioEndpoint(flow, eConsole).map_err(|e| mic_error(if loopback { "no playback device" } else { "no recording device" }, &e))?;
+        // A device picked in Settings, else Windows' default.
+        let picked = id.and_then(|id| devices.GetDevice(&windows::core::HSTRING::from(id)).ok());
+        let device = match picked {
+            Some(d) => d,
+            None => devices.GetDefaultAudioEndpoint(flow, eConsole).map_err(|e| mic_error(if loopback { "no playback device" } else { "no recording device" }, &e))?,
+        };
         let client: IAudioClient = device.Activate(CLSCTX_ALL, None).map_err(|e| mic_error("can't open the microphone", &e))?;
         let mix = client.GetMixFormat().map_err(|e| mic_error("no recording format", &e))?;
         let format = sample_format(mix);
@@ -109,6 +114,42 @@ pub fn open_endpoint(flow: EDataFlow, what: &str) -> Result<Device, MicError> {
         crate::pinfo!("{what} at {rate} Hz, {channels} channel(s), {format:?}");
         Ok(Device { client, capture, downmix: Downmix::new(rate, channels, format), block })
     }
+}
+
+/// The microphones Windows has on now: each one's id and name, for
+/// Settings > Meeting notes.
+pub fn microphones() -> Vec<(String, String)> {
+    use windows::Win32::Media::Audio::DEVICE_STATE_ACTIVE;
+    use windows::Win32::System::Com::STGM_READ;
+    use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
+    use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
+    // PKEY_Device_FriendlyName.
+    const FRIENDLY: PROPERTYKEY = PROPERTYKEY { fmtid: GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0), pid: 14 };
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(devices) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else { return out };
+        let Ok(list) = devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) else { return out };
+        for i in 0..list.GetCount().unwrap_or(0) {
+            let Ok(d) = list.Item(i) else { continue };
+            let Ok(p) = d.GetId() else { continue };
+            let id = p.to_string().unwrap_or_default();
+            CoTaskMemFree(Some(p.0 as *const _));
+            let name = d
+                .OpenPropertyStore(STGM_READ)
+                .and_then(|s| s.GetValue(&FRIENDLY))
+                .and_then(|v| PropVariantToStringAlloc(&v))
+                .map(|s| {
+                    let n = s.to_string().unwrap_or_default();
+                    CoTaskMemFree(Some(s.0 as *const _));
+                    n
+                })
+                .unwrap_or_default();
+            if !id.is_empty() {
+                out.push((id, if name.is_empty() { "Microphone".into() } else { name }));
+            }
+        }
+    }
+    out
 }
 
 /// The mix format's samples, if this app reads them.

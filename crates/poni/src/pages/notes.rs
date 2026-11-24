@@ -22,7 +22,7 @@ use crate::commands::{Command, NotesCmd};
 use crate::gfx::{TextStyle, Weight};
 use crate::icons::Icon;
 use crate::state::AppState;
-use crate::ui::{wid, PillStyle, Ui, PILL_GAP, PILL_SMALL};
+use crate::ui::{wid, wid_n, PillStyle, Ui, PILL_GAP, PILL_SMALL};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::notes::{fmt_length, CaptureIssue, Phase, Problem};
 
@@ -169,22 +169,45 @@ fn draw_idle(ui: &mut Ui, st: &mut AppState, r: Rect) {
         return;
     }
     let y = headline(ui, r, "Take notes of a meeting");
-    let body = "Records your microphone and your PC's sound, so a call in Meet, Zoom or Teams is heard with no bot joining. Stop when it's over: Gemini writes the notes and the transcript, saved to Documents \u{203a} Hihu Island \u{203a} Notes.";
-    let y = para(ui, Rect::new(r.x, y + 6.0, r.w, 80.0), body, palette::TEXT_DIM);
-    // Only what the line shows: a meeting's transcript can run to thousands of lines.
-    let last = st.notes.last.as_ref().map(|l| (l.notes.title.clone(), l.notes.secs));
-    match last {
-        Some((title, secs)) => {
-            let line = format!("Last: {title} \u{b7} {} min", (secs as f32 / 60.0).round().max(1.0));
-            let w = ui.pill_width("Open", true, true);
-            ui.c.text(&line, Rect::new(foot.x, foot.y, foot.w - w - 10.0, foot.h), &TextStyle::footnote().color(palette::TEXT_DIM));
-            if ui.pill(wid("notes.open-last"), Rect::new(foot.right() - w, foot.y, w, PILL_SMALL), "Open", Some(Icon::Open), PillStyle::Utility).clicked {
-                st.cmd(Command::Notes(NotesCmd::Open));
-            }
+    if st.notes_saved.is_empty() {
+        let body = "Records your microphone and your PC's sound, so a call in Meet, Zoom or Teams is heard with no bot joining. Stop when it's over: Gemini writes the notes and the transcript, saved to Documents \u{203a} Hihu Island \u{203a} Notes.";
+        let y = para(ui, Rect::new(r.x, y + 6.0, r.w, 80.0), body, palette::TEXT_DIM);
+        para(ui, Rect::new(r.x, (y + 10.0).max(foot.y + 6.0), r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
+        return;
+    }
+    // The notes saved lately: open one, or send it to the Recycle Bin.
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Your microphone and your PC's sound; Gemini writes the notes.", palette::TEXT_DIM) + 8.0;
+    let row_h = 26.0;
+    let room = ((r.bottom() - y - 18.0) / row_h).floor().max(1.0) as usize;
+    let rows: Vec<(String, String)> = st.notes_saved.iter().take(room).map(|(_, w, t)| (w.clone(), t.clone())).collect();
+    for (i, (when, title)) in rows.iter().enumerate() {
+        let row = Rect::new(r.x, y + i as f32 * row_h, r.w, row_h);
+        let resp = ui.button(wid_n("notes.saved", i as u64), row);
+        if resp.hovered {
+            ui.c.fill_rrect(row.inset(-6.0, 1.0), 7.0, Color::white(0.05));
         }
-        None => {
-            para(ui, Rect::new(r.x, (y + 10.0).max(foot.y + 6.0), r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
+        let ws = TextStyle::caption().color(palette::TEXT_FAINT);
+        ui.c.text(when, Rect::new(row.x, row.y, 86.0, row.h), &ws);
+        let bin = Rect::new(row.right() - 22.0, row.y + 2.0, 22.0, 22.0);
+        ui.c.text(title, Rect::new(row.x + 90.0, row.y, (bin.x - row.x - 96.0).max(0.0), row.h), &TextStyle::footnote());
+        let mut used = false;
+        if resp.hovered && ui.icon_button(wid_n("notes.saved.bin", i as u64), bin, Icon::Trash, palette::TEXT_DIM, 12.0).clicked {
+            st.cmd(Command::Notes(NotesCmd::RecycleSaved(i)));
+            used = true;
         }
+        if resp.clicked && !used && !ui.hovered(bin) {
+            st.cmd(Command::Notes(NotesCmd::OpenSaved(i)));
+        }
+    }
+    let more = st.notes_saved.len().saturating_sub(rows.len());
+    let link = if more > 0 { format!("+{more} more in the folder") } else { "Open the folder".to_string() };
+    let lr = Rect::new(r.x, y + rows.len() as f32 * row_h + 2.0, r.w, 16.0);
+    let lw = ui.c.measure(&link, &TextStyle::caption(), 300.0).0 + 4.0;
+    let lrect = Rect::new(lr.x, lr.y, lw, lr.h);
+    let lresp = ui.button(wid("notes.saved.folder"), lrect);
+    ui.c.text(&link, lrect, &TextStyle::caption().color(if lresp.hovered { palette::TEXT } else { palette::TEXT_DIM }));
+    if lresp.clicked {
+        st.cmd(Command::Notes(NotesCmd::Folder));
     }
 }
 

@@ -83,7 +83,7 @@ impl Recording {
     /// Start recording into a new folder under `root` (the meeting's local
     /// start written beside its parts, for [`kept`]): the recording, and
     /// whether the microphone and the PC's sound each opened.
-    pub fn start(root: &Path, started: &LocalDateTime, sink: &EventSink) -> Result<(Recording, bool, bool), CaptureIssue> {
+    pub fn start(root: &Path, started: &LocalDateTime, sink: &EventSink, mic_id: Option<String>) -> Result<(Recording, bool, bool), CaptureIssue> {
         let dir = root.join(format!("meeting-{}", crate::clock::unix_now()));
         std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(dir.join(STARTED), fmt_started(started))).map_err(|e| {
             crate::pwarn!("notes: no folder for the recording ({e})");
@@ -94,7 +94,7 @@ impl Recording {
         let (worker, folder, sink) = (shared.clone(), dir.clone(), sink.clone());
         let thread = std::thread::Builder::new()
             .name("poni-notes".into())
-            .spawn(move || capture(&folder, &worker, &sink, ready_tx))
+            .spawn(move || capture(&folder, &worker, &sink, ready_tx, mic_id))
             .map_err(|_| CaptureIssue::Failed)?;
         match ready_rx.recv_timeout(OPEN_TIMEOUT) {
             Ok(Ok((mic, pc))) => Ok((Recording { shared, thread: Some(thread) }, mic, pc)),
@@ -140,13 +140,15 @@ struct Source {
     dev: Option<Device>,
     /// The default device it opened (Windows' id), to notice a new default.
     id: Option<String>,
+    /// The microphone picked in Settings (None: Windows' default).
+    picked: Option<String>,
     pcm: Vec<i16>,
     level: f32,
 }
 
 impl Source {
-    fn mic() -> Source {
-        Source::new(eCapture, "notes: microphone")
+    fn mic(picked: Option<String>) -> Source {
+        Source { picked, ..Source::new(eCapture, "notes: microphone") }
     }
 
     fn pc() -> Source {
@@ -154,20 +156,21 @@ impl Source {
     }
 
     fn new(flow: EDataFlow, what: &'static str) -> Source {
-        Source { flow, what, dev: None, id: None, pcm: Vec::with_capacity(RATE as usize / 4), level: 0.0 }
+        Source { flow, what, dev: None, id: None, picked: None, pcm: Vec::with_capacity(RATE as usize / 4), level: 0.0 }
     }
 
     /// Not open, or Windows' default device changed (a headset plugged in, or
     /// the one it had went away): open the default again.
     fn moved(&self) -> bool {
-        self.dev.is_none() || default_id(self.flow) != self.id
+        // A microphone picked in Settings stays put; Windows' default follows Windows.
+        self.dev.is_none() || (self.picked.is_none() && default_id(self.flow) != self.id)
     }
 
     fn open(&mut self) -> Result<(), MicError> {
         if self.flow == eCapture && mic::privacy_denies() {
             return Err(MicError::Denied);
         }
-        let d = mic::open_endpoint(self.flow, self.what)?;
+        let d = mic::open_endpoint(self.flow, self.what, self.picked.as_deref())?;
         unsafe { d.client.Start() }.map_err(|e| mic::mic_error("the device didn't start", &e))?;
         self.id = default_id(self.flow);
         self.dev = Some(d);
@@ -272,10 +275,10 @@ impl Parts {
 
 /// The `poni-notes` thread: open both sources, say which did, then record
 /// until told to stop (or the longest meeting the server takes).
-fn capture(dir: &Path, shared: &Shared, sink: &EventSink, ready: mpsc::Sender<Result<(bool, bool), CaptureIssue>>) -> Result<Take, CaptureIssue> {
+fn capture(dir: &Path, shared: &Shared, sink: &EventSink, ready: mpsc::Sender<Result<(bool, bool), CaptureIssue>>, mic_id: Option<String>) -> Result<Take, CaptureIssue> {
     let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     let out = (|| {
-        let mut mic = Source::mic();
+        let mut mic = Source::mic(mic_id);
         let mut pc = Source::pc();
         let (m, p) = (mic.open(), pc.open());
         if let (Err(em), Err(ep)) = (&m, &p) {
@@ -354,6 +357,31 @@ fn capture(dir: &Path, shared: &Shared, sink: &EventSink, ready: mpsc::Sender<Re
         unsafe { CoUninitialize() };
     }
     out
+}
+
+/// The notes saved in `dir`, newest first (at most `max`): each file's
+/// path, when ("29 Oct 14:05") and title.
+pub fn saved(dir: &Path, max: usize) -> Vec<(PathBuf, String, String)> {
+    let mut names: Vec<(String, PathBuf)> = std::fs::read_dir(dir)
+        .map(|r| r.flatten().filter_map(|e| Some((e.file_name().to_str()?.to_string(), e.path()))).collect())
+        .unwrap_or_default();
+    names.sort_by(|a, b| b.0.cmp(&a.0));
+    names.into_iter().filter_map(|(n, p)| notes::read_file_name(&n).map(|(when, title)| (p, when, title))).take(max).collect()
+}
+
+/// A saved note to the Recycle Bin (it can come back from there).
+pub fn recycle(path: &Path) -> bool {
+    use windows::Win32::UI::Shell::{SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE, SHFILEOPSTRUCTW};
+    // Two NULs end the list of one.
+    let mut from: Vec<u16> = path.as_os_str().to_string_lossy().encode_utf16().collect();
+    from.extend([0, 0]);
+    let mut op = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: windows::core::PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI).0 as u16,
+        ..Default::default()
+    };
+    unsafe { SHFileOperationW(&mut op) == 0 }
 }
 
 /// Beside a meeting's parts: when it began, "2026-10-29 14:05" (local time).
