@@ -93,7 +93,9 @@ crates take the new name (`studio-usage`, `studio-diorama`).
   (`Command::FocusText`) and give focus back afterwards.
 * **Helper window** (hidden): tray icon, AppBar registration (full-screen
   notifications), `WM_POWERBROADCAST`.
-* **Step aside** (Settings › Over maximized windows, on by default): the
+* **Step aside** (no longer offered: `Settings::sanitized` turns `step_aside`
+  off, so the island stays over maximized windows; the code below is kept,
+  unused, in case it comes back). When on, the
   full-screen watcher also keeps the app windows whose top edge is at the
   top of the island's monitor, within 8 DIPs (maximized, snapped or dragged
   up; one placed lower keeps its title below the island), as
