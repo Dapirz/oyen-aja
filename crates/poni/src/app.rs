@@ -2718,6 +2718,60 @@ impl App {
         }
     }
 
+    /// Settings > About > Export: everything (but this PC's keys) in one file.
+    fn backup_export(&mut self) {
+        let dir = paths::backups_dir();
+        let t = self.st.local;
+        let path = dir.join(poni_core::backup::file_name(t.year, t.month, t.day));
+        let text = poni_core::backup::make(&self.st.settings, &self.st.store, self.st.unix);
+        let note = match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)) {
+            Ok(()) => {
+                pinfo!("backup: written");
+                format!("Saved as {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+            }
+            Err(e) => {
+                pwarn!("backup: can't write it ({e})");
+                "Couldn't save the backup".to_string()
+            }
+        };
+        self.st.ui.backup_note = Some(note);
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+    }
+
+    /// Settings > About > Import (pressed twice): the newest backup in the
+    /// folder takes the place of the settings and the data.
+    fn backup_import(&mut self) {
+        let newest = std::fs::read_dir(paths::backups_dir())
+            .map(|r| r.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).max())
+            .ok()
+            .flatten();
+        let note = match newest.as_ref().map(|p| (p, std::fs::read_to_string(p))) {
+            None => "No backup in the folder yet".to_string(),
+            Some((_, Err(_))) => "Couldn't read the backup".to_string(),
+            Some((p, Ok(text))) => match poni_core::backup::read(&text) {
+                Err(why) => why.to_string(),
+                Ok(b) => {
+                    let before = self.st.settings.clone();
+                    self.st.settings = b.settings;
+                    self.st.store = b.store;
+                    self.settings_changed(&before);
+                    self.save_settings();
+                    self.save_now();
+                    self.agenda_schedule();
+                    pinfo!("backup: put back");
+                    format!("Put back from {}", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+                }
+            },
+        };
+        self.st.ui.backup_note = Some(note);
+        self.request_frame();
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+    }
+
     /// What Settings and the page show of the key: its last four characters.
     fn notes_key_shown(&mut self) {
         self.st.ui.notes_key = services::notes::key().map(|k| k.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect());
@@ -4229,6 +4283,8 @@ impl App {
                 Command::Notify(c) => self.notify_cmd(c),
                 Command::Notes(c) => self.notes_cmd(c),
                 Command::PickMic => self.pick_mic(),
+                Command::BackupExport => self.backup_export(),
+                Command::BackupImport => self.backup_import(),
                 Command::OpenApp(id) => {
                     shell::open_app(&id);
                     self.collapse();

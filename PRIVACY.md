@@ -39,6 +39,7 @@ Nothing else is sent anywhere. Music, volume, Bluetooth battery levels and the c
 | Your Apple Music token, if you added one, sealed so only your Windows account on this PC can read it | `%LOCALAPPDATA%\Hihu\` |
 | Screen time, while that add-on is on: each app's time in front, per day, for 7 days | `%APPDATA%\Hihu\screentime.json` |
 | Meeting notes: your Gemini key, sealed the same way; a recording, only until its notes are saved or you throw it away | `%LOCALAPPDATA%\Hihu\gemini.key`, `%LOCALAPPDATA%\Hihu\notes\` |
+| Backups you export (settings, tasks, calendar events, the Shelf's list), only when you press Export | `Documents\Hihu Island\Backups\` |
 | Meeting notes you took, as Markdown | `Documents\Hihu Island\Notes\` |
 | Clipboard history, while that add-on is on (the text you copied, kept as long as you set), sealed the same way | `%LOCALAPPDATA%\Hihu\clipboard.bin` |
 | Paired phones (their pairing secrets and names), sealed the same way | `%LOCALAPPDATA%\Hihu\` |

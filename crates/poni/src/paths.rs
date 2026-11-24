@@ -69,6 +69,15 @@ pub fn notes_dir() -> PathBuf {
     docs.join(crate::version::APP_NAME).join("Notes")
 }
 
+/// Where backups go, and where Import looks: `Documents\Hihu Island\Backups`.
+pub fn backups_dir() -> PathBuf {
+    if let Some(h) = home_override() {
+        return h.join("backups");
+    }
+    let docs = known_folder(&windows::Win32::UI::Shell::FOLDERID_Documents).unwrap_or_else(|| env_dir("USERPROFILE").join("Documents"));
+    docs.join(crate::version::APP_NAME).join("Backups")
+}
+
 /// The Meeting notes add-on's Gemini key, sealed for the Windows account
 /// (`services::secret`); never roams, and goes when the person removes it.
 pub fn gemini_key_path() -> PathBuf {

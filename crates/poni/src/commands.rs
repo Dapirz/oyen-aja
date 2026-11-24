@@ -108,6 +108,9 @@ pub enum Command {
     OpenApp(String),
     /// Settings > Meeting notes: the microphone menu.
     PickMic,
+    /// Settings > About > Backup: write one, or put the newest one back.
+    BackupExport,
+    BackupImport,
     /// What the tray's menu used to do, from Settings (Apple Music's token).
     Menu(crate::tray::MenuCmd),
 }

@@ -330,6 +330,10 @@ pub struct PageUiState {
     pub cal_scroll_day: Option<(i32, u8, u8)>,
     /// What's typed into the Settings window's search (empty: no search).
     pub settings_search: String,
+    /// Import was pressed once (until then, mono seconds): a second press
+    /// replaces everything with the backup. And the line beside Backup.
+    pub import_armed_until: f64,
+    pub backup_note: Option<String>,
     /// A prayer's moment glows round the island's edge until then (mono
     /// seconds): its adzan notice, as Poni's does.
     pub glow_until: f64,

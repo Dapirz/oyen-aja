@@ -355,6 +355,9 @@ pub enum Key {
     PrayerCalendar,
     SettingsFile,
     DataFolder,
+    BackupExport,
+    BackupImport,
+    BackupFolder,
     ReleaseNotes,
     LyricsCredit,
     AppleMusicToken,
@@ -767,6 +770,20 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                     item(Key::DataFolder, "Data folder", Some("Tasks, the Shelf and your Focus history"), Ctl::Button("Open")),
                 ],
             ),
+            Block::Group(
+                Some("Backup"),
+                vec![
+                    item(Key::BackupExport, "Export", Some(st.ui.backup_note.as_deref().unwrap_or("Settings, tasks, events and the Shelf's list, in one file")), Ctl::Button("Export")),
+                    item(
+                        Key::BackupImport,
+                        "Import",
+                        Some("The newest backup in the folder takes the place of all of it"),
+                        Ctl::Button(if st.now < st.ui.import_armed_until { "Replace now" } else { "Import" }),
+                    ),
+                    item(Key::BackupFolder, "Backups folder", Some("Documents \u{203a} Hihu Island \u{203a} Backups"), Ctl::Button("Open")),
+                ],
+            ),
+            Block::Note("Keys saved for this PC (Gemini, Apple Music) and paired phones stay out of a backup."),
         ],
     }
 }
@@ -989,6 +1006,26 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         }
         Key::DataFolder => {
             st.cmd(Command::OpenPath(crate::paths::data_dir().to_string_lossy().into_owned()));
+            return;
+        }
+        Key::BackupExport => {
+            st.cmd(Command::BackupExport);
+            return;
+        }
+        Key::BackupImport => {
+            if st.now < st.ui.import_armed_until {
+                st.ui.import_armed_until = 0.0;
+                st.cmd(Command::BackupImport);
+            } else {
+                // Asked once more: the next press within 5 seconds replaces everything.
+                st.ui.import_armed_until = st.now + 5.0;
+            }
+            return;
+        }
+        Key::BackupFolder => {
+            let dir = crate::paths::backups_dir();
+            let _ = std::fs::create_dir_all(&dir);
+            st.cmd(Command::OpenPath(dir.to_string_lossy().into_owned()));
             return;
         }
         Key::ReleaseNotes => {
@@ -2245,6 +2282,9 @@ mod tests {
                     Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
                     Key::NotifyAccess => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notify(_)))),
                     Key::NotesMic => assert!(st.cmds.contains(&Command::PickMic)),
+                    Key::BackupExport => assert!(st.cmds.contains(&Command::BackupExport)),
+                    Key::BackupImport => assert!(st.cmds.is_empty(), "the first press only asks"),
+                    Key::BackupFolder => assert!(opens),
                     Key::AppleMusicToken | Key::AppleMusicHelp => assert!(st.cmds.iter().any(|c| matches!(c, Command::Menu(_)))),
                     _ => assert!(saved, "{:?} didn't save", it.key),
                 }
