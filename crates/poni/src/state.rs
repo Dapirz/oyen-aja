@@ -312,6 +312,9 @@ pub struct PageUiState {
     pub cal_time: Option<u16>,
     /// What the add line makes: an event (false) or a task due that day.
     pub cal_task: bool,
+    /// How far the picked day's list is scrolled, and for which day.
+    pub cal_scroll: f32,
+    pub cal_scroll_day: Option<(i32, u8, u8)>,
     /// What's typed into the Settings window's search (empty: no search).
     pub settings_search: String,
     /// A prayer's moment glows round the island's edge until then (mono

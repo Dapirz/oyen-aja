@@ -34,7 +34,6 @@ const COUNTDOWN_DAYS: i64 = 60;
 const COUNTDOWN_MAX: usize = 3;
 const LINE_H: f32 = 18.0;
 const EVENT_H: f32 = 22.0;
-const EVENTS_SHOWN: usize = 2;
 /// The time picker's step (minutes), by a button or a wheel notch.
 const TIME_STEP: i32 = 5;
 const MAX_TITLE: usize = 80;
@@ -189,65 +188,88 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         ui.c.text(h.name, Rect::new(r.x + tw + 8.0, y + 1.0, (r.w - tw - 8.0).max(0.0), 18.0), &TextStyle::footnote().color(color));
     }
     y += 22.0;
+    // The day's events (all-day first, then by time) and the tasks due
+    // that day, in the room down to the controls; it scrolls when they don't fit.
     let mut events: Vec<(u64, String, Every, Option<u16>)> = st.store.agenda.on(py, pm, pd).into_iter().map(|e| (e.id, e.title.clone(), e.every, e.time)).collect();
-    // All-day ones first, then by time.
     events.sort_by_key(|e| e.3.map_or(-1, i32::from));
-    // The tasks due that day, under them: a click checks one off.
     let tasks: Vec<(u64, String, bool, Option<u16>)> = st.store.tasks.due_on(py, pm, pd).into_iter().map(|t| (t.id, t.text.clone(), t.done, t.due.and_then(|d| d.time))).collect();
-    let task_rows = EVENTS_SHOWN.saturating_sub(events.len().min(EVENTS_SHOWN));
+    let list = Rect::new(r.x - 4.0, y, r.w + 4.0, (r.bottom() - 2.0 * PILL_SMALL - 14.0 - y).max(0.0));
+    let rows = events.len() + tasks.len();
+    let max_scroll = (rows as f32 * EVENT_H - list.h).max(0.0);
+    if st.ui.cal_scroll_day != Some(picked) {
+        st.ui.cal_scroll_day = Some(picked);
+        st.ui.cal_scroll = 0.0;
+    }
+    let wheel = ui.wheel_in(list);
+    if wheel != 0.0 {
+        st.ui.cal_scroll -= wheel * EVENT_H;
+    }
+    st.ui.cal_scroll = st.ui.cal_scroll.clamp(0.0, max_scroll);
+    let offset = st.ui.cal_scroll;
+    ui.c.clip(list);
     let mut gone = None;
     let mut checked = None;
-    for (i, (id, name, done, time)) in tasks.iter().take(task_rows).enumerate() {
-        let row = Rect::new(r.x, y + (events.len().min(EVENTS_SHOWN) + i) as f32 * EVENT_H, r.w, EVENT_H);
-        let resp = ui.button(wid_n("today.task", i as u64), row);
-        if resp.hovered {
-            ui.c.fill_rrect(row.inset(-4.0, 1.0), 6.0, Color::white(0.05));
+    for i in 0..rows {
+        let row = Rect::new(r.x, list.y + i as f32 * EVENT_H - offset, r.w, EVENT_H);
+        // Only rows (partly) in the list take the pointer.
+        let shown = row.bottom() > list.y && row.y < list.bottom();
+        if !shown {
+            continue;
         }
-        let mark = Rect::new(row.x - 2.0, row.center().y - 7.0, 14.0, 14.0);
-        if *done {
-            ui.c.icon(Icon::CheckCircle, mark, palette::GREEN);
+        let hit = Rect::new(row.x, row.y.max(list.y), row.w, (row.bottom().min(list.bottom()) - row.y.max(list.y)).max(0.0));
+        if i < events.len() {
+            let (id, name, every, time) = &events[i];
+            let name = match time {
+                Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
+                None => name.clone(),
+            };
+            ui.c.fill_circle(Point::new(row.x + 4.0, row.center().y), 2.5, st.accent);
+            let x = Rect::new(row.right() - 20.0, row.y + 1.0, 20.0, 20.0);
+            let repeat = if *every == Every::Once { String::new() } else { every.label() };
+            let rs = TextStyle::caption().color(palette::TEXT_FAINT).right();
+            let rw = if repeat.is_empty() { 0.0 } else { ui.c.measure(&repeat, &rs, 140.0).0 + 8.0 };
+            ui.c.text(&name, Rect::new(row.x + 14.0, row.y, (x.x - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
+            if !repeat.is_empty() {
+                ui.c.text(&repeat, Rect::new(x.x - rw, row.y, rw - 4.0, row.h), &rs);
+            }
+            let xr = Rect::new(x.x, x.y.max(list.y), x.w, (x.bottom().min(list.bottom()) - x.y.max(list.y)).max(0.0));
+            if xr.h > 4.0 && ui.icon_button(wid_n("today.event.remove", *id), xr, Icon::Close, palette::TEXT_FAINT, 10.0).clicked {
+                gone = Some(*id);
+            }
         } else {
-            ui.c.icon(Icon::Circle, mark, palette::TEXT_DIM);
+            let (id, name, done, time) = &tasks[i - events.len()];
+            let resp = ui.button(wid_n("today.task", *id), hit);
+            if resp.hovered {
+                ui.c.fill_rrect(row.inset(-4.0, 1.0), 6.0, Color::white(0.05));
+            }
+            let mark = Rect::new(row.x - 2.0, row.center().y - 7.0, 14.0, 14.0);
+            if *done {
+                ui.c.icon(Icon::CheckCircle, mark, palette::GREEN);
+            } else {
+                ui.c.icon(Icon::Circle, mark, palette::TEXT_DIM);
+            }
+            let name = match time {
+                Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
+                None => name.clone(),
+            };
+            let ink = if *done { palette::TEXT_FAINT } else { palette::TEXT };
+            ui.c.text(&name, Rect::new(row.x + 16.0, row.y, row.w - 20.0, row.h), &TextStyle::footnote().color(ink));
+            if resp.clicked {
+                checked = Some(*id);
+            }
         }
-        let name = match time {
-            Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
-            None => name.clone(),
-        };
-        let ink = if *done { palette::TEXT_FAINT } else { palette::TEXT };
-        ui.c.text(&name, Rect::new(row.x + 16.0, row.y, row.w - 20.0, row.h), &TextStyle::footnote().color(ink));
-        if resp.clicked {
-            checked = Some(*id);
-        }
+    }
+    ui.c.unclip();
+    // More below (or above): a thin bar on the right says where the list is.
+    if max_scroll > 0.0 {
+        let track = Rect::new(r.right() + 4.0, list.y + 2.0, 2.0, list.h - 4.0);
+        let thumb_h = (track.h * list.h / (rows as f32 * EVENT_H)).max(10.0);
+        let thumb_y = track.y + (track.h - thumb_h) * (offset / max_scroll);
+        ui.c.fill_rrect(Rect::new(track.x, thumb_y, track.w, thumb_h), 1.0, Color::white(0.25));
     }
     if let Some(id) = checked {
         st.store.tasks.toggle(id, st.unix);
         st.save();
-    }
-    for (i, (id, name, every, time)) in events.iter().take(EVENTS_SHOWN).enumerate() {
-        let name = match time {
-            Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
-            None => name.clone(),
-        };
-        let row = Rect::new(r.x, y, r.w, EVENT_H);
-        ui.c.fill_circle(Point::new(row.x + 4.0, row.center().y), 2.5, st.accent);
-        let x = Rect::new(row.right() - 20.0, row.y + 1.0, 20.0, 20.0);
-        let repeat = if *every == Every::Once { String::new() } else { every.label() };
-        let rs = TextStyle::caption().color(palette::TEXT_FAINT).right();
-        let rw = if repeat.is_empty() { 0.0 } else { ui.c.measure(&repeat, &rs, 140.0).0 + 8.0 };
-        ui.c.text(&name, Rect::new(row.x + 14.0, row.y, (x.x - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
-        if !repeat.is_empty() {
-            ui.c.text(&repeat, Rect::new(x.x - rw, row.y, rw - 4.0, row.h), &rs);
-        }
-        if ui.icon_button(wid_n("today.event.remove", i as u64), x, Icon::Close, palette::TEXT_FAINT, 10.0).clicked {
-            gone = Some(*id);
-        }
-        y += EVENT_H;
-    }
-    let shown = events.len().min(EVENTS_SHOWN) + tasks.len().min(task_rows);
-    let total = events.len() + tasks.len();
-    if total > shown {
-        let y = y + tasks.len().min(task_rows) as f32 * EVENT_H;
-        ui.c.text(&format!("+{} more", total - shown), Rect::new(r.x + 14.0, y, r.w, 16.0), &TextStyle::caption().color(palette::TEXT_DIM));
     }
     if let Some(id) = gone {
         st.store.agenda.remove(id);
