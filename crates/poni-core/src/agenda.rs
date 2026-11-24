@@ -317,7 +317,8 @@ impl Agenda {
         if title.is_empty() {
             return None;
         }
-        self.next_id += 1;
+        // Past every id in the list too (a file whose next_id fell behind, audit A8).
+        self.next_id = (self.next_id + 1).max(self.events.iter().map(|e| e.id + 1).max().unwrap_or(1));
         self.events.push(Event { id: self.next_id, title, year: y, month: m, day: d, every, time, remind });
         Some(self.next_id)
     }
@@ -558,6 +559,19 @@ mod tests {
         tasks.toggle(id, 1);
         assert_eq!(next_reminder(&agenda, &tasks, day), None, "done: no reminder");
         assert_eq!(tasks.due_on(2026, 11, 25)[0].text, "Tanpa pengingat", "open ones first");
+    }
+
+    #[test]
+    fn ids_stay_apart_when_next_id_fell_behind() {
+        let mut a = Agenda::default();
+        let first = a.add("one", 2026, 1, 1, Every::Once, None, None).unwrap();
+        a.next_id = 0;
+        let second = a.add("two", 2026, 1, 2, Every::Once, None, None).unwrap();
+        assert_ne!(first, second);
+        let mut tasks = crate::todo::TaskList::default();
+        let t1 = tasks.add("one", 0).unwrap();
+        tasks.next_id = 0;
+        assert_ne!(tasks.add("two", 0).unwrap(), t1);
     }
 
     #[test]

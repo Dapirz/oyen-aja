@@ -39,7 +39,9 @@ impl TaskList {
             return None;
         }
         let text: String = text.chars().take(MAX_TASK_LEN).collect();
-        let id = self.next_id.max(1);
+        // Past every id in the list too: a file whose next_id fell behind
+        // (or had none) never hands out one already there (audit A8).
+        let id = self.next_id.max(1).max(self.tasks.iter().map(|t| t.id + 1).max().unwrap_or(1));
         self.next_id = id + 1;
         self.tasks.push(Task { id, text, done: false, created_unix: now_unix, done_unix: None, due: None });
         Some(id)
