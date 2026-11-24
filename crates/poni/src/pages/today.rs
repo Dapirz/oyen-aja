@@ -87,10 +87,10 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
     ui.c.text(&title, Rect::new(r.x + 4.0, r.y, r.w - 60.0, TITLE_H), &TextStyle::body().weight(Weight::Semibold));
     let arrow = |i: f32| Rect::new(r.right() - (2.0 - i) * 26.0, r.y, 24.0, 24.0);
     let mut go = 0;
-    if ui.icon_button(wid("today.prev"), arrow(0.0), Icon::Prev, palette::TEXT_DIM, 12.0).clicked {
+    if ui.icon_button(wid("today.prev"), arrow(0.0), Icon::ChevronLeft, palette::TEXT_DIM, 16.0).clicked {
         go = -1;
     }
-    if ui.icon_button(wid("today.next"), arrow(1.0), Icon::Next, palette::TEXT_DIM, 12.0).clicked {
+    if ui.icon_button(wid("today.next"), arrow(1.0), Icon::ChevronRight, palette::TEXT_DIM, 16.0).clicked {
         go = 1;
     }
     if go != 0 {

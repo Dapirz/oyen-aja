@@ -74,6 +74,9 @@ pub enum Icon {
     /// Move up / down (Settings > Tabs' arrows).
     ChevronUp,
     ChevronDown,
+    /// The month before / after (Today's calendar).
+    ChevronLeft,
+    ChevronRight,
     /// The keyboard pop-ups (a lock key, the language).
     Keyboard,
     /// The brightness pop-up.
@@ -255,6 +258,8 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M16.9 7.1L18 6"),
         ],
         ChevronDown => p![s("M6.5 9.5L12 15l5.5-5.5")],
+        ChevronLeft => p![s("M14.5 6.5L9 12l5.5 5.5")],
+        ChevronRight => p![s("M9.5 6.5L15 12l-5.5 5.5")],
         Grip => p![
             f("M7.6 7a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
             f("M13.6 7a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0"),
@@ -281,7 +286,7 @@ mod tests {
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
-        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip, Icon::Keyboard, Icon::Sun, Icon::Mic, Icon::Camera,
+        Icon::ChevronUp, Icon::ChevronDown, Icon::ChevronLeft, Icon::ChevronRight, Icon::Grip, Icon::Keyboard, Icon::Sun, Icon::Mic, Icon::Camera,
     ];
 
     #[test]
