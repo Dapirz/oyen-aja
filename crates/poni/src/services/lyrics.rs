@@ -714,7 +714,7 @@ mod pure {
         /// Raised whenever the lookup learns to find songs it used to miss
         /// (2: subtitle tags and "Song - Artist" video titles), so misses
         /// from an older lookup are asked again instead of kept for 3 days.
-        pub const LOOKUP: u32 = 2;
+        pub const LOOKUP: u32 = 3;
 
         pub fn new(record: Option<LrclibRecord>, now: i64) -> Self {
             Self { v: Self::VERSION, lookup: Self::LOOKUP, fetched_at: now, record }
@@ -724,8 +724,10 @@ mod pure {
     /// Whether `e` can be used without asking LRCLIB again.
     pub fn is_fresh(e: &CacheEntry, now: i64) -> bool {
         if let Some(r) = &e.record {
-            // Synced lyrics and instrumental flags don't go stale.
-            if r.has_synced() || r.instrumental {
+            // Synced lyrics and instrumental flags don't go stale, but for
+            // lines squeezed into the song's start (looked up before that
+            // was checked) another copy may be found now.
+            if r.instrumental || (r.has_synced() && (r.has_full_synced() || e.lookup >= CacheEntry::LOOKUP)) {
                 return true;
             }
         } else if e.lookup < CacheEntry::LOOKUP {
@@ -775,7 +777,7 @@ mod pure {
     /// lines, so they're shown unsynced.
     pub fn lyrics_for(r: &LrclibRecord, playing_s: u32) -> Option<Lyrics> {
         let l = lyrics_from_record(r)?;
-        if !l.synced || timing_fits(r.duration, playing_s) {
+        if !l.synced || (timing_fits(r.duration, playing_s) && poni_core::lrclib::spans_song(&l, r.duration)) {
             return Some(l);
         }
         if let Some(text) = r.plain_lyrics.as_deref() {
@@ -844,7 +846,8 @@ mod pure {
             }
         }
 
-        const SYNCED: &str = "[00:01.00]first row\n[00:04.50]second row\n[00:08.00]third row\n[00:12.00]fourth row\n";
+        // Spread over the song, as real lyrics are (squeezed into its start, they would not count as synced).
+        const SYNCED: &str = "[00:01.00]first row\n[01:04.50]second row\n[02:08.00]third row\n[02:52.00]fourth row\n";
         const PLAIN: &str = "first row\nsecond row\nthird row\nfourth row";
 
         #[test]
@@ -853,7 +856,7 @@ mod pure {
             let l = lyrics_from_record(&r).unwrap();
             assert!(l.synced);
             assert_eq!(l.lines.len(), 4);
-            assert!((l.lines[1].time_s - 4.5).abs() < 1e-9);
+            assert!((l.lines[1].time_s - 64.5).abs() < 1e-9);
 
             let r = rec(None, Some("\n\nfirst row\n\nsecond row\nthird row\nfourth row\n\n"), false);
             let l = lyrics_from_record(&r).unwrap();

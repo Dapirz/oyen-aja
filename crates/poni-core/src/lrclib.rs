@@ -67,7 +67,7 @@ impl LrclibRecord {
     pub fn has_full_synced(&self) -> bool {
         self.synced_lyrics.as_deref().is_some_and(|s| {
             let l = parse_lrc(s);
-            l.synced && l.text_lines() >= MIN_LINES
+            l.synced && l.text_lines() >= MIN_LINES && spans_song(&l, self.duration)
         })
     }
     /// Plain lyrics with at least [`MIN_LINES`] lines of text.
@@ -75,6 +75,19 @@ impl LrclibRecord {
         self.plain_lyrics.as_deref().is_some_and(|s| s.lines().filter(|l| !l.trim().is_empty()).count() >= MIN_LINES)
     }
 }
+
+/// Whether synced lines reach far enough into a `record_s`-second song:
+/// some copies on LRCLIB squeeze every line into the first minute (Dewa
+/// 19's "Separuh Nafas": 28 lines by 0:58 of 3:42), so they race ahead and
+/// end while the song plays on. Short or unknown lengths pass.
+pub fn spans_song(l: &crate::lrc::Lyrics, record_s: Option<f64>) -> bool {
+    let Some(d) = record_s.filter(|d| *d >= 60.0) else { return true };
+    let last = l.lines.iter().filter(|x| !x.text.trim().is_empty()).map(|x| x.time_s).fold(0.0, f64::max);
+    last >= d * MIN_SPAN
+}
+
+/// How far into the song the last sung line must come, at least.
+pub const MIN_SPAN: f64 = 0.4;
 
 /// Whether lyrics timed for a `record_s`-second recording line up with a
 /// `playing_s`-second track. Unknown lengths pass.
@@ -470,6 +483,26 @@ mod tests {
     }
 
     #[test]
+    fn lines_squeezed_into_the_start_aren_t_full_synced_lyrics() {
+        let squeezed = "[00:04.41] Separuh nafasku
+[00:14.74] Terbang bersama dirimu
+[00:30.00] Saat kautinggalkanku
+[00:45.00] Salahkanku
+[00:58.01] ";
+        let whole = "[00:04.41] Separuh nafasku
+[01:14.74] Terbang bersama dirimu
+[02:30.00] Saat kautinggalkanku
+[03:05.00] Salahkanku
+[03:30.00] ";
+        let rec = |lrc: &str, d: Option<f64>| LrclibRecord { synced_lyrics: Some(lrc.into()), duration: d, ..Default::default() };
+        assert!(!rec(squeezed, Some(222.0)).has_full_synced());
+        assert!(rec(whole, Some(222.0)).has_full_synced());
+        // A length LRCLIB doesn't know, or a short song: as before.
+        assert!(rec(squeezed, None).has_full_synced());
+        assert!(rec(squeezed, Some(50.0)).has_full_synced());
+    }
+
+    #[test]
     fn builds_urls() {
         let u = get_url(&q("Paper Boats", "The Lanterns", "Harbor", 201));
         assert_eq!(
@@ -602,7 +635,7 @@ mod tests {
             plain_lyrics: plain.map(Into::into),
             ..Default::default()
         };
-        let full = "[00:01.00]one\n[00:02.00]two\n[00:03.00]three\n[00:04.00]four\n";
+        let full = "[00:01.00]one\n[01:00.00]two\n[02:00.00]three\n[03:00.00]four\n";
         let stub = rec(1, Some("[00:00.00]Paper Boats"), None);
         assert!(!stub.has_full_synced());
         let records = vec![stub.clone(), rec(2, Some(full), None)];
