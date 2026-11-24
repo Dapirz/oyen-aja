@@ -25,14 +25,21 @@ const BASE: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\
 pub struct Banners {
     was: BTreeMap<String, Option<u32>>,
     path: PathBuf,
+    /// The file could be read (or wasn't there): it may be written. One
+    /// that couldn't be read is left alone this run (audit A4), as it may
+    /// hold the pop-ups an earlier run hid.
+    writable: bool,
 }
 
 impl Banners {
     /// What an earlier run hid and didn't put back yet.
     pub fn load() -> Banners {
         let path = crate::paths::data_dir().join("banners.json");
-        let was = poni_core::store::load_json::<BTreeMap<String, Option<u32>>>(&path).0;
-        Banners { was, path }
+        let (was, outcome) = poni_core::store::load_json::<BTreeMap<String, Option<u32>>>(&path);
+        if let Some(m) = outcome.message() {
+            crate::pwarn!("notifications: the pop-ups an earlier run hid couldn't be read ({m})");
+        }
+        Banners { was, path, writable: outcome.writable() }
     }
 
     /// Hide the pop-ups of exactly the apps in `want`: newly there ones are
@@ -60,6 +67,9 @@ impl Banners {
     }
 
     fn save(&self) {
+        if !self.writable {
+            return;
+        }
         if self.was.is_empty() {
             let _ = std::fs::remove_file(&self.path);
         } else if let Err(e) = poni_core::store::save_json_atomic(&self.path, &self.was) {
