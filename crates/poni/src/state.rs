@@ -327,6 +327,11 @@ pub struct PageUiState {
     /// The Tasks page shows its month to pick the due day from, at this
     /// month (None: closed).
     pub task_pick_month: Option<(i32, u8)>,
+    /// The next task's time of day (None: all day), reminder and repeat,
+    /// set beside the Tasks page's month.
+    pub task_time: Option<u16>,
+    pub task_remind: Option<u16>,
+    pub task_every: poni_core::agenda::Every,
     /// The calendar row being edited in the add line: a task (true) or an
     /// event, and its id.
     pub cal_editing: Option<(bool, u64)>,

@@ -230,9 +230,13 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         st.ui.cal_scroll_day = Some(picked);
         st.ui.cal_scroll = 0.0;
     }
-    let wheel = ui.wheel_in(list);
-    if wheel != 0.0 {
-        st.ui.cal_scroll -= wheel * EVENT_H;
+    // The wheel is the list's only while it has more than it shows: else it
+    // goes on to the time picker under the pointer.
+    if max_scroll > 0.0 {
+        let wheel = ui.wheel_in(list);
+        if wheel != 0.0 {
+            st.ui.cal_scroll -= wheel * EVENT_H;
+        }
     }
     st.ui.cal_scroll = st.ui.cal_scroll.clamp(0.0, max_scroll);
     let offset = st.ui.cal_scroll;
@@ -341,6 +345,7 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
                 st.ui.cal_input = tk.text.clone();
                 st.ui.cal_time = tk.due.and_then(|d| d.time);
                 st.ui.cal_remind = Some(tk.due.and_then(|d| d.remind));
+                st.ui.cal_every = tk.due.map_or(Every::Once, |d| d.every);
             }
         } else if let Some(e) = st.store.agenda.events.iter().find(|x| x.id == id) {
             st.ui.cal_input = e.title.clone();
@@ -380,16 +385,16 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         let i = agenda::REMINDERS.iter().position(|r| *r == remind).unwrap_or(0);
         st.ui.cal_remind = Some(agenda::REMINDERS[(i + 1) % agenda::REMINDERS.len()]);
     }
-    // How often (an event's; a task is due once).
+    // How often (a task's too: checked, it moves on to its next day).
     let every = st.ui.cal_every;
     let label = every.short();
     let pw = ui.pill_width(&label, false, true);
     let pill = Rect::new(bell.right() + 6.0, ctl_y, pw, PILL_SMALL);
-    if !st.ui.cal_task && ui.pill(wid("today.every"), pill, &label, None, PillStyle::Utility).clicked {
+    if ui.pill(wid("today.every"), pill, &label, None, PillStyle::Utility).clicked {
         st.ui.cal_every = every.next_kind();
     }
     // Its count, where there's room for it.
-    if !st.ui.cal_task && every != Every::Once && pill.right() + 2.0 + 44.0 <= r.right() + 4.0 {
+    if every != Every::Once && pill.right() + 2.0 + 44.0 <= r.right() + 4.0 {
         let n = every.count();
         let minus = Rect::new(pill.right() + 2.0, ctl_y + 3.0, 22.0, 22.0);
         let plus = Rect::new(minus.right(), ctl_y + 3.0, 22.0, 22.0);
@@ -421,8 +426,8 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
                 if task {
                     if let Some(tk) = st.store.tasks.tasks.iter_mut().find(|x| x.id == id) {
                         tk.text = title;
-                        let d = tk.due.unwrap_or(agenda::Due { year: py, month: pm, day: pd, time: None, remind: None });
-                        tk.due = Some(agenda::Due { time, remind, ..d });
+                        let d = tk.due.unwrap_or(agenda::Due::on(py, pm, pd));
+                        tk.due = Some(agenda::Due { time, remind, every: st.ui.cal_every, ..d });
                     }
                 } else if let Some(e) = st.store.agenda.events.iter_mut().find(|x| x.id == id) {
                     e.title = title;
@@ -437,7 +442,7 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         }
         let added = if st.ui.cal_task {
             let (typed, title) = agenda::split_time(&st.ui.cal_input);
-            let due = agenda::Due { year: py, month: pm, day: pd, time: typed.or(st.ui.cal_time), remind };
+            let due = agenda::Due { time: typed.or(st.ui.cal_time), remind, every: st.ui.cal_every, ..agenda::Due::on(py, pm, pd) };
             let title = title.to_string();
             st.store.tasks.add_due(&title, st.unix, due).is_some()
         } else {

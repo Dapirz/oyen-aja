@@ -73,6 +73,10 @@ impl Every {
         }
     }
 
+    pub fn is_once(&self) -> bool {
+        *self == Every::Once
+    }
+
     /// The same kind every `n` (1..=99).
     pub fn with_count(self, n: u16) -> Every {
         let n = n.clamp(1, 99);
@@ -117,9 +121,37 @@ pub struct Due {
     pub time: Option<u16>,
     #[serde(default)]
     pub remind: Option<u16>,
+    /// A task that comes again: checked, it moves on to its next day.
+    #[serde(default, skip_serializing_if = "Every::is_once")]
+    pub every: Every,
 }
 
 impl Due {
+    /// A day, nothing else.
+    pub fn on(year: i32, month: u8, day: u8) -> Due {
+        Due { year, month, day, time: None, remind: None, every: Every::Once }
+    }
+
+    /// The next time it's due (its time and reminder kept), if it repeats.
+    /// A month without its day takes that month's last day.
+    pub fn next(&self) -> Option<Due> {
+        use crate::datetime::{civil_from_days, days_in_month};
+        let months = |n: u16| {
+            let at = self.year * 12 + i32::from(self.month) - 1 + i32::from(n.max(1));
+            let (y, m) = (at.div_euclid(12), (at.rem_euclid(12) + 1) as u8);
+            (y, m, self.day.min(days_in_month(y, m)))
+        };
+        let day = days_from_civil(self.year, self.month, self.day);
+        let (year, month, d) = match self.every {
+            Every::Once => return None,
+            Every::Days(n) => civil_from_days(day + i64::from(n.max(1))),
+            Every::Weeks(n) => civil_from_days(day + 7 * i64::from(n.max(1))),
+            Every::Months(n) => months(n),
+            Every::Years(n) => months(n.max(1) * 12),
+        };
+        Some(Due { year, month, day: d, ..*self })
+    }
+
     /// Its reminder's minute (local, from 1970), if it has one.
     pub fn remind_at(&self) -> Option<i64> {
         let r = self.remind?;
@@ -463,8 +495,8 @@ mod tests {
     #[test]
     fn tasks_due_remind_too_until_done() {
         let mut tasks = crate::todo::TaskList::default();
-        let id = tasks.add_due("Bayar listrik", 0, Due { year: 2026, month: 11, day: 25, time: Some(600), remind: Some(30) }).unwrap();
-        tasks.add_due("Tanpa pengingat", 0, Due { year: 2026, month: 11, day: 25, time: None, remind: None }).unwrap();
+        let id = tasks.add_due("Bayar listrik", 0, Due { time: Some(600), remind: Some(30), ..Due::on(2026, 11, 25) }).unwrap();
+        tasks.add_due("Tanpa pengingat", 0, Due::on(2026, 11, 25)).unwrap();
         let day = days_from_civil(2026, 11, 25) * 1440;
         let agenda = Agenda::default();
         assert_eq!(next_reminder(&agenda, &tasks, day), Some(day + 570));
@@ -478,11 +510,33 @@ mod tests {
     }
 
     #[test]
+    fn a_repeating_task_moves_on_when_checked() {
+        let mut tasks = crate::todo::TaskList::default();
+        let monthly = Due { every: Every::Months(1), time: Some(540), ..Due::on(2026, 1, 31) };
+        let id = tasks.add_due("Bayar kos", 0, monthly).unwrap();
+        assert!(tasks.toggle(id, 10));
+        let t = tasks.tasks.iter().find(|t| t.id == id).unwrap();
+        // Still open, now due on February's last day, at the same time.
+        assert!(!t.done);
+        assert_eq!(t.due.map(|d| (d.year, d.month, d.day, d.time)), Some((2026, 2, 28, Some(540))));
+        assert_eq!(Due { every: Every::Weeks(2), ..Due::on(2026, 12, 28) }.next().map(|d| (d.year, d.month, d.day)), Some((2027, 1, 11)));
+        assert_eq!(Due { every: Every::Years(1), ..Due::on(2028, 2, 29) }.next().map(|d| (d.year, d.month, d.day)), Some((2029, 2, 28)));
+        // A task due once is checked as before.
+        let once = tasks.add_due("Sekali", 0, Due::on(2026, 1, 5)).unwrap();
+        tasks.toggle(once, 10);
+        assert!(tasks.tasks.iter().find(|t| t.id == once).unwrap().done);
+        // Old files (no "every") read as once, and once isn't written.
+        let d: Due = serde_json::from_str(r#"{"year":2026,"month":1,"day":5}"#).unwrap();
+        assert!(d.every.is_once());
+        assert!(!serde_json::to_string(&d).unwrap().contains("every"));
+    }
+
+    #[test]
     fn tasks_due_soonest_come_first() {
         let mut tasks = crate::todo::TaskList::default();
         let none = tasks.add("no date", 1).unwrap();
-        let later = tasks.add_due("later", 2, Due { year: 2026, month: 12, day: 1, time: None, remind: None }).unwrap();
-        let late = tasks.add_due("late", 3, Due { year: 2026, month: 11, day: 20, time: None, remind: None }).unwrap();
+        let later = tasks.add_due("later", 2, Due::on(2026, 12, 1)).unwrap();
+        let late = tasks.add_due("late", 3, Due::on(2026, 11, 20)).unwrap();
         let ids: Vec<u64> = tasks.display_order(0).iter().map(|t| t.id).collect();
         assert_eq!(ids, [late, later, none]);
     }

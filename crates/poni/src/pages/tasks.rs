@@ -133,7 +133,19 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     // ---- Input: the list's first row, sharing its checkbox and text columns.
     // When the next task is due: a click opens a month to pick the day from.
     let today = poni_core::datetime::days_from_civil(st.local.year, st.local.month, st.local.day);
-    let due_word = st.ui.task_due.map_or("No date".to_string(), |off| due_pick_label(today, off));
+    let due_word = match st.ui.task_due {
+        None => "No date".to_string(),
+        Some(off) => {
+            let mut w = due_pick_label(today, off);
+            if let Some(t) = st.ui.task_time {
+                w = format!("{w} {}", poni_core::agenda::fmt_time(t));
+            }
+            if !st.ui.task_every.is_once() {
+                w = format!("{w} \u{b7} {}", st.ui.task_every.short());
+            }
+            w
+        }
+    };
     let dw = ui.pill_width(&due_word, true, true);
     let pill_y = area.y + (INPUT_H - PILL_SMALL) / 2.0;
     let due_r = Rect::new(area.right() - dw - 6.0, pill_y, dw, PILL_SMALL);
@@ -295,7 +307,7 @@ fn submit(ui: &mut Ui, st: &mut AppState, anim: &mut ListAnim, day_start: i64) {
             let t = st.local;
             let day = poni_core::datetime::days_from_civil(t.year, t.month, t.day) + i64::from(n);
             let (year, month, d) = poni_core::datetime::civil_from_days(day);
-            let due = poni_core::agenda::Due { year, month, day: d, time: None, remind: None };
+            let due = poni_core::agenda::Due { year, month, day: d, time: st.ui.task_time, remind: st.ui.task_remind, every: st.ui.task_every };
             st.store.tasks.add_due(&st.ui.task_input, st.unix, due)
         }
     };
@@ -388,6 +400,9 @@ fn due_label(st: &AppState, id: u64) -> Option<(String, Color)> {
     };
     if let Some(time) = d.time {
         label = format!("{label} {}", poni_core::agenda::fmt_time(time));
+    }
+    if !d.every.is_once() {
+        label = format!("{label} \u{b7} {}", d.every.short());
     }
     let now_min = i64::from(t.hour) * 60 + i64::from(t.minute);
     let late = day < today || (day == today && d.time.is_some_and(|x| i64::from(x) < now_min));
@@ -609,25 +624,112 @@ fn draw_due_picker(ui: &mut Ui, st: &mut AppState, r: Rect, today: i64, (y, m): 
             ui.c.text(&dd.to_string(), cell, &num.color(ink));
         }
     }
-    // Quick picks.
-    let qx = grid.right() + 20.0;
-    let next_monday = today + 7 - (i64::from(weekday_from_days(today)) + 6) % 7;
-    let picks: [(&str, Option<i64>); 4] = [("Today", Some(today)), ("Tomorrow", Some(today + 1)), ("Next Monday", Some(next_monday)), ("No date", None)];
-    for (i, (label, day)) in picks.iter().enumerate() {
-        let w = ui.pill_width(label, false, true);
-        let pr = Rect::new(qx, r.y + PICK_TITLE_H + 4.0 + i as f32 * (PILL_SMALL + 6.0), w, PILL_SMALL);
-        if pr.right() > r.right() {
-            break;
-        }
-        let on = day.map(|d| Some(d) == picked).unwrap_or(picked.is_none());
-        let style = if on { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
-        if ui.pill(wid_n("tasks.pick.quick", i as u64), pr, label, None, style).clicked {
-            st.ui.task_due = day.map(|d| (d - today) as u16);
-            st.ui.task_pick_month = None;
-        }
-    }
     if let Some(day) = chose {
         st.ui.task_due = Some((day - today) as u16);
+    }
+    // Beside the month, a row each: quick days; the time and the reminder;
+    // the repeat; No date and Done.
+    let qx = grid.right() + 18.0;
+    let row_y = |i: f32| r.y + 2.0 + i * (PILL_SMALL + 6.0);
+    let mut x = qx;
+    let next_monday = today + 7 - (i64::from(weekday_from_days(today)) + 6) % 7;
+    for (i, (label, day)) in [("Today", today), ("Tomorrow", today + 1), ("Next Mon", next_monday)].iter().enumerate() {
+        let w = ui.pill_width(label, false, true);
+        let pr = Rect::new(x, row_y(0.0), w, PILL_SMALL);
+        let style = if Some(*day) == picked { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+        if ui.pill(wid_n("tasks.pick.quick", i as u64), pr, label, None, style).clicked {
+            st.ui.task_due = Some((day - today) as u16);
+        }
+        x = pr.right() + 6.0;
+    }
+    // The time: all day, or a time moved 5 minutes a step.
+    let time = st.ui.task_time;
+    let tlabel = time.map_or("All day".to_string(), poni_core::agenda::fmt_time);
+    let tw = ui.pill_width(&tlabel, true, true);
+    let tr = Rect::new(qx, row_y(1.0), tw, PILL_SMALL);
+    let tstyle = if time.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("tasks.pick.time"), tr, &tlabel, Some(Icon::Clock), tstyle).clicked {
+        st.ui.task_time = match time {
+            Some(_) => None,
+            None => {
+                let now = i32::from(st.local.hour) * 60 + i32::from(st.local.minute);
+                Some((((now / 5) + 1) * 5).rem_euclid(1440) as u16)
+            }
+        };
+        if st.ui.task_due.is_none() {
+            st.ui.task_due = Some(0);
+        }
+    }
+    let mut x = tr.right() + 6.0;
+    if let Some(t) = st.ui.task_time {
+        let minus = Rect::new(tr.right() + 2.0, tr.y + 3.0, 22.0, 22.0);
+        let plus = Rect::new(minus.right(), tr.y + 3.0, 22.0, 22.0);
+        let mut step = 0;
+        if ui.icon_button(wid("tasks.pick.time.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
+            step = -1;
+        }
+        if ui.icon_button(wid("tasks.pick.time.plus"), plus, Icon::Plus, palette::TEXT_DIM, 11.0).clicked {
+            step = 1;
+        }
+        let wheel = ui.wheel_in(Rect::new(tr.x, tr.y, plus.right() - tr.x, tr.h));
+        if wheel != 0.0 {
+            step += wheel.signum() as i32;
+        }
+        if step != 0 {
+            st.ui.task_time = Some((i32::from(t) + step * 5).rem_euclid(1440) as u16);
+        }
+        x = plus.right() + 6.0;
+    }
+    // The reminder.
+    let remind = st.ui.task_remind;
+    let rlabel = poni_core::agenda::remind_label(remind);
+    let rw = ui.pill_width(&rlabel, true, true);
+    let rr = Rect::new(x, row_y(1.0), rw, PILL_SMALL);
+    let rstyle = if remind.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("tasks.pick.remind"), rr, &rlabel, Some(Icon::Bell), rstyle).clicked {
+        let all = poni_core::agenda::REMINDERS;
+        let i = all.iter().position(|x| *x == remind).unwrap_or(0);
+        st.ui.task_remind = all[(i + 1) % all.len()];
+        if st.ui.task_due.is_none() {
+            st.ui.task_due = Some(0);
+        }
+    }
+    // The repeat: once, or every n days, weeks, months, years.
+    let every = st.ui.task_every;
+    let elabel = if every.is_once() { "Once".to_string() } else { every.short() };
+    let ew = ui.pill_width(&elabel, false, true);
+    let er = Rect::new(qx, row_y(2.0), ew, PILL_SMALL);
+    let estyle = if every.is_once() { PillStyle::Utility } else { PillStyle::UtilityAccent(st.accent) };
+    if ui.pill(wid("tasks.pick.every"), er, &elabel, None, estyle).clicked {
+        st.ui.task_every = every.next_kind();
+        if st.ui.task_due.is_none() {
+            st.ui.task_due = Some(0);
+        }
+    }
+    if !every.is_once() {
+        let n = every.count();
+        let minus = Rect::new(er.right() + 2.0, er.y + 3.0, 22.0, 22.0);
+        let plus = Rect::new(minus.right(), er.y + 3.0, 22.0, 22.0);
+        if ui.icon_button(wid("tasks.pick.every.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
+            st.ui.task_every = every.with_count(n.saturating_sub(1));
+        }
+        if ui.icon_button(wid("tasks.pick.every.plus"), plus, Icon::Plus, palette::TEXT_DIM, 11.0).clicked {
+            st.ui.task_every = every.with_count(n + 1);
+        }
+    }
+    // No date (and none of the rest), and Done.
+    let nw = ui.pill_width("No date", false, true);
+    let nr = Rect::new(qx, row_y(3.0), nw, PILL_SMALL);
+    if ui.pill(wid("tasks.pick.none"), nr, "No date", None, PillStyle::Utility).clicked {
+        st.ui.task_due = None;
+        st.ui.task_time = None;
+        st.ui.task_remind = None;
+        st.ui.task_every = poni_core::agenda::Every::Once;
+        st.ui.task_pick_month = None;
+    }
+    let dw = ui.pill_width("Done", true, true);
+    let dr = Rect::new(nr.right() + 6.0, row_y(3.0), dw, PILL_SMALL);
+    if ui.pill(wid("tasks.pick.done"), dr, "Done", Some(Icon::Check), PillStyle::UtilityAccent(st.accent)).clicked {
         st.ui.task_pick_month = None;
     }
 }

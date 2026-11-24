@@ -63,6 +63,11 @@ impl TaskList {
 
     pub fn toggle(&mut self, id: u64, now_unix: i64) -> bool {
         if let Some(t) = self.tasks.iter_mut().find(|t| t.id == id) {
+            // A repeating task isn't done: it's due again on its next day.
+            if let Some(next) = t.due.filter(|_| !t.done).and_then(|d| d.next()) {
+                t.due = Some(next);
+                return true;
+            }
             t.done = !t.done;
             t.done_unix = if t.done { Some(now_unix) } else { None };
             true
