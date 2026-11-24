@@ -78,7 +78,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, _t: HudTag, body: Rect) -> bool {
         }
         HudKind::LowBattery { percent } => power(ui, body, Icon::Battery, palette::RED, "Low battery", percent, false),
         HudKind::Bluetooth { name, connected, battery, audio } => bluetooth(ui, st, body, &name, connected, battery, audio),
-        HudKind::Lock { .. } | HudKind::Language { .. } | HudKind::Brightness { .. } => return false,
+        HudKind::Lock { .. } | HudKind::Language { .. } | HudKind::Brightness { .. } | HudKind::Mic { .. } => return false,
     }
     true
 }

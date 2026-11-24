@@ -159,7 +159,8 @@ impl PageKind {
 
     /// Has a tab in the header's row (Settings has the gear instead).
     pub fn tabbed(self) -> bool {
-        self != PageKind::Settings
+        // Recent notifications, like Settings, opens from a header button.
+        !matches!(self, PageKind::Settings | PageKind::Notifications)
     }
 
     /// The island's own pages, which Settings can take off the row, and
@@ -526,6 +527,32 @@ pub(crate) fn draw_header(ui: &mut Ui, st: &mut AppState, r: Rect, page: PageKin
 
     let gear_r = Rect::new(snap(left - PIN_GAP - GEAR, scale), cy - GEAR / 2.0, GEAR, GEAR);
     let pin_r = Rect::new(snap(gear_r.x - GEAR_GAP - PIN, scale), cy - PIN / 2.0, PIN, PIN);
+    // The bell, while there are recent notifications: its count of new
+    // ones, and the list behind it (a second press goes back).
+    let bell_r = Rect::new(snap(pin_r.x - GEAR_GAP - PIN, scale), cy - PIN / 2.0, PIN, PIN);
+    if st.notifications_on() && (!st.recent.is_empty() || page == PageKind::Notifications) && bell_r.x > tabs_end + 8.0 {
+        let on = page == PageKind::Notifications;
+        if on {
+            ui.c.fill_rrect(bell_r, PIN / 2.0, Color::white(0.14));
+        }
+        let color = if on { palette::TEXT } else { palette::TEXT_FAINT };
+        let resp = ui.icon_button(wid("header.bell"), bell_r, Icon::Bell, color, 15.0);
+        if st.recent_unseen > 0 && !on {
+            let c = Point::new(bell_r.right() - 3.0, bell_r.y + 3.0);
+            ui.c.fill_circle(c, 6.5, palette::RED);
+            let n = st.recent_unseen.min(9).to_string();
+            ui.c.text(&n, Rect::from_center(c, 12.0, 12.0), &TextStyle::caption().weight(Weight::Bold).center().color(palette::ON_ACCENT));
+        }
+        if resp.clicked {
+            if on {
+                let back = st.ui.before_settings.take().filter(|p| row.contains(p)).unwrap_or(row[0]);
+                st.cmd(Command::SetPage(back));
+            } else {
+                st.ui.before_settings = Some(page);
+                st.cmd(Command::SetPage(PageKind::Notifications));
+            }
+        }
+    }
     if pin_r.x > tabs_end + 8.0 {
         let pinned = st.pinned;
         let (icon, color) = if pinned { (Icon::PinFill, st.accent) } else { (Icon::Pin, palette::TEXT_FAINT) };

@@ -487,6 +487,8 @@ pub struct App {
     /// brightness Windows last reported: a pop-up only for a change.
     keyboard_layout: Option<isize>,
     brightness: Option<u8>,
+    /// The microphone's mute as last reported (None: not yet).
+    mic_muted: Option<bool>,
     /// Looks left for a language switch after its keys.
     language_looks: u8,
     /// Looks left to put Windows' brightness pop-up away.
@@ -677,6 +679,7 @@ impl App {
             banners: services::banners::Banners::load(),
             keyboard_layout: None,
             brightness: None,
+            mic_muted: None,
             language_looks: 0,
             osd_looks: 0,
         })
@@ -1465,6 +1468,8 @@ impl App {
     /// open island never sits over it.
     fn show_settings(&mut self, deferred: &mut Vec<Deferred>) {
         self.collapse();
+        // Settings > Notifications says what Windows allows now (it may have changed there).
+        self.notify_cmd(NotifyCmd::Check);
         self.open_settings_window(None, deferred);
     }
 
@@ -1648,8 +1653,28 @@ impl App {
             }
             WM_KEYDOWN => {
                 let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
-                if wp.0 == VK_ESCAPE.0 as usize || (ctrl && wp.0 == b'W' as usize) {
+                let search = &mut self.st.ui.settings_search;
+                if wp.0 == VK_ESCAPE.0 as usize && !search.is_empty() {
+                    // Escape clears a search first, then closes.
+                    search.clear();
+                    w.view.dirty = true;
+                    self.paint_settings(deferred);
+                } else if wp.0 == VK_ESCAPE.0 as usize || (ctrl && wp.0 == b'W' as usize) {
                     self.close_settings_window();
+                } else if wp.0 == VK_BACK.0 as usize && search.pop().is_some() {
+                    w.view.dirty = true;
+                    self.paint_settings(deferred);
+                }
+                Some(LRESULT(0))
+            }
+            WM_CHAR => {
+                // Typing searches the settings.
+                if let Some(c) = char::from_u32(wp.0 as u32).filter(|c| !c.is_control()) {
+                    if self.st.ui.settings_search.chars().count() < 40 {
+                        self.st.ui.settings_search.push(c);
+                        w.view.dirty = true;
+                        self.paint_settings(deferred);
+                    }
                 }
                 Some(LRESULT(0))
             }
@@ -2040,6 +2065,13 @@ impl App {
         }
         match ev {
             AppEvent::FrontWindow(h) => self.screen_front(HWND(h as *mut _)),
+            AppEvent::MicMute(muted) => {
+                if self.mic_muted.replace(muted).is_some_and(|was| was != muted) && self.st.settings.hud_mic {
+                    self.st.show_hud(HudKind::Mic { muted }, 1.6);
+                    self.sync_fullscreen_hud();
+                    self.request_frame();
+                }
+            }
             AppEvent::Notes(reply) => self.notes_reply(*reply),
             AppEvent::NotesStopped(issue) => {
                 pwarn!("notes: the recording stopped by itself ({issue:?})");
@@ -2287,7 +2319,7 @@ impl App {
             self.expanded = true;
             self.cancel_hover();
             if self.st.page == PageKind::Notifications {
-                self.notify_cmd(NotifyCmd::Check);
+                self.st.recent_unseen = 0;
             }
         }
         self.request_frame();
@@ -3264,7 +3296,7 @@ impl App {
         // Prayer times or Notifications switched off: its tab is gone.
         let gone = match self.st.page {
             PageKind::Prayer => !self.st.prayer_on(),
-            PageKind::Notifications => true,
+            PageKind::Notifications => !self.st.notifications_on(),
             _ => false,
         };
         if gone {
@@ -4023,7 +4055,8 @@ impl App {
                 self.blur_text();
             }
             if p == PageKind::Notifications {
-                self.notify_cmd(NotifyCmd::Check);
+                // Looked at: the badge goes.
+                self.st.recent_unseen = 0;
             }
         }
     }
@@ -4106,6 +4139,10 @@ impl App {
                 }
                 Command::Notify(c) => self.notify_cmd(c),
                 Command::Notes(c) => self.notes_cmd(c),
+                Command::OpenApp(id) => {
+                    shell::open_app(&id);
+                    self.collapse();
+                }
                 Command::Menu(c) => self.on_menu(c),
             }
         }
@@ -4263,6 +4300,13 @@ impl App {
                     return;
                 }
                 if let Some(n) = pages::notifications::message_notice(&seen, &self.st.settings.notifications, self.st.accent, self.st.now) {
+                    // Kept for the recent list, and counted until it's looked at.
+                    let title = n.title.clone();
+                    self.st.recent.push_front(crate::state::Recent { app_id: seen.app_id.clone(), app: seen.app.clone(), title, text: n.subtitle.clone(), at: self.st.unix });
+                    self.st.recent.truncate(pages::notifications::KEEP);
+                    if !(self.expanded && self.st.page == PageKind::Notifications) {
+                        self.st.recent_unseen = self.st.recent_unseen.saturating_add(1);
+                    }
                     // Its sender's picture comes a moment later, if it has one.
                     self.st.notice_card_id = seen.id;
                     self.st.notice_photo = None;

@@ -114,6 +114,7 @@ fn hud_tag(k: &HudKind) -> HudTag {
         HudKind::Lock { .. } => HudTag::Lock,
         HudKind::Language { .. } => HudTag::Language,
         HudKind::Brightness { .. } => HudTag::Brightness,
+        HudKind::Mic { .. } => HudTag::Lock,
     }
 }
 
@@ -474,7 +475,10 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
     let stacked = stacks(m, st);
     let top = if stacked { Rect::new(body.x, body.y, body.w, (body.h - STACK_ROW).max(0.0)) } else { body };
     match m {
-        Mode::Idle => draw_idle(ui, st, body),
+        Mode::Idle => {
+            draw_idle(ui, st, body);
+            draw_unseen(ui, st, body);
+        }
         Mode::Activity(a) => draw_activity(ui, st, *a, top),
         Mode::Hud(_) => draw_hud(ui, st, top),
         Mode::Notice => draw_notice(ui, st, top),
@@ -494,6 +498,19 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, m: &Mode, body: Rect) {
 fn snap(ui: &Ui, v: f32) -> f32 {
     let s = ui.c.scale().max(0.1);
     (v * s).round() / s
+}
+
+/// New notifications since the list was looked at: a small red count at
+/// the resting island's right end (the bell in the open island's header
+/// has the list).
+fn draw_unseen(ui: &mut Ui, st: &AppState, body: Rect) {
+    if st.recent_unseen == 0 || !st.notifications_on() || body.h < 20.0 {
+        return;
+    }
+    let c = Point::new(body.right() - 14.0, body.center().y);
+    ui.c.fill_circle(c, 7.0, palette::RED);
+    let n = st.recent_unseen.min(9).to_string();
+    ui.c.text(&n, Rect::from_center(c, 14.0, 14.0), &TextStyle::caption().weight(Weight::Bold).center().color(palette::ON_ACCENT));
 }
 
 fn draw_idle(ui: &mut Ui, st: &mut AppState, body: Rect) {
@@ -750,6 +767,16 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             };
             let value = if muted { "Muted".to_string() } else { format!("{}", (level * 100.0).round() as i32) };
             level_row(ui, st, body, icon, "Volume", if muted { 0.0 } else { level }, &value);
+        }
+        HudKind::Mic { muted } => {
+            let color = if muted { palette::RED } else { palette::TEXT };
+            ui.c.icon(Icon::Mic, icon_r, color);
+            if muted {
+                ui.c.line(Point::new(icon_r.x + 2.0, icon_r.y + 2.0), Point::new(icon_r.right() - 2.0, icon_r.bottom() - 2.0), color, 1.8);
+            }
+            ui.c.text("Microphone", Rect::new(body.x + 46.0, body.y, 140.0, body.h), &label_st);
+            let (word, wc) = if muted { ("Muted", palette::RED) } else { ("On", st.accent) };
+            ui.c.text(word, Rect::new(body.right() - HUD_PAD - 56.0, body.y, 56.0, body.h), &label_st.color(wc).right());
         }
         HudKind::Lock { key, on } => {
             ui.c.icon(Icon::Keyboard, icon_r, palette::TEXT);

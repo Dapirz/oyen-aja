@@ -20,7 +20,7 @@ use windows::core::{implement, Result, PCWSTR};
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::Media::Audio::Endpoints::{IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl};
 use windows::Win32::Media::Audio::{
-    eConsole, eMultimedia, eRender, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
+    eCapture, eConsole, eMultimedia, eRender, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
     MMDeviceEnumerator, AUDCLNT_E_DEVICE_INVALIDATED, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
@@ -101,6 +101,9 @@ impl Drop for AudioService {
 enum Msg {
     /// The default render endpoint (console or multimedia role) changed.
     DefaultChanged,
+    /// The default recording endpoint changed (the microphone's mute is
+    /// watched there).
+    MicChanged,
     Shutdown,
 }
 
@@ -169,6 +172,29 @@ impl IAudioEndpointVolumeCallback_Impl for VolumeCallback_Impl {
     }
 }
 
+/// The default microphone's mute, for its pop-up: only the mute, and only
+/// when it changes (its level moving says nothing).
+#[implement(IAudioEndpointVolumeCallback)]
+struct MicCallback {
+    sink: EventSink,
+    last: Arc<Mutex<Option<bool>>>,
+}
+
+impl IAudioEndpointVolumeCallback_Impl for MicCallback_Impl {
+    fn OnNotify(&self, pnotify: *mut AUDIO_VOLUME_NOTIFICATION_DATA) -> Result<()> {
+        // SAFETY: as in `VolumeCallback`.
+        if let Some(data) = unsafe { pnotify.as_ref() } {
+            let muted = data.bMuted.as_bool();
+            let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
+            if *last != Some(muted) {
+                *last = Some(muted);
+                self.sink.send(AppEvent::MicMute(muted));
+            }
+        }
+        Ok(())
+    }
+}
+
 #[implement(IMMNotificationClient)]
 struct DeviceClient {
     tx: Sender<Msg>,
@@ -191,6 +217,9 @@ impl IMMNotificationClient_Impl for DeviceClient_Impl {
         // Never touch Core Audio from here: just wake the worker.
         if flow == eRender && (role == eConsole || role == eMultimedia) {
             let _ = self.tx.send(Msg::DefaultChanged);
+        }
+        if flow == eCapture && role == eConsole {
+            let _ = self.tx.send(Msg::MicChanged);
         }
         Ok(())
     }
@@ -271,13 +300,21 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
         }
     };
 
-    let gate = Arc::new(Gate { sink, state: Mutex::new(GateState { generation: 0, last: None }) });
+    let mic_last = Arc::new(Mutex::new(None));
+    let mut mic = bind_mic(&enumerator, &sink, &mic_last);
+    let gate = Arc::new(Gate { sink: sink.clone(), state: Mutex::new(GateState { generation: 0, last: None }) });
     // The first report doubles as the initial state, which the app shows silently.
     let mut binding = rebind(&enumerator, &gate, None);
 
     while let Ok(msg) = rx.recv() {
         match msg {
             Msg::Shutdown => break,
+            Msg::MicChanged => {
+                if let Some(b) = mic.take() {
+                    b.unbind();
+                }
+                mic = bind_mic(&enumerator, &sink, &mic_last);
+            }
             Msg::DefaultChanged => {
                 // One switch fires once per role; handle the burst once.
                 let mut shutdown = false;
@@ -296,6 +333,9 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
     }
 
     if let Some(b) = binding {
+        b.unbind();
+    }
+    if let Some(b) = mic {
         b.unbind();
     }
     if client_registered {
@@ -356,6 +396,30 @@ fn bind(device: &IMMDevice, id: String, gate: &Arc<Gate>, generation: u32) -> Re
     let callback: IAudioEndpointVolumeCallback = VolumeCallback { gate: Arc::clone(gate), generation }.into();
     unsafe { volume.RegisterControlChangeNotify(&callback)? };
     Ok(Binding { id, volume, callback })
+}
+
+/// Watch the default microphone's mute (none: no microphone). Its state now
+/// is reported once, which the app takes as the start, not a change.
+fn bind_mic(enumerator: &IMMDeviceEnumerator, sink: &EventSink, last: &Arc<Mutex<Option<bool>>>) -> Option<Binding> {
+    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eCapture, eConsole) }.ok()?;
+    let id = device_id(&device);
+    let r = (|| -> Result<Binding> {
+        let volume: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
+        let callback: IAudioEndpointVolumeCallback = MicCallback { sink: sink.clone(), last: Arc::clone(last) }.into();
+        unsafe { volume.RegisterControlChangeNotify(&callback)? };
+        if let Ok(m) = unsafe { volume.GetMute() } {
+            *last.lock().unwrap_or_else(|e| e.into_inner()) = Some(m.as_bool());
+            sink.send(AppEvent::MicMute(m.as_bool()));
+        }
+        Ok(Binding { id, volume, callback })
+    })();
+    match r {
+        Ok(b) => Some(b),
+        Err(e) => {
+            crate::pwarn!("audio: watching the microphone failed ({e})");
+            None
+        }
+    }
 }
 
 /// The endpoint id string ("" if it cannot be read).

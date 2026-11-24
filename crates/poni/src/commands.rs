@@ -104,6 +104,8 @@ pub enum Command {
     Notify(NotifyCmd),
     /// The Notes page's buttons (Meeting notes).
     Notes(NotesCmd),
+    /// Open the app with this AppUserModelID (a recent notification's).
+    OpenApp(String),
     /// What the tray's menu used to do, from Settings (Apple Music's token).
     Menu(crate::tray::MenuCmd),
 }

@@ -78,6 +78,8 @@ pub enum Icon {
     Keyboard,
     /// The brightness pop-up.
     Sun,
+    /// The microphone pop-up (on, and with a stroke across for muted).
+    Mic,
     /// A row's handle to drag it by: two columns of three dots.
     Grip,
 }
@@ -237,6 +239,7 @@ pub fn parts(icon: Icon) -> &'static [Part] {
             s("M16.5 13.5h1"),
             s("M10 14h4"),
         ],
+        Mic => p![s("M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0z"), s("M5.5 11a6.5 6.5 0 0 0 13 0"), s("M12 17.5V21")],
         Sun => p![
             s("M8.5 12a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0"),
             s("M12 3.5v1.5"),
@@ -275,7 +278,7 @@ mod tests {
         Icon::Gear,
         Icon::App, Icon::Addons, Icon::Moon, Icon::Stop, Icon::Script,
         Icon::AppWindow, Icon::Bell, Icon::Message, Icon::Copy, Icon::Notes,
-        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip, Icon::Keyboard, Icon::Sun,
+        Icon::ChevronUp, Icon::ChevronDown, Icon::Grip, Icon::Keyboard, Icon::Sun, Icon::Mic,
     ];
 
     #[test]

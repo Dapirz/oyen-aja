@@ -50,6 +50,11 @@ const NAV_Y: f32 = 64.0;
 const NAV_H: f32 = 32.0;
 const NAV_GAP: f32 = 2.0;
 const NAV_TILE: f32 = 22.0;
+/// A group's heading in the sidebar.
+const NAV_HEAD: f32 = 22.0;
+/// The search field, right of the section's title.
+const SEARCH_W: f32 = 220.0;
+const SEARCH_H: f32 = 30.0;
 /// Rows: one line, or a label over a dim line.
 const ROW_H: f32 = 40.0;
 const ROW_H_SUB: f32 = 52.0;
@@ -165,10 +170,10 @@ impl Section {
         Section::General,
         Section::Appearance,
         Section::Island,
-        Section::Music,
         Section::Popups,
-        Section::Notifications,
         Section::Tabs,
+        Section::Music,
+        Section::Notifications,
         Section::Addons,
         Section::Focus,
         Section::Clipboard,
@@ -251,6 +256,11 @@ impl Section {
         }
     }
 
+    /// The sidebar's group: the island itself (false) or a feature (true).
+    fn feature(self) -> bool {
+        !matches!(self, Section::General | Section::Appearance | Section::Island | Section::Popups | Section::Tabs | Section::About)
+    }
+
     /// Prayer times has a section only while its add-on is on.
     pub fn shown(self, st: &AppState) -> bool {
         match self {
@@ -323,6 +333,7 @@ pub enum Key {
     HudLocks,
     HudLanguage,
     HudBrightness,
+    HudMic,
     HudOverFullscreen,
     HudHideBrightness,
     RememberPage,
@@ -591,6 +602,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 switch(Key::HudLocks, "Caps Lock, Num Lock and Scroll Lock", Some("On or Off for a moment when you press one"), s.hud_locks),
                 switch(Key::HudLanguage, "Keyboard language", Some("The new language when you switch (Windows + Space)"), s.hud_language),
                 switch(Key::HudBrightness, "Brightness", Some("When the screen's brightness changes"), s.hud_brightness),
+                switch(Key::HudMic, "Microphone on and off", Some("When the microphone is muted or back on (a mic key, an app)"), s.hud_mic),
             ],
         ),
         Block::Group(
@@ -903,6 +915,7 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::HudLocks => s.hud_locks = !s.hud_locks,
         Key::HudLanguage => s.hud_language = !s.hud_language,
         Key::HudBrightness => s.hud_brightness = !s.hud_brightness,
+        Key::HudMic => s.hud_mic = !s.hud_mic,
         Key::HudOverFullscreen => s.hud_over_fullscreen = !s.hud_over_fullscreen,
         Key::HudHideBrightness => s.hud_hide_windows_brightness = !s.hud_hide_windows_brightness,
         Key::RememberPage => s.remember_page = !s.remember_page,
@@ -1339,8 +1352,22 @@ fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: b
 
     let picked = draw_sidebar(ui, st, side, section, frame.top, m);
     let content = Rect::new(side.right() + PAD, card.y, card.right() - side.right() - 2.0 * PAD, card.h);
-    ui.c.text(section.title(), Rect::new(content.x, card.y + TITLE_Y, content.w - 40.0, TITLE_H), &TextStyle::new(22.0).weight(Weight::Bold));
+    let query = st.ui.settings_search.trim().to_lowercase();
+    let title = if query.is_empty() { section.title() } else { "Search" };
+    ui.c.text(title, Rect::new(content.x, card.y + TITLE_Y, content.w - 40.0 - SEARCH_W, TITLE_H), &TextStyle::new(22.0).weight(Weight::Bold));
     let close = frame.own_chrome && draw_close(ui, card, m);
+    // The search field: whatever is typed while the window has the keyboard.
+    let field = Rect::new(content.right() - 44.0 - SEARCH_W, card.y + TITLE_Y + (TITLE_H - SEARCH_H) / 2.0, SEARCH_W, SEARCH_H);
+    ui.c.fill_rrect(field, SEARCH_H / 2.0, sf.group);
+    let typed = !st.ui.settings_search.is_empty();
+    let (shown, color) = if typed { (st.ui.settings_search.as_str(), palette::TEXT) } else { ("Type to search", palette::TEXT_FAINT) };
+    ui.c.text(shown, Rect::new(field.x + 14.0, field.y, field.w - 40.0, field.h), &TextStyle::body().color(color));
+    if typed {
+        let x = Rect::new(field.right() - 28.0, field.y + 3.0, 24.0, 24.0);
+        if ui.icon_button(wid("settingswin.search.clear"), x, Icon::Close, palette::TEXT_DIM, 12.0).clicked {
+            st.ui.settings_search.clear();
+        }
+    }
 
     let view = Rect::new(content.x - PAD / 2.0, card.y + CONTENT_Y, content.w + PAD, card.bottom() - CONTENT_Y - card.y - 1.0);
     // From here on, the section's own: its scroll and rows, whose values go
@@ -1367,7 +1394,8 @@ fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: b
     ui.c.clip(view);
     let mut y = view.y - sc.at;
     let x = content.x;
-    for (bi, b) in blocks(section, st).into_iter().enumerate() {
+    let shown_blocks = if query.is_empty() { blocks(section, st) } else { search(st, &query) };
+    for (bi, b) in shown_blocks.into_iter().enumerate() {
         y = draw_block(ui, st, &b, bi, Rect::new(x, y, content.w, 0.0), view, &sf, m);
     }
     ui.c.unclip();
@@ -1380,6 +1408,29 @@ fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: b
         return Some(Nav::Close);
     }
     picked.filter(|p| *p != section).map(Nav::Section)
+}
+
+/// The rows whose name or line has `query` in it (lower case), each under
+/// its section's name, there to use as they are.
+pub fn search(st: &AppState, query: &str) -> Vec<Block> {
+    let mut out = Vec::new();
+    for s in sections(st) {
+        let hits: Vec<Item> = blocks(s, st)
+            .into_iter()
+            .flat_map(|b| match b {
+                Block::Group(_, items) => items,
+                _ => Vec::new(),
+            })
+            .filter(|it| it.label.to_lowercase().contains(query) || it.sub.as_deref().is_some_and(|x| x.to_lowercase().contains(query)) || s.title().to_lowercase().contains(query))
+            .collect();
+        if !hits.is_empty() {
+            out.push(Block::Group(Some(s.title()), hits));
+        }
+    }
+    if out.is_empty() {
+        out.push(Block::Note("No setting matches."));
+    }
+    out
 }
 
 /// The close button at the card's top right (Windows). True when clicked.
@@ -1413,7 +1464,15 @@ fn draw_sidebar(ui: &mut Ui, st: &mut AppState, side: Rect, section: Section, to
     ui.c.text("Advanced settings", Rect::new(icon_c.x + 20.0, side.y + top + 20.0, side.w - 60.0, 24.0), &TextStyle::headline());
     let list = sections(st);
     let about_at = side.bottom() - 12.0 - NAV_H;
-    let row_y = |i: usize, s: Section| if s == Section::About { about_at } else { side.y + top + NAV_Y + i as f32 * (NAV_H + NAV_GAP) };
+    // A heading over each group: the island's own, then the features.
+    let first_feature = list.iter().position(|s| s.feature()).unwrap_or(list.len());
+    let heads = |i: usize| if i >= first_feature { 2.0 } else { 1.0 };
+    let row_y = |i: usize, s: Section| if s == Section::About { about_at } else { side.y + top + NAV_Y - 8.0 + heads(i) * NAV_HEAD + i as f32 * (NAV_H + NAV_GAP) };
+    let head_st = TextStyle::caption().weight(Weight::Semibold).color(palette::TEXT_FAINT);
+    ui.c.text("ISLAND", Rect::new(side.x + 20.0, row_y(0, Section::General) - NAV_HEAD + 2.0, side.w - 40.0, NAV_HEAD - 4.0), &head_st);
+    if first_feature < list.len() {
+        ui.c.text("FEATURES", Rect::new(side.x + 20.0, row_y(first_feature, list[first_feature]) - NAV_HEAD + 2.0, side.w - 40.0, NAV_HEAD - 4.0), &head_st);
+    }
     // The highlight, under the rows.
     let sel_key = mkey(wid("settingswin.nav.sel"), K_Y);
     if let Some(i) = list.iter().position(|s| *s == section) {
@@ -2206,6 +2265,14 @@ mod tests {
         st.cmds.clear();
         apply(&mut st, Key::CloseDelay, Act::Pick(9));
         assert!(st.cmds.is_empty());
+    }
+
+    #[test]
+    fn search_finds_rows_in_every_section_under_its_name() {
+        let st = state();
+        let found = search(&st, "lyrics");
+        assert!(found.iter().any(|b| matches!(b, Block::Group(Some("Music and lyrics"), items) if items.iter().any(|i| i.key == Key::LyricsBold))));
+        assert_eq!(search(&st, "zzzz"), vec![Block::Note("No setting matches.")]);
     }
 
     #[test]

@@ -111,6 +111,8 @@ pub enum HudKind {
     Language { name: String },
     /// The screen's brightness, 0..100.
     Brightness { percent: u8 },
+    /// The microphone muted (true) or back on.
+    Mic { muted: bool },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -294,6 +296,8 @@ impl PhoneDrop {
 /// Transient per-page UI state (scroll offsets, text being typed, …).
 #[derive(Clone, Debug, Default)]
 pub struct PageUiState {
+    /// What's typed into the Settings window's search (empty: no search).
+    pub settings_search: String,
     /// A prayer's moment glows round the island's edge until then (mono
     /// seconds): its adzan notice, as Poni's does.
     pub glow_until: f64,
@@ -399,6 +403,19 @@ pub struct PrayerState {
     pub clock_shift: i64,
 }
 
+/// A notification the island showed, for the recent list (memory only).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Recent {
+    pub app_id: String,
+    pub app: String,
+    /// What its card said: who it's from, and the message (as the
+    /// Notifications settings let it show).
+    pub title: String,
+    pub text: String,
+    /// When it came (unix seconds).
+    pub at: i64,
+}
+
 pub struct AppState {
     pub settings: Settings,
     pub store: Store,
@@ -422,6 +439,10 @@ pub struct AppState {
     pub clip: poni_core::cliphist::ClipHistory,
     /// The Notes page's meeting (the Meeting notes add-on).
     pub notes: poni_core::notes::Taker,
+    /// The notifications shown lately, newest first, and how many came
+    /// since the list was last looked at (the badge).
+    pub recent: std::collections::VecDeque<Recent>,
+    pub recent_unseen: u32,
     /// Apps' logos for the notification card, by AppUserModelID (each
     /// fetched once, the first time that app sends a notification).
     pub notify_logos: std::collections::HashMap<String, crate::gfx::Image>,
@@ -524,6 +545,8 @@ impl AppState {
             notice_card_id: 0,
             notice_photo: None,
             notes: Default::default(),
+            recent: Default::default(),
+            recent_unseen: 0,
             shelf_thumbs: HashMap::new(),
             ui: PageUiState::default(),
             accent: palette::BLUE,

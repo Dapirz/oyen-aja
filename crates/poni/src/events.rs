@@ -82,6 +82,9 @@ pub enum LyricsResult {
 }
 
 pub enum AppEvent {
+    /// The default microphone's mute: on (true) or off; its first report is
+    /// the state at start (`services::audio`).
+    MicMute(bool),
     /// The meeting being handed over, as it goes (`services::notes`).
     Notes(Box<poni_core::notes::Reply>),
     /// The meeting's recording stopped by itself: the longest meeting taken,
