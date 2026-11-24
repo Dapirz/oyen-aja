@@ -282,7 +282,7 @@ fn seed_notifications(st: &mut AppState, scene: Scene) {
     st.notify_access = match scene {
         Scene::NotifyAsk => NotifyAccess::Ask,
         Scene::NotifyNoPackage => NotifyAccess::NoPackage,
-        Scene::Page(PageKind::Notifications) | Scene::MessageNotice | Scene::MessageHidden => NotifyAccess::Allowed,
+        Scene::Page(PageKind::Notifications) | Scene::MessageNotice | Scene::MessageHidden | Scene::MessageOverMusic => NotifyAccess::Allowed,
         _ => NotifyAccess::Unknown,
     };
     let n = &mut st.settings.notifications;
@@ -476,6 +476,9 @@ enum Scene {
     MessageNotice,
     /// ...with "Message text" switched off: it waits for Show.
     MessageHidden,
+    /// The message while a song with synced lyrics plays: the song stays
+    /// above the card.
+    MessageOverMusic,
     /// The Notifications page before Windows was asked: Allow, no apps yet.
     NotifyAsk,
     /// The Notifications page when Windows says this copy has no package (the
@@ -562,7 +565,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 60] = [
+const SCENES: [Scene; 61] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -631,6 +634,7 @@ const SCENES: [Scene; 60] = [
     // Windows was asked, and with no package.
     Scene::MessageNotice,
     Scene::MessageHidden,
+    Scene::MessageOverMusic,
     Scene::Page(PageKind::Notifications),
     Scene::NotifyAsk,
     Scene::NotifyNoPackage,
@@ -698,6 +702,7 @@ impl Scene {
             Scene::PrayerOk => "prayer-countdown-ok".into(),
             Scene::MessageNotice => "message-notice".into(),
             Scene::MessageHidden => "message-hidden-notice".into(),
+            Scene::MessageOverMusic => "message-over-music".into(),
             Scene::NotifyAsk => "page-notifications-ask".into(),
             Scene::NotifyNoPackage => "page-notifications-download".into(),
             // "page-ai", "page-ai-troubles", ...: the page's own names.
@@ -735,7 +740,7 @@ impl Scene {
     }
 
     fn media_playing(self) -> bool {
-        matches!(self, Scene::Media | Scene::MediaTimer | Scene::MediaLyric | Scene::AsideLyric | Scene::AsidePeek | Scene::PrayerOk | Scene::IslandDrag) || self.expanded()
+        matches!(self, Scene::Media | Scene::MediaTimer | Scene::MediaLyric | Scene::AsideLyric | Scene::AsidePeek | Scene::PrayerOk | Scene::IslandDrag | Scene::MessageOverMusic) || self.expanded()
     }
 
     /// The island is off the middle of the screen.
@@ -2106,7 +2111,7 @@ impl SelfTest {
         }
 
         if scene.media_playing() {
-            let pos = if matches!(scene, Scene::MediaLyric | Scene::AsideLyric | Scene::PrayerOk) { self.lyric_pos } else { TRACK_POS_S };
+            let pos = if matches!(scene, Scene::MediaLyric | Scene::AsideLyric | Scene::PrayerOk | Scene::MessageOverMusic) { self.lyric_pos } else { TRACK_POS_S };
             let timeline = Timeline::new(pos, TRACK_LEN_S, now, true);
             match st.media.as_mut() {
                 Some(m) if m.track_key == self.track_key => m.timeline = timeline,
@@ -2146,8 +2151,8 @@ impl SelfTest {
                 inline: None,
                 reveal: None,
             }),
-            Scene::MessageNotice | Scene::MessageHidden => {
-                let choices = NotificationSettings { text: scene == Scene::MessageNotice, ..Default::default() };
+            Scene::MessageNotice | Scene::MessageHidden | Scene::MessageOverMusic => {
+                let choices = NotificationSettings { text: scene != Scene::MessageHidden, ..Default::default() };
                 crate::pages::notifications::message_notice(&sample_message(), &choices, st.accent, now).map(|n| Notice { until, ..n })
             }
             _ => None,
@@ -2172,7 +2177,7 @@ impl SelfTest {
         // Notifications (on by default, but only in the Store copy: the self-test
         // runs the download): as the Store copy for its page, its notices and
         // the Settings scene with its chip.
-        st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::SettingsTabsStore);
+        st.notify_can = scene.page() == Some(PageKind::Notifications) || matches!(scene, Scene::MessageNotice | Scene::MessageHidden | Scene::MessageOverMusic | Scene::SettingsTabsStore);
         // The PC's own clock (a Diorama run holds its own after this).
         clock::hold_local(None);
         seed_notifications(st, scene);

@@ -47,7 +47,7 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - Two rows (bawaan nyala) di Classic, Smoke, Glass (`smoke::two_rows`): cover, jam (bisa dimatikan: Clock), equalizer, lalu lirik; progress bar di tepi bawah dengan warna equalizer. Ukuran 300–680 × 60.
 - Lebar ikut baris lirik sekarang: membesar 0,45 dtk sebelum baris yang lebih panjang (`lyric::upcoming`), mengecil bersama baris pendek; maks 680 (`pill::media::MAX_W`), jendela island ikut selebar itu.
 - Setting: Frame rate, ukuran dan bold lirik, After pausing (0/5/10/30 dtk/Keep), Title without lyrics, running text untuk judul panjang.
-- Suara notifikasi situs (misalnya WhatsApp Web di browser, judulnya "web.whatsapp.com") tidak dianggap musik: `MediaSession::is_blip` (< 20 dtk, atau judul nama situs tanpa artis).
+- Suara notifikasi situs (misalnya WhatsApp Web di browser, judulnya "web.whatsapp.com") tidak dianggap musik: `MediaSession::is_blip` (< 20 dtk, atau judul nama situs tanpa artis). Saat lagu main, suara itu tidak menggantikan lagunya (`MediaSession::holds_over`): Windows sempat pindah ke sesi "WhatsApp Web" 2–3 dtk tiap pesan, dan dulu kartu notifikasi jadi muncul tanpa musik di atasnya. Selftest `message-over-music` menggambar kartu di bawah lagu.
 - Notice atau countdown sholat yang muncul saat lagu ber-lirik main ditumpuk dengan baris lirik di bawahnya (`activities::stacks`, bukan tema Pill).
 
 ### Today (kalender)

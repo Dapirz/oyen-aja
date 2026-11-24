@@ -2150,6 +2150,12 @@ impl App {
                 }
             }
             AppEvent::Media(session) => {
+                // A site's sound (WhatsApp Web's ping) over a song: the song stays.
+                if let (Some(song), Some(s)) = (self.st.media.as_ref(), session.as_ref()) {
+                    if song.holds_over(s) {
+                        return;
+                    }
+                }
                 let prev_key = self.st.media.as_ref().map(|m| m.track_key.clone());
                 match session {
                     Some(mut s) => {

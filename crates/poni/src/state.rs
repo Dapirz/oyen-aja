@@ -58,6 +58,14 @@ impl MediaSession {
     pub fn is_playing(&self) -> bool {
         self.timeline.playing
     }
+
+    /// `new` is a site's sound over this song, which still plays: the island
+    /// keeps the song (its time runs on by the clock, the lyrics with it),
+    /// so a message's card comes in under the music, not instead of it.
+    /// Windows hands the song back when the sound ends.
+    pub fn holds_over(&self, new: &MediaSession) -> bool {
+        new.is_blip() && !self.is_blip() && self.is_playing() && new.track_key != self.track_key
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -823,6 +831,37 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn session(title: &str, artist: &str, len_s: f64, playing: bool) -> MediaSession {
+        MediaSession {
+            app_id: "Brave".into(),
+            app_name: "Brave".into(),
+            title: title.into(),
+            artist: artist.into(),
+            album: String::new(),
+            art: None,
+            art_color: None,
+            timeline: Timeline::new(10.0, len_s, 0.0, playing),
+            can_prev: true,
+            can_next: true,
+            can_play_pause: true,
+            can_seek: true,
+            track_key: MediaSession::make_track_key(title, artist, ""),
+        }
+    }
+
+    #[test]
+    fn a_site_s_sound_doesn_t_take_the_song_s_place() {
+        let song = session("Mangu", "Fourtwnty", 240.0, true);
+        let ping = session("web.whatsapp.com", "", 0.0, true);
+        let next = session("Zona Nyaman", "Fourtwnty", 230.0, true);
+        assert!(song.holds_over(&ping));
+        // Another song, or the same one again, takes over as before.
+        assert!(!song.holds_over(&next));
+        assert!(!song.holds_over(&song.clone()));
+        // A paused song gives way.
+        assert!(!session("Mangu", "Fourtwnty", 240.0, false).holds_over(&ping));
+    }
 
     #[test]
     fn phone_panel_holds_only_while_a_code_waits_on_the_shelf() {
