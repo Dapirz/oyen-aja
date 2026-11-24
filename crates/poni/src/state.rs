@@ -304,6 +304,9 @@ pub struct PageUiState {
     pub cal_day: Option<(i32, u8, u8)>,
     pub cal_input: String,
     pub cal_every: poni_core::agenda::Every,
+    /// The reminder for the next event added (None: the usual, 10 minutes
+    /// before; Some(None): none).
+    pub cal_remind: Option<Option<u16>>,
     /// What's typed into the Settings window's search (empty: no search).
     pub settings_search: String,
     /// A prayer's moment glows round the island's edge until then (mono

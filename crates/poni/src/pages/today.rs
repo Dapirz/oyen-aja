@@ -6,7 +6,9 @@
 //! the arrows go to the month before or after. On the right the countdown
 //! to the next red dates (a few, when several come soon), then the day
 //! picked: its holiday, its events (each can go), and a line to add one,
-//! once or again every so many days, weeks, months or years.
+//! once or again every so many days, weeks, months or years. A time typed
+//! first ("09:30 Rapat") is the event's time; the bell says when to be
+//! reminded (on the island, as a notice: `App::agenda_*`).
 //!
 //! Everything is on this PC (`poni_core::agenda`; the events are saved
 //! with the tasks). It asks for no frames of its own: the date moves at
@@ -184,16 +186,22 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         ui.c.text(h.name, Rect::new(r.x + tw + 8.0, y + 1.0, (r.w - tw - 8.0).max(0.0), 18.0), &TextStyle::footnote().color(color));
     }
     y += 22.0;
-    let events: Vec<(u64, String, Every)> = st.store.agenda.on(py, pm, pd).into_iter().map(|e| (e.id, e.title.clone(), e.every)).collect();
+    let mut events: Vec<(u64, String, Every, Option<u16>)> = st.store.agenda.on(py, pm, pd).into_iter().map(|e| (e.id, e.title.clone(), e.every, e.time)).collect();
+    // All-day ones first, then by time.
+    events.sort_by_key(|e| e.3.map_or(-1, i32::from));
     let mut gone = None;
-    for (i, (id, name, every)) in events.iter().take(EVENTS_SHOWN).enumerate() {
+    for (i, (id, name, every, time)) in events.iter().take(EVENTS_SHOWN).enumerate() {
+        let name = match time {
+            Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
+            None => name.clone(),
+        };
         let row = Rect::new(r.x, y, r.w, EVENT_H);
         ui.c.fill_circle(Point::new(row.x + 4.0, row.center().y), 2.5, st.accent);
         let x = Rect::new(row.right() - 20.0, row.y + 1.0, 20.0, 20.0);
         let repeat = if *every == Every::Once { String::new() } else { every.label() };
         let rs = TextStyle::caption().color(palette::TEXT_FAINT).right();
         let rw = if repeat.is_empty() { 0.0 } else { ui.c.measure(&repeat, &rs, 140.0).0 + 8.0 };
-        ui.c.text(name, Rect::new(row.x + 14.0, row.y, (x.x - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
+        ui.c.text(&name, Rect::new(row.x + 14.0, row.y, (x.x - rw - row.x - 18.0).max(0.0), row.h), &TextStyle::footnote());
         if !repeat.is_empty() {
             ui.c.text(&repeat, Rect::new(x.x - rw, row.y, rw - 4.0, row.h), &rs);
         }
@@ -232,10 +240,21 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
             st.ui.cal_every = every.with_count(n + 1);
         }
     }
-    let input = Rect::new(r.x - 6.0, add_y, (pill.x - 8.0 - r.x + 6.0).max(0.0), PILL_SMALL);
+    // The reminder: off, at its time, or a while before (an all-day
+    // event's in the morning).
+    let remind = st.ui.cal_remind.unwrap_or(Some(10));
+    let rlabel = agenda::remind_label(remind);
+    let bw = ui.pill_width(&rlabel, true, true);
+    let bell = Rect::new(pill.x - 6.0 - bw, add_y, bw, PILL_SMALL);
+    let bell_style = if remind.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("today.remind"), bell, &rlabel, Some(Icon::Bell), bell_style).clicked {
+        let i = agenda::REMINDERS.iter().position(|r| *r == remind).unwrap_or(0);
+        st.ui.cal_remind = Some(agenda::REMINDERS[(i + 1) % agenda::REMINDERS.len()]);
+    }
+    let input = Rect::new(r.x - 6.0, add_y, (bell.x - 8.0 - r.x + 6.0).max(0.0), PILL_SMALL);
     let accent = st.accent;
-    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, "Add an event", MAX_TITLE, accent, Some(Icon::Plus));
-    if resp.submitted && st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every).is_some() {
+    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, "09:30 Add an event", MAX_TITLE, accent, Some(Icon::Plus));
+    if resp.submitted && st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every, remind).is_some() {
         st.ui.cal_input.clear();
         st.save();
     }

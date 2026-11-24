@@ -81,6 +81,48 @@ pub struct Event {
     pub day: u8,
     #[serde(default)]
     pub every: Every,
+    /// Its time of day (minutes after midnight); None: all day.
+    #[serde(default)]
+    pub time: Option<u16>,
+    /// A reminder this many minutes before (0: at its time; an all-day
+    /// event's comes at [`MORNING`] on its day); None: none.
+    #[serde(default)]
+    pub remind: Option<u16>,
+}
+
+/// When an all-day event's reminder comes: 07:00.
+pub const MORNING: u16 = 7 * 60;
+
+/// The reminder choices the Today page cycles through (minutes before).
+pub const REMINDERS: [Option<u16>; 5] = [None, Some(0), Some(10), Some(30), Some(60)];
+
+/// A reminder's short name: "Off", "On time", "10m", "1h".
+pub fn remind_label(r: Option<u16>) -> String {
+    match r {
+        None => "Off".into(),
+        Some(0) => "On time".into(),
+        Some(m) if m % 60 == 0 => format!("{}h", m / 60),
+        Some(m) => format!("{m}m"),
+    }
+}
+
+/// "09:30 Rapat tim" (or "9.30 …"): the time at the start of what's typed,
+/// and the rest as the title.
+pub fn split_time(text: &str) -> (Option<u16>, &str) {
+    let t = text.trim_start();
+    let end = t.find(char::is_whitespace).unwrap_or(t.len());
+    let (head, rest) = t.split_at(end);
+    let mut parts = head.splitn(2, [':', '.']);
+    let (Some(h), Some(m)) = (parts.next(), parts.next()) else { return (None, text) };
+    match (h.parse::<u16>(), m.parse::<u16>()) {
+        (Ok(h), Ok(m)) if h < 24 && m < 60 && m.to_string().len() <= 2 && (1..=2).contains(&h.to_string().len()) && !rest.trim().is_empty() => (Some(h * 60 + m), rest.trim()),
+        _ => (None, text),
+    }
+}
+
+/// "09:30".
+pub fn fmt_time(min: u16) -> String {
+    format!("{:02}:{:02}", min / 60, min % 60)
 }
 
 impl Event {
@@ -112,14 +154,49 @@ pub struct Agenda {
 }
 
 impl Agenda {
-    pub fn add(&mut self, title: &str, y: i32, m: u8, d: u8, every: Every) -> Option<u64> {
+    /// Add an event from what was typed: a time at its start ("09:30 …")
+    /// becomes its time.
+    pub fn add(&mut self, typed: &str, y: i32, m: u8, d: u8, every: Every, remind: Option<u16>) -> Option<u64> {
+        let (time, title) = split_time(typed);
         let title: String = title.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect();
         if title.is_empty() {
             return None;
         }
         self.next_id += 1;
-        self.events.push(Event { id: self.next_id, title, year: y, month: m, day: d, every });
+        self.events.push(Event { id: self.next_id, title, year: y, month: m, day: d, every, time, remind });
         Some(self.next_id)
+    }
+
+    /// The reminders due after minute `after` up to and at minute `upto`
+    /// (minutes counted from 1970-01-01 local time), soonest first.
+    pub fn due(&self, after: i64, upto: i64) -> Vec<(&Event, i64)> {
+        let mut out = Vec::new();
+        // An hour's lead can reach into the day before.
+        for day in (after.div_euclid(1440))..=(upto.div_euclid(1440) + 1) {
+            let (y, m, d) = crate::datetime::civil_from_days(day);
+            for e in self.events.iter().filter(|e| e.remind.is_some() && e.on(y, m, d)) {
+                let at = day * 1440 + i64::from(e.time.unwrap_or(MORNING)) - if e.time.is_some() { i64::from(e.remind.unwrap_or(0)) } else { 0 };
+                if at > after && at <= upto {
+                    out.push((e, at));
+                }
+            }
+        }
+        out.sort_by_key(|(_, at)| *at);
+        out
+    }
+
+    /// The next reminder after minute `after` (local), within a year.
+    pub fn next_reminder(&self, after: i64) -> Option<i64> {
+        // A week at a time, so a full year's look runs only when there's nothing soon.
+        let mut from = after;
+        for _ in 0..53 {
+            let to = from + 7 * 1440;
+            if let Some((_, at)) = self.due(from, to).first() {
+                return Some(*at);
+            }
+            from = to;
+        }
+        None
     }
 
     pub fn remove(&mut self, id: u64) {
@@ -250,7 +327,7 @@ mod tests {
     use super::*;
 
     fn ev(every: Every) -> Event {
-        Event { id: 1, title: "x".into(), year: 2026, month: 1, day: 31, every }
+        Event { id: 1, title: "x".into(), year: 2026, month: 1, day: 31, every, time: None, remind: None }
     }
 
     #[test]
@@ -272,13 +349,36 @@ mod tests {
     #[test]
     fn the_agenda_keeps_its_events() {
         let mut a = Agenda::default();
-        assert_eq!(a.add("  ", 2026, 11, 24, Every::Once), None);
-        let id = a.add("Rapat  tim", 2026, 11, 24, Every::Weeks(1)).unwrap();
+        assert_eq!(a.add("  ", 2026, 11, 24, Every::Once, None), None);
+        let id = a.add("Rapat  tim", 2026, 11, 24, Every::Weeks(1), None).unwrap();
         assert_eq!(a.on(2026, 12, 1)[0].title, "Rapat tim");
         a.remove(id);
         assert!(a.on(2026, 12, 1).is_empty());
         let old: Agenda = serde_json::from_str(r#"{"events":[{"id":3,"title":"a","year":2026,"month":1,"day":2}]}"#).unwrap();
         assert_eq!(old.events[0].every, Every::Once);
+    }
+
+    #[test]
+    fn times_typed_first_and_reminders_when_due() {
+        assert_eq!(split_time("09:30 Rapat tim"), (Some(570), "Rapat tim"));
+        assert_eq!(split_time("7.05 Bangun"), (Some(425), "Bangun"));
+        assert_eq!(split_time("25:00 x").0, None);
+        assert_eq!(split_time("12:30").0, None, "a time alone is the title");
+        assert_eq!(split_time("Rapat 09:30").0, None);
+        assert_eq!(remind_label(Some(60)), "1h");
+        let mut a = Agenda::default();
+        a.add("09:30 Rapat", 2026, 11, 24, Every::Days(1), Some(30)).unwrap();
+        a.add("Ulang tahun", 2026, 11, 25, Every::Years(1), Some(10)).unwrap();
+        a.add("No reminder", 2026, 11, 24, Every::Once, None).unwrap();
+        let day = days_from_civil(2026, 11, 24) * 1440;
+        // 09:00 today: the meeting's reminder.
+        assert_eq!(a.next_reminder(day + 8 * 60), Some(day + 9 * 60));
+        let due = a.due(day + 8 * 60, day + 9 * 60);
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].0.title, "Rapat");
+        // After it: the birthday's morning tomorrow, at 07:00 (an all-day event).
+        assert_eq!(a.next_reminder(day + 9 * 60), Some(day + 1440 + MORNING as i64));
+        assert_eq!(fmt_time(570), "09:30");
     }
 
     #[test]

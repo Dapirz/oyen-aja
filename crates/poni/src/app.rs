@@ -77,6 +77,10 @@ const LANGUAGE_LOOKS: u8 = 3;
 const TIMER_OSD: usize = 13;
 const OSD_EVERY_MS: u32 = 120;
 const OSD_LOOKS: u8 = 8;
+/// The next event reminder (Today's calendar): one-shot, set for when it's
+/// due (at most 6 hours ahead, then set again), only while there's one.
+const TIMER_AGENDA: usize = 14;
+const AGENDA_MAX_WAIT_MS: i64 = 6 * 3600 * 1000;
 /// Make way: the pointer this close to the top edge (DIPs, the strip the
 /// island steps aside to) opens the island as usual instead.
 const MAKE_WAY_EDGE: f32 = 5.0;
@@ -495,6 +499,8 @@ pub struct App {
     language_looks: u8,
     /// Looks left to put Windows' brightness pop-up away.
     osd_looks: u8,
+    /// The minute (local, from 1970) up to which event reminders were shown.
+    agenda_done: i64,
 }
 
 /// The island window: position and size in screen pixels.
@@ -685,6 +691,7 @@ impl App {
             camera: None,
             language_looks: 0,
             osd_looks: 0,
+            agenda_done: 0,
         })
     }
 
@@ -696,6 +703,9 @@ impl App {
         if !fake {
             services::power::register_brightness(self.helper);
             self.sync_keys();
+            // Reminders from now on (one missed while Hihu was closed is past).
+            self.agenda_done = self.local_minute();
+            self.agenda_schedule();
             let s = &self.st.settings;
             if (s.hud_brightness || s.hud_volume) && s.hud_hide_windows_brightness {
                 services::osd::hide();
@@ -1727,6 +1737,12 @@ impl App {
                 }
             }
             TIMER_SCREEN => self.screen_check(),
+            TIMER_AGENDA => {
+                unsafe {
+                    let _ = KillTimer(self.hwnd, TIMER_AGENDA);
+                }
+                self.agenda_remind();
+            }
             TIMER_OSD => {
                 self.osd_looks = self.osd_looks.saturating_sub(1);
                 services::osd::hide();
@@ -4128,9 +4144,13 @@ impl App {
                     self.save_settings();
                 }
                 Command::OpenSettings => self.show_settings(deferred),
-                Command::SaveStore => unsafe {
-                    SetTimer(self.hwnd, TIMER_SAVE, 800, None);
-                },
+                Command::SaveStore => {
+                    unsafe {
+                        SetTimer(self.hwnd, TIMER_SAVE, 800, None);
+                    }
+                    // An event added or gone: the next reminder may have moved.
+                    self.agenda_schedule();
+                }
                 Command::SetPage(p) => self.set_page(p),
                 Command::SetPinned(b) => {
                     self.st.pinned = b;
@@ -4182,6 +4202,55 @@ impl App {
         self.notify = None;
         self.st.notify_access = NotifyAccess::Unknown;
         self.sync_banners();
+    }
+
+    /// Now, in minutes from 1970-01-01 local time (the calendar's clock).
+    fn local_minute(&self) -> i64 {
+        let t = self.st.local;
+        poni_core::datetime::days_from_civil(t.year, t.month, t.day) * 1440 + i64::from(t.hour) * 60 + i64::from(t.minute)
+    }
+
+    /// Set the one-shot timer for the next event reminder, if there is one.
+    fn agenda_schedule(&mut self) {
+        unsafe {
+            let _ = KillTimer(self.hwnd, TIMER_AGENDA);
+        }
+        let Some(at) = self.st.store.agenda.next_reminder(self.agenda_done) else { return };
+        let now = self.local_minute();
+        let wait_ms = ((at - now) * 60 - i64::from(self.st.local.second)) * 1000 + 500;
+        unsafe {
+            SetTimer(self.hwnd, TIMER_AGENDA, wait_ms.clamp(1000, AGENDA_MAX_WAIT_MS) as u32, None);
+        }
+    }
+
+    /// The reminders due by now, as notices; then the timer for the next.
+    fn agenda_remind(&mut self) {
+        self.st.local = clock::local_shown();
+        let now = self.local_minute();
+        let due: Vec<(String, String)> = self
+            .st
+            .store
+            .agenda
+            .due(self.agenda_done, now)
+            .into_iter()
+            .map(|(e, _)| {
+                let line = match (e.time, e.remind) {
+                    (None, _) => "Today".to_string(),
+                    (Some(t), Some(0)) | (Some(t), None) => format!("Now \u{b7} {}", poni_core::agenda::fmt_time(t)),
+                    (Some(t), Some(m)) if m % 60 == 0 => format!("In {} h \u{b7} {}", m / 60, poni_core::agenda::fmt_time(t)),
+                    (Some(t), Some(m)) => format!("In {m} min \u{b7} {}", poni_core::agenda::fmt_time(t)),
+                };
+                (e.title.clone(), line)
+            })
+            .collect();
+        self.agenda_done = now;
+        for (title, line) in due {
+            pinfo!("agenda: a reminder");
+            self.st.notify(Icon::Calendar, self.st.accent, title, line, 12.0, Some(crate::state::NoticeAction::OpenPage(PageKind::Today)));
+            self.st.chime();
+        }
+        self.request_frame();
+        self.agenda_schedule();
     }
 
     /// Windows' brightness pop-up out of sight, now and a few times in the
