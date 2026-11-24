@@ -152,15 +152,23 @@ pub fn prayer_countdown(st: &AppState) -> Option<(poni_core::prayer::Prayer, i64
 /// The countdown's words: "Dzuhur in 1:59" (minutes and seconds left;
 /// past an hour, "1:02:03").
 pub fn prayer_line(st: &AppState) -> Option<String> {
-    let (prayer, _) = prayer_countdown(st)?;
-    let left = (prayer_countdown_at(st)? - st.prayer_now()).max(0);
+    // Ramadan mode: Imsak first, while it's near; Maghrib is Berbuka.
+    let (name, at) = match st.imsak_due() {
+        Some(at) => ("Imsak".to_string(), at),
+        None => {
+            let (prayer, _) = prayer_countdown(st)?;
+            let name = if prayer == poni_core::prayer::Prayer::Maghrib && st.in_ramadan() { "Berbuka".to_string() } else { prayer.name().to_string() };
+            (name, prayer_countdown_at(st)?)
+        }
+    };
+    let left = (at - st.prayer_now()).max(0);
     let clock = if left >= 3600 { format!("{}:{:02}:{:02}", left / 3600, left / 60 % 60, left % 60) } else { format!("{}:{:02}", left / 60, left % 60) };
-    Some(format!("{} in {clock}", prayer.name()))
+    Some(format!("{name} in {clock}"))
 }
 
 pub fn current_activity(st: &AppState) -> Option<Activity> {
     // The few minutes before a prayer come first: they don't come back.
-    if prayer_countdown(st).is_some() {
+    if prayer_countdown(st).is_some() || st.imsak_due().is_some() {
         return Some(Activity::Prayer);
     }
     // So does a meeting being taken down, and its notes on their way.
@@ -279,6 +287,9 @@ fn glow_since(m: &Mode, st: &AppState) -> Option<f64> {
 
 /// The countdown's moment (unix seconds), while it shows.
 fn prayer_countdown_at(st: &AppState) -> Option<i64> {
+    if let Some(at) = st.imsak_due() {
+        return Some(at);
+    }
     let site = st.prayer_site()?;
     poni_core::prayer::countdown(&site, st.prayer_now(), st.settings.prayer.remind_before_min)
         .filter(|(m, _)| st.prayer.countdown_ok != Some(m.at))

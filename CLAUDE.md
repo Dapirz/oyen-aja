@@ -32,7 +32,7 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 ### Island dan tema
 - Inti: hover atau klik membuka (Settings → Island → Opens on: Hover/Click, `open_on_click`), click-through di sekitarnya, tampilan saat diam (Clock/Eyes/Minimal/Hidden), Position dan Lock position, Size when closed (90/100/115 %), Make way for the pointer (menyusut jadi garis tipis di tepi atas; terbuka saat mouse didorong ke tepi atas), layar penuh Hide atau Stay on top, Show in screenshots, tray, Start with Windows.
 - Tema: Classic, Smoke (hitam semi transparan, Transparency 40/55/75 %), Glass, Pill, Diorama. Tema Oyen sudah dihapus.
-- Tab: Settings → Tabs mengurutkan semua tab (drag pegangan atau panah) dan menyalakannya; `tab_order` di settings.json, Add-ons selalu terakhir. Notifications tidak punya tab.
+- Tab: Settings → Tabs mengurutkan semua tab (drag pegangan atau panah) dan menyalakannya; `tab_order` di settings.json, Add-ons selalu terakhir. Notifications tidak punya tab. Opens on (dropdown `Command::PickStartPage`): Last open tab (`remember_page`) atau satu tab (`start_page`).
 - Menu tray ringkas: Settings…, Keep island open, Start with Windows, Quit.
 
 ### Pop-up (Settings → Pop-ups)
@@ -51,10 +51,11 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - Notice atau countdown sholat yang muncul saat lagu ber-lirik main ditumpuk dengan baris lirik di bawahnya (`activities::stacks`, bukan tema Pill).
 
 ### Today (kalender)
-- Tanggal Hijriah (opsi B): nama bulan Hijriah kecil di tanggal 1 bulan itu, dan tanggal Hijriah lengkap di judul hari dipilih; kalender sama dengan Waktu sholat (Kemenag/KHGT, `hijri::date`).
-- Kalender sebulan (Senin pertama, panah ‹ ›): hari ini diisi, hari dipilih dicincin, tanggal merah libur nasional + Minggu, cuti bersama merah muda, titik untuk hari dengan event/task. Hanya bangun saat tengah malam.
+- Settings → Calendar: bawaannya hanya tanggal merah + countdown dan event. Switch (bawaan mati): Hijri dates (`cal_hijri`), Ramadan mode (`ramadan_mode`), Tasks on the calendar (`cal_tasks`, hanya kalau add-on Tasks nyala; `st.calendar_tasks()`). Bulan lain yang sedang dilihat kembali ke bulan ini saat island menutup (`collapse`).
+- Tanggal Hijriah (opsi B, kalau Hijri dates nyala): nama bulan Hijriah kecil di tanggal 1 bulan itu, dan tanggal Hijriah lengkap di judul hari dipilih; kalender sama dengan Waktu sholat (Kemenag/KHGT, `hijri::date`).
+- Kalender sebulan (Senin pertama, panah ‹ ›): hari ini diisi, hari dipilih dicincin, tanggal merah libur nasional + Minggu, cuti bersama merah muda, titik untuk hari dengan event (dan task kalau Tasks on the calendar). Hanya bangun saat tengah malam.
 - Libur: `poni_core::agenda::HOLIDAYS` dari SKB 3 Menteri di setneg.go.id, lengkap 2026–2027; setelah itu hanya tanggal tetap (lihat Nanti). Countdown sampai 3 tanggal merah dalam 60 hari.
-- Event sendiri (sekali atau tiap N hari/minggu/bulan/tahun) di `data.json` (`store.agenda`); task bertanggal (`Task.due`: hari, jam, pengingat) dibuat dari Today lewat tombol jenis Event/Task, tampil juga di Tasks ("Today 09:30", merah kalau lewat).
+- Event sendiri (sekali atau tiap N hari/minggu/bulan/tahun) di `data.json` (`store.agenda`); task bertanggal (`Task.due`: hari, jam, pengingat) dibuat dari Today lewat tombol jenis Event/Task (hanya kalau Tasks on the calendar), atau dari halaman Tasks lewat pill No date/Today/Tomorrow; tampil juga di Tasks ("Today 09:30", merah kalau lewat).
 - Jam dari pemilih (klik → kelipatan 5 menit berikutnya, −/+ atau scroll) atau diketik di depan judul ("09:30 Rapat"). Pengingat Off/On time/10m/30m/1h (event seharian jam 07:00) jadi notice + chime lewat satu timer sekali-jalan `TIMER_AGENDA` (maks 6 jam lalu dijadwal ulang; `agenda::reminders` untuk event dan task).
 - Daftar hari dipilih: satu daftar event + task yang bisa di-scroll, dengan edit (pensil) dan hapus saat kursor di atasnya; klik task mencentangnya.
 
@@ -66,6 +67,8 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - Semua setelan di Settings → Notifications (akses Windows, Who/Message, Every app, New apps start on, Hide Windows' pop-ups, daftar app).
 
 ### Add-on lain
+- Ramadan mode (butuh Waktu sholat): di bulan Ramadan countdown "Imsak in …" sebelum imsak (`st.imsak_due`) dan Maghrib jadi "Berbuka"; angka hari puasa di kalender berwarna aksen.
+- Tasks: urutan tenggat terdekat dulu (lewat, hari ini, nanti, tanpa tanggal; `TaskList::display_order`), label tenggat merah kalau lewat, aksen untuk hari ini.
 - Tasks, Focus (bawaan nyala), Script reader, Bacaan Jepang, Waktu sholat (lokasi otomatis atau pilih manual; countdown "Dzuhur in 1:59" digambar ulang tiap detik hanya selama tampil; momen sholat dan awal countdown bercahaya oranye 4 dtk, `draw_glow`).
 - Clipboard history (mati sejak awal): pengawas `WM_CLIPBOARDUPDATE` di thread sendiri, menghormati format "jangan rekam" password manager; 10/25/50/100 item, 1 jam/1 hari/7 hari/Forever; DPAPI di `%LOCALAPPDATA%\Hihu\clipboard.bin`, dihapus saat dimatikan. Kode dasar dari Oyenza sebelum `a30fcc4`.
 - Screen time (mati sejak awal): menumpang hook `EVENT_SYSTEM_FOREGROUND` milik `services/fullscreen.rs`; nama app dari FileDescription exe, app Store lewat anak jendela ApplicationFrameHost; berhenti saat terkunci/layar mati/idle 5 menit; cek tiap 60 dtk hanya saat nyala; 7 hari di `%APPDATA%\Hihu\screentime.json`, dihapus saat dimatikan.
@@ -93,7 +96,7 @@ Identitas sendiri sudah selesai (`1790ee2`): nama app Hihu Island, ikon, folder 
 Nanti (belum dikerjakan):
 - Libur nasional 2028: setelah SKB 3 Menteri 2028 terbit (biasanya September 2027, di setneg.go.id), tambahkan tanggal libur dan cuti bersama 2028 ke `poni_core::agenda::HOLIDAYS` dan naikkan `LISTED_UNTIL`. Ulangi tiap tahun. Sebelum itu, 2028 hanya punya tanggal tetap (1 Jan, 1 Mei, 1 Jun, 17 Agu, 25 Des).
 - Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
-- RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ. 24 Nov 2026 (Smoke, add-on Screen time + Sholat nyala, semua fitur Pop-ups dan Notifications nyala): private working set 24,2–24,3 MB; CPU saat diam 2 Mcycles/s (0,07 % satu core), saat musik 60 fps 391 Mcycles/s (thread `main` ~203 + driver grafis ~190; fitur lain masing-masing < 0,5). Ukur per thread dengan `QueryThreadCycleTime` + `GetThreadDescription`.
+- RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ. 24 Nov 2026 (Smoke, add-on Screen time + Sholat nyala, semua fitur Pop-ups dan Notifications nyala): private working set 24,2–24,3 MB; CPU saat diam 2 Mcycles/s (0,07 % satu core), saat musik 60 fps 391 Mcycles/s (thread `main` ~203 + driver grafis ~190; fitur lain masing-masing < 0,5). 24 Nov 2026 sore, musik dari Brave main: private working set 25,6 MB, CPU 421 Mcycles/s. Ukur per thread dengan `QueryThreadCycleTime` + `GetThreadDescription`.
 
 Tidak dibuat: radio.
 

@@ -199,7 +199,7 @@ fn prayer_slot_text(p: Prayer) -> String {
 }
 
 fn prayer_w(st: &AppState) -> f32 {
-    let Some((prayer, _)) = prayer_countdown(st) else { return 150.0 };
+    let Some(prayer) = prayer_countdown(st).map(|p| p.0).or_else(|| st.imsak_due().map(|_| Prayer::Subuh)) else { return 150.0 };
     if let Some((p, w)) = PRAYER_FIT.with(Cell::get) {
         if p == prayer {
             return w;
@@ -227,7 +227,7 @@ pub(crate) fn moon(ui: &mut Ui, c: Point, d: f32, col: Color) {
 }
 
 fn draw_prayer(ui: &mut Ui, st: &AppState, body: Rect) {
-    let Some((prayer, _)) = prayer_countdown(st) else { return };
+    let Some(prayer) = prayer_countdown(st).map(|p| p.0).or_else(|| st.imsak_due().map(|_| Prayer::Subuh)) else { return };
     let col = st.accent;
     let ts = prayer_style(col);
     let (slot, _) = ui.c.measure(&prayer_slot_text(prayer), &ts, 400.0);

@@ -478,6 +478,16 @@ mod tests {
     }
 
     #[test]
+    fn tasks_due_soonest_come_first() {
+        let mut tasks = crate::todo::TaskList::default();
+        let none = tasks.add("no date", 1).unwrap();
+        let later = tasks.add_due("later", 2, Due { year: 2026, month: 12, day: 1, time: None, remind: None }).unwrap();
+        let late = tasks.add_due("late", 3, Due { year: 2026, month: 11, day: 20, time: None, remind: None }).unwrap();
+        let ids: Vec<u64> = tasks.display_order(0).iter().map(|t| t.id).collect();
+        assert_eq!(ids, [late, later, none]);
+    }
+
+    #[test]
     fn red_dates_and_their_countdown() {
         assert_eq!(holiday(2026, 8, 17).map(|x| x.name), Some("Hari Kemerdekaan"));
         assert!(holiday(2026, 12, 24).is_some_and(|x| x.leave));

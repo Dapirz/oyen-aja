@@ -131,7 +131,15 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let full = st.store.tasks.tasks.len() >= MAX_TASKS;
 
     // ---- Input: the list's first row, sharing its checkbox and text columns.
-    let input_r = Rect::new(area.x, area.y, area.w, INPUT_H);
+    // When the next task is due: none, today or tomorrow (a click cycles).
+    let due_word = ["No date", "Today", "Tomorrow"][st.ui.task_due_pick.min(2) as usize];
+    let dw = ui.pill_width(due_word, true, true);
+    let due_r = Rect::new(area.right() - dw - 6.0, area.y + (INPUT_H - PILL_SMALL) / 2.0, dw, PILL_SMALL);
+    let due_style = if st.ui.task_due_pick > 0 { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("tasks.due"), due_r, due_word, Some(Icon::Calendar), due_style).clicked {
+        st.ui.task_due_pick = (st.ui.task_due_pick + 1) % 3;
+    }
+    let input_r = Rect::new(area.x, area.y, (due_r.x - 6.0 - area.x).max(0.0), INPUT_H);
     let placeholder = if full { "Task list is full" } else { "Add a task, Enter to save" };
     let accent = st.accent;
     let resp = ui.text_input_row(wid("tasks.input"), input_r, &mut st.ui.task_input, placeholder, MAX_TASK_LEN, accent, Some(Icon::Plus));
@@ -265,7 +273,17 @@ fn submit(ui: &mut Ui, st: &mut AppState, anim: &mut ListAnim, day_start: i64) {
         ui.input.caret = 0;
         return;
     }
-    let Some(id) = st.store.tasks.add(&st.ui.task_input, st.unix) else { return };
+    let id = match st.ui.task_due_pick {
+        0 => st.store.tasks.add(&st.ui.task_input, st.unix),
+        n => {
+            let t = st.local;
+            let day = poni_core::datetime::days_from_civil(t.year, t.month, t.day) + i64::from(n - 1);
+            let (year, month, d) = poni_core::datetime::civil_from_days(day);
+            let due = poni_core::agenda::Due { year, month, day: d, time: None, remind: None };
+            st.store.tasks.add_due(&st.ui.task_input, st.unix, due)
+        }
+    };
+    let Some(id) = id else { return };
     st.ui.task_input.clear();
     ui.input.caret = 0;
     st.save();
@@ -340,7 +358,7 @@ enum RowAction {
 
 /// When task `id` is due, as its row says it ("Today 09:30", "Tomorrow",
 /// "25 Nov"), and whether that's past.
-fn due_label(st: &AppState, id: u64) -> Option<(String, bool)> {
+fn due_label(st: &AppState, id: u64) -> Option<(String, Color)> {
     let d = st.store.tasks.tasks.iter().find(|t| t.id == id)?.due?;
     let t = st.local;
     let today = poni_core::datetime::days_from_civil(t.year, t.month, t.day);
@@ -357,12 +375,19 @@ fn due_label(st: &AppState, id: u64) -> Option<(String, bool)> {
     }
     let now_min = i64::from(t.hour) * 60 + i64::from(t.minute);
     let late = day < today || (day == today && d.time.is_some_and(|x| i64::from(x) < now_min));
-    Some((label, late))
+    let color = if late {
+        palette::RED
+    } else if day == today {
+        st.accent
+    } else {
+        palette::TEXT_FAINT
+    };
+    Some((label, color))
 }
 
 /// One task row. `hit` is the part of `row` inside the list viewport `view`.
 #[allow(clippy::too_many_arguments)]
-fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, text: &str, pop: Option<f32>, due: Option<(String, bool)>) -> RowAction {
+fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, text: &str, pop: Option<f32>, due: Option<(String, Color)>) -> RowAction {
     let mut action = RowAction::None;
     let resp = ui.button(wid_n("tasks.row", id), hit);
     if resp.pressed {
@@ -391,8 +416,8 @@ fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, 
     let tx = row.x + TEXT_X;
     // When it's due, on the right (in red once it's past).
     let due_w = match &due {
-        Some((label, late)) => {
-            let ds = TextStyle::caption().color(if *late && !done { palette::RED } else { palette::TEXT_FAINT }).right();
+        Some((label, color)) => {
+            let ds = TextStyle::caption().color(if done { palette::TEXT_FAINT } else { *color }).right();
             let w = ui.c.measure(label, &ds, 140.0).0 + 4.0;
             ui.c.text(label, Rect::new(row.right() - 40.0 - w, row.y, w, row.h), &ds);
             w + 8.0

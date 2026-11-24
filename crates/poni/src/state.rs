@@ -322,6 +322,8 @@ pub struct PageUiState {
     pub cal_time: Option<u16>,
     /// What the add line makes: an event (false) or a task due that day.
     pub cal_task: bool,
+    /// The Tasks page's due pick for the next task: 0 none, 1 today, 2 tomorrow.
+    pub task_due_pick: u8,
     /// The calendar row being edited in the add line: a task (true) or an
     /// event, and its id.
     pub cal_editing: Option<(bool, u64)>,
@@ -701,11 +703,45 @@ impl AppState {
         self.unix + self.prayer.clock_shift
     }
 
+    /// Tasks show on Today's calendar: switched on there, and the Tasks add-on on.
+    pub fn calendar_tasks(&self) -> bool {
+        self.settings.cal_tasks && self.tasks_on()
+    }
+
+    /// Ramadan mode: Imsak's time (unix) while it's near (within the
+    /// countdown's minutes before) and not put away with OK, on a day of
+    /// Ramadan by the calendar Prayer times follows.
+    pub fn imsak_due(&self) -> Option<i64> {
+        if !self.settings.ramadan_mode || !self.prayer_on() {
+            return None;
+        }
+        let site = self.prayer_site()?;
+        let now = self.prayer_now();
+        let day = site.local_day(now);
+        if !poni_core::hijri::is_ramadan(self.settings.prayer.follow.calendar(), day) {
+            return None;
+        }
+        let at = poni_core::prayer::day_times(&site, day)?.imsak;
+        let before = i64::from(self.settings.prayer.remind_before_min) * 60;
+        (now < at && at - now <= before && self.prayer.countdown_ok != Some(at)).then_some(at)
+    }
+
+    /// Ramadan mode is on and today is a day of Ramadan.
+    pub fn in_ramadan(&self) -> bool {
+        self.settings.ramadan_mode
+            && self.prayer_site().is_some_and(|site| poni_core::hijri::is_ramadan(self.settings.prayer.follow.calendar(), site.local_day(self.prayer_now())))
+    }
+
     /// OK on the countdown before a prayer: it goes away until that prayer's
     /// time (`activities::prayer_countdown`). The adzan still comes then,
     /// since what rings follows the prayer clock, not the countdown. Returns
     /// the prayer put away (none when no countdown runs).
     pub fn prayer_countdown_ok(&mut self) -> Option<PrayerMoment> {
+        // Imsak's countdown (Ramadan mode) goes the same way.
+        if let Some(at) = self.imsak_due() {
+            self.prayer.countdown_ok = Some(at);
+            return None;
+        }
         let site = self.prayer_site()?;
         let (m, _) = poni_core::prayer::countdown(&site, self.prayer_now(), self.settings.prayer.remind_before_min)?;
         self.prayer.countdown_ok = Some(m.at);

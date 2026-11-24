@@ -141,7 +141,9 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
         };
         let ink = if inside { ink } else { ink.mul_alpha(0.35) };
         let hijri = poni_core::hijri::date(cal, day);
-        let marked = hijri.day == 1;
+        // Ramadan mode: each fasting day carries its number, the 1st its month.
+        let fasting = st.settings.ramadan_mode && hijri.month == 9;
+        let marked = (st.settings.cal_hijri || fasting) && (hijri.day == 1 || fasting);
         // A marked day's number sits a little higher, its month's name under it.
         let num_r = if marked { Rect::new(cell.x, cell.y - 4.0, cell.w, cell.h) } else { cell };
         if day == today_n {
@@ -154,11 +156,12 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             ui.c.text(&dd.to_string(), num_r, &num.color(ink));
         }
         if marked {
-            let name = HIJRI_SHORT[(hijri.month.clamp(1, 12) - 1) as usize];
+            let day_no = hijri.day.to_string();
+            let name = if hijri.day == 1 { HIJRI_SHORT[(hijri.month.clamp(1, 12) - 1) as usize] } else { day_no.as_str() };
             let color = if day == today_n { palette::ON_ACCENT } else if inside { st.accent } else { st.accent.mul_alpha(0.4) };
             ui.c.text(name, Rect::new(cell.x - 8.0, cell.bottom() - 11.0, cell.w + 16.0, 10.0), &mark_st.color(color));
         }
-        let task_due = st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| (x.year, x.month, x.day) == (dy, dm, dd)));
+        let task_due = st.calendar_tasks() && st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| (x.year, x.month, x.day) == (dy, dm, dd)));
         if (task_due || !st.store.agenda.on(dy, dm, dd).is_empty()) && !marked {
             let dot = if day == today_n { palette::ON_ACCENT } else { st.accent };
             ui.c.fill_circle(Point::new(c.x, cell.bottom() - 3.0), 1.8, dot);
@@ -198,11 +201,14 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     }
     let tw = ui.c.measure(&title, &TextStyle::body().weight(Weight::Semibold), 300.0).0 + 2.0;
     ui.c.text(&title, Rect::new(r.x, y, tw, 20.0), &TextStyle::body().weight(Weight::Semibold));
-    let hijri = poni_core::hijri::date(st.settings.prayer.follow.calendar(), days_from_civil(py, pm, pd));
-    let hl = format!("{} {}", hijri.day, poni_core::hijri::MONTHS[(hijri.month.clamp(1, 12) - 1) as usize]);
-    let hs = TextStyle::caption().color(palette::TEXT_FAINT).right();
-    let hw = ui.c.measure(&hl, &hs, 200.0).0 + 2.0;
-    ui.c.text(&hl, Rect::new(r.right() - hw, y + 2.0, hw, 18.0), &hs);
+    let mut hw = 0.0;
+    if st.settings.cal_hijri {
+        let hijri = poni_core::hijri::date(st.settings.prayer.follow.calendar(), days_from_civil(py, pm, pd));
+        let hl = format!("{} {}", hijri.day, poni_core::hijri::MONTHS[(hijri.month.clamp(1, 12) - 1) as usize]);
+        let hs = TextStyle::caption().color(palette::TEXT_FAINT).right();
+        hw = ui.c.measure(&hl, &hs, 200.0).0 + 2.0;
+        ui.c.text(&hl, Rect::new(r.right() - hw, y + 2.0, hw, 18.0), &hs);
+    }
     if let Some(h) = agenda::holiday(py, pm, pd) {
         let color = if h.leave { LEAVE } else { RED };
         ui.c.text(h.name, Rect::new(r.x + tw + 8.0, y + 1.0, (r.w - tw - hw - 16.0).max(0.0), 18.0), &TextStyle::footnote().color(color));
@@ -212,7 +218,11 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     // that day, in the room down to the controls; it scrolls when they don't fit.
     let mut events: Vec<(u64, String, Every, Option<u16>)> = st.store.agenda.on(py, pm, pd).into_iter().map(|e| (e.id, e.title.clone(), e.every, e.time)).collect();
     events.sort_by_key(|e| e.3.map_or(-1, i32::from));
-    let tasks: Vec<(u64, String, bool, Option<u16>)> = st.store.tasks.due_on(py, pm, pd).into_iter().map(|t| (t.id, t.text.clone(), t.done, t.due.and_then(|d| d.time))).collect();
+    let tasks: Vec<(u64, String, bool, Option<u16>)> = if st.calendar_tasks() {
+        st.store.tasks.due_on(py, pm, pd).into_iter().map(|t| (t.id, t.text.clone(), t.done, t.due.and_then(|d| d.time))).collect()
+    } else {
+        Vec::new()
+    };
     let list = Rect::new(r.x - 4.0, y, r.w + 4.0, (r.bottom() - 2.0 * PILL_SMALL - 14.0 - y).max(0.0));
     let rows = events.len() + tasks.len();
     let max_scroll = (rows as f32 * EVENT_H - list.h).max(0.0);
@@ -346,13 +356,19 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     // and how often it comes, each where the one before ends.
     let add_y = r.bottom() - PILL_SMALL - 2.0;
     let ctl_y = add_y - PILL_SMALL - 6.0;
-    let kind = Rect::new(r.x - 2.0, ctl_y, PILL_SMALL + 4.0, PILL_SMALL);
-    // What it makes: an event, or a task due this day.
-    let kind_icon = if st.ui.cal_task { Icon::ListChecks } else { Icon::Calendar };
-    if ui.pill(wid("today.kind"), kind, "", Some(kind_icon), PillStyle::Utility).clicked {
-        st.ui.cal_task = !st.ui.cal_task;
-    }
-    let x = draw_time_picker(ui, st, kind.right() + 6.0, ctl_y);
+    // What it makes: an event, or (with tasks on the calendar) a task due this day.
+    let x0 = if st.calendar_tasks() {
+        let kind = Rect::new(r.x - 2.0, ctl_y, PILL_SMALL + 4.0, PILL_SMALL);
+        let kind_icon = if st.ui.cal_task { Icon::ListChecks } else { Icon::Calendar };
+        if ui.pill(wid("today.kind"), kind, "", Some(kind_icon), PillStyle::Utility).clicked {
+            st.ui.cal_task = !st.ui.cal_task;
+        }
+        kind.right() + 6.0
+    } else {
+        st.ui.cal_task = false;
+        r.x - 2.0
+    };
+    let x = draw_time_picker(ui, st, x0, ctl_y);
     // The reminder: off, at its time, or a while before (an all-day
     // event's in the morning).
     let remind = st.ui.cal_remind.unwrap_or(Some(10));

@@ -2431,6 +2431,9 @@ impl App {
     fn collapse(&mut self) {
         if self.expanded {
             self.expanded = false;
+            // Today's calendar opens on this month and today again.
+            self.st.ui.cal_month = None;
+            self.st.ui.cal_day = None;
             if self.text_focus {
                 self.blur_text();
             }
@@ -2710,6 +2713,34 @@ impl App {
         if let Some(i) = tray::pick(owner, pt, &labels) {
             let before = self.st.settings.clone();
             self.st.settings.notes_mic = choices[i].0.clone();
+            self.settings_changed(&before);
+            self.save_settings();
+        }
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+    }
+
+    /// Settings > Tabs > Opens on: the last open tab, or one of the tabs.
+    fn pick_start_page(&mut self) {
+        let Some(owner) = self.settings_win.as_ref().map(|w| w.hwnd) else { return };
+        let pages = crate::settings_window::start_pages(&self.st);
+        let s = &self.st.settings;
+        let mut labels = vec![("Last open tab".to_string(), s.remember_page)];
+        labels.extend(pages.iter().map(|p| (p.title().to_string(), !s.remember_page && p.key() == s.start_page)));
+        let mut pt = POINT::default();
+        unsafe {
+            let _ = GetCursorPos(&mut pt);
+        }
+        if let Some(i) = tray::pick(owner, pt, &labels) {
+            let before = self.st.settings.clone();
+            match i.checked_sub(1).and_then(|i| pages.get(i)) {
+                Some(p) => {
+                    self.st.settings.remember_page = false;
+                    self.st.settings.start_page = p.key().to_string();
+                }
+                None => self.st.settings.remember_page = true,
+            }
             self.settings_changed(&before);
             self.save_settings();
         }
@@ -4283,6 +4314,7 @@ impl App {
                 Command::Notify(c) => self.notify_cmd(c),
                 Command::Notes(c) => self.notes_cmd(c),
                 Command::PickMic => self.pick_mic(),
+                Command::PickStartPage => self.pick_start_page(),
                 Command::BackupExport => self.backup_export(),
                 Command::BackupImport => self.backup_import(),
                 Command::OpenApp(id) => {

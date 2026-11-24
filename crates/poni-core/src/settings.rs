@@ -132,6 +132,13 @@ pub struct Settings {
     /// The microphone Meeting notes records (Windows' device id); empty:
     /// Windows' default, and whichever it switches to.
     pub notes_mic: String,
+    /// Today's calendar: the Hijri months on it; Ramadan mode (Imsak and
+    /// Berbuka on the countdown, the fasting days on the calendar); the
+    /// Tasks add-on's tasks due on a day. All off: the red dates, their
+    /// countdown and your events only.
+    pub cal_hijri: bool,
+    pub ramadan_mode: bool,
+    pub cal_tasks: bool,
     /// A song without synced lyrics keeps its title on the closed island
     /// for as long as it plays (true), or shows it only for the moment a
     /// new track starts (false). Where the theme shows the song there
@@ -298,6 +305,9 @@ impl Default for Settings {
             notes_model: crate::notes::DEFAULT_MODEL.to_string(),
             notes_lang: "id".to_string(),
             notes_mic: String::new(),
+            cal_hijri: false,
+            ramadan_mode: false,
+            cal_tasks: false,
             song_title_stays: true,
             paused_linger_s: Some(30),
             lyrics_size: 13,

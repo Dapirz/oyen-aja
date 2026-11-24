@@ -156,6 +156,7 @@ pub enum Section {
     Music,
     Popups,
     Notifications,
+    Calendar,
     Tabs,
     Addons,
     Focus,
@@ -166,7 +167,7 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 13] = [
+    pub const ALL: [Section; 14] = [
         Section::General,
         Section::Appearance,
         Section::Island,
@@ -174,6 +175,7 @@ impl Section {
         Section::Tabs,
         Section::Music,
         Section::Notifications,
+        Section::Calendar,
         Section::Addons,
         Section::Focus,
         Section::Clipboard,
@@ -190,6 +192,7 @@ impl Section {
             Section::Music => "Music and lyrics",
             Section::Popups => "Pop-ups",
             Section::Notifications => "Notifications",
+            Section::Calendar => "Calendar",
             Section::Tabs => "Tabs",
             Section::Addons => "Add-ons",
             Section::Focus => "Focus",
@@ -209,6 +212,7 @@ impl Section {
             Section::Music => "music",
             Section::Popups => "popups",
             Section::Notifications => "notifications",
+            Section::Calendar => "calendar",
             Section::Tabs => "tabs",
             Section::Addons => "addons",
             Section::Focus => "focus",
@@ -227,6 +231,7 @@ impl Section {
             Section::Music => Icon::Music,
             Section::Popups => Icon::Volume,
             Section::Notifications => Icon::Bell,
+            Section::Calendar => Icon::Calendar,
             Section::Tabs => Icon::App,
             Section::Addons => Icon::Addons,
             Section::Focus => Icon::Timer,
@@ -246,6 +251,7 @@ impl Section {
             Section::Music => palette::PINK,
             Section::Popups => palette::CYAN,
             Section::Notifications => palette::ORANGE,
+            Section::Calendar => palette::RED,
             Section::Tabs => palette::GREEN,
             Section::Addons => Color::hex(0x0A84FF),
             Section::Focus => palette::ORANGE,
@@ -307,6 +313,9 @@ pub enum Key {
     ClipKeep,
     NotesKey,
     NotifyAccess,
+    CalHijri,
+    CalRamadan,
+    CalTasks,
     NotifyWho,
     NotifyText,
     NotifyEvery,
@@ -339,7 +348,6 @@ pub enum Key {
     OpenOn,
     HudOverFullscreen,
     HudHideBrightness,
-    RememberPage,
     StartPage,
     Tab(PageKind),
     FocusMin,
@@ -490,7 +498,7 @@ fn idle_name(s: IdleStyle) -> &'static str {
 }
 
 /// The pages the island may open on: its tabs, but not the Add-ons "+".
-fn start_pages(st: &AppState) -> Vec<PageKind> {
+pub(crate) fn start_pages(st: &AppState) -> Vec<PageKind> {
     crate::pages::tabs(st).into_iter().filter(|p| *p != PageKind::Addons).collect()
 }
 
@@ -630,10 +638,8 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             let pages = start_pages(st);
             let start = PageKind::from_key(&s.start_page);
             let start_name = if pages.contains(&start) { start.title() } else { pages.first().map_or("Music", |p| p.title()) };
-            let mut open = vec![switch(Key::RememberPage, "Open where you left off", Some("The page you last had open"), s.remember_page)];
-            if !s.remember_page {
-                open.push(item(Key::StartPage, "Opens on", None, Ctl::Stepper(start_name.to_string())));
-            }
+            let label = if s.remember_page { "Last open tab" } else { start_name };
+            let open = vec![item(Key::StartPage, "Opens on", Some("The tab you last had open, or always the same one"), Ctl::Menu(label.to_string()))];
             vec![
                 Block::Group(Some("When the island opens"), open),
                 Block::TabOrder,
@@ -641,6 +647,20 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             ]
         }
         Section::Addons => vec![Block::Addons],
+        Section::Calendar => vec![
+            Block::Group(
+                Some("Hijri"),
+                vec![
+                    switch(Key::CalHijri, "Hijri dates", Some("A Hijri month's name on its first day, and the date on the day picked"), s.cal_hijri),
+                    switch(Key::CalRamadan, "Ramadan mode", Some("Imsak and Berbuka on the countdown, the fasting days on the calendar"), s.ramadan_mode),
+                ],
+            ),
+            Block::Group(
+                Some("Tasks"),
+                vec![switch(Key::CalTasks, "Tasks on the calendar", Some(if st.tasks_on() { "Tasks due on a day, and adding them from Today" } else { "Switch Tasks on in Add-ons first" }), s.cal_tasks)],
+            ),
+            Block::Note("The red dates, their countdown and your own events are always there. Ramadan mode follows Prayer times' calendar and needs it on."),
+        ],
         Section::Notifications => {
             let n = &s.notifications;
             let (line, buttons) = crate::pages::notifications::access_look(st.notify_access);
@@ -889,6 +909,9 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
             st.cmd(Command::Notify(c));
             return;
         }
+        Key::CalHijri => s.cal_hijri = !s.cal_hijri,
+        Key::CalRamadan => s.ramadan_mode = !s.ramadan_mode,
+        Key::CalTasks => s.cal_tasks = !s.cal_tasks,
         Key::NotifyWho => s.notifications.who = !s.notifications.who,
         Key::NotifyText => s.notifications.text = !s.notifications.text,
         Key::NotifyEvery => s.notifications.every_app = !s.notifications.every_app,
@@ -954,15 +977,9 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         },
         Key::HudOverFullscreen => s.hud_over_fullscreen = !s.hud_over_fullscreen,
         Key::HudHideBrightness => s.hud_hide_windows_brightness = !s.hud_hide_windows_brightness,
-        Key::RememberPage => s.remember_page = !s.remember_page,
         Key::StartPage => {
-            let pages = start_pages(st);
-            if pages.is_empty() || step == 0 {
-                return;
-            }
-            let at = pages.iter().position(|p| p.key() == st.settings.start_page).unwrap_or(0) as i32;
-            let next = (at + step).rem_euclid(pages.len() as i32) as usize;
-            st.settings.start_page = pages[next].key().to_string();
+            st.cmd(Command::PickStartPage);
+            return;
         }
         Key::Tab(p) if page_addon(p).is_some() => {
             let a = page_addon(p).unwrap();
@@ -2282,6 +2299,7 @@ mod tests {
                     Key::NotesKey => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notes(_)))),
                     Key::NotifyAccess => assert!(st.cmds.iter().any(|c| matches!(c, Command::Notify(_)))),
                     Key::NotesMic => assert!(st.cmds.contains(&Command::PickMic)),
+                    Key::StartPage => assert!(st.cmds.contains(&Command::PickStartPage)),
                     Key::BackupExport => assert!(st.cmds.contains(&Command::BackupExport)),
                     Key::BackupImport => assert!(st.cmds.is_empty(), "the first press only asks"),
                     Key::BackupFolder => assert!(opens),
@@ -2367,16 +2385,16 @@ mod tests {
         assert!(st.tab_hidden(PageKind::Shelf));
         apply(&mut st, Key::Tab(PageKind::Shelf), Act::Toggle);
         assert!(!st.tab_hidden(PageKind::Shelf));
-        // Opens on shows only while the island doesn't open where it was left.
-        assert!(row(Section::Tabs, &st, Key::StartPage).is_none());
-        apply(&mut st, Key::RememberPage, Act::Toggle);
-        assert!(row(Section::Tabs, &st, Key::StartPage).is_some());
+        // Opens on is one menu: the last open tab, or one of the tabs.
+        let r = row(Section::Tabs, &st, Key::StartPage).unwrap();
+        assert!(matches!(&r.ctl, Ctl::Menu(l) if l == "Last open tab"));
+        st.settings.remember_page = false;
+        st.settings.start_page = PageKind::Today.key().to_string();
+        let r = row(Section::Tabs, &st, Key::StartPage).unwrap();
+        assert!(matches!(&r.ctl, Ctl::Menu(l) if l == PageKind::Today.title()));
+        apply(&mut st, Key::StartPage, Act::Press);
+        assert!(st.cmds.contains(&Command::PickStartPage));
         let pages = start_pages(&st);
-        apply(&mut st, Key::StartPage, Act::Step(1));
-        assert_eq!(st.settings.start_page, pages[1].key());
-        apply(&mut st, Key::StartPage, Act::Step(-1));
-        apply(&mut st, Key::StartPage, Act::Step(-1));
-        assert_eq!(st.settings.start_page, pages[pages.len() - 1].key());
         assert!(!pages.contains(&PageKind::Addons) && !pages.contains(&PageKind::Settings));
     }
 

@@ -98,7 +98,9 @@ impl TaskList {
         (done, done + self.open_count())
     }
 
-    /// Display order: open tasks first (oldest first), then today's done tasks.
+    /// Display order: open tasks first, those due soonest at the top (so:
+    /// overdue, today, upcoming), then the ones with no date (oldest first);
+    /// then today's done tasks.
     pub fn display_order(&self, day_start_unix: i64) -> Vec<&Task> {
         let mut open: Vec<&Task> = self.tasks.iter().filter(|t| !t.done).collect();
         let mut done: Vec<&Task> = self
@@ -106,7 +108,8 @@ impl TaskList {
             .iter()
             .filter(|t| t.done && t.done_unix.is_some_and(|d| d >= day_start_unix))
             .collect();
-        open.sort_by_key(|t| (t.created_unix, t.id));
+        let due_key = |t: &Task| t.due.map(|d| crate::datetime::days_from_civil(d.year, d.month, d.day) * 1440 + i64::from(d.time.unwrap_or(24 * 60)));
+        open.sort_by_key(|t| (due_key(t).is_none(), due_key(t).unwrap_or(0), t.created_unix, t.id));
         done.sort_by_key(|t| std::cmp::Reverse(t.done_unix));
         open.extend(done);
         open

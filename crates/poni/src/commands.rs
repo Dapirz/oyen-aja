@@ -108,6 +108,8 @@ pub enum Command {
     OpenApp(String),
     /// Settings > Meeting notes: the microphone menu.
     PickMic,
+    /// Settings > Tabs: the Opens on menu.
+    PickStartPage,
     /// Settings > About > Backup: write one, or put the newest one back.
     BackupExport,
     BackupImport,
