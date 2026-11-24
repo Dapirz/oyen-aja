@@ -159,7 +159,7 @@ pub fn current_activity(st: &AppState) -> Option<Activity> {
         return Some(Activity::Notes);
     }
     let media = st.settings.show_media_activity
-        && st.media.as_ref().is_some_and(|m| m.is_playing() || paused_keeps(st) || media_grace_end(st).is_some_and(|end| st.now < end));
+        && st.media.as_ref().is_some_and(|m| !m.is_blip() && (m.is_playing() || paused_keeps(st) || media_grace_end(st).is_some_and(|end| st.now < end)));
     let timer = st.pomodoro.is_active();
     match (media, timer) {
         (true, true) => Some(Activity::MediaTimer),
@@ -1146,6 +1146,19 @@ mod tests {
             st.lyrics = LyricsState { track_key: key, status: LyricsStatus::Found, lyrics: Some(parse_lrc(l)), source: "Sample".into(), ruby: Vec::new(), wants_ja_readings: false };
         }
         st
+    }
+
+    #[test]
+    fn a_site_s_notification_sound_is_not_music() {
+        let mut st = playing(None);
+        assert_eq!(current_activity(&st), Some(Activity::Media));
+        let m = st.media.as_mut().unwrap();
+        m.title = "web.whatsapp.com".into();
+        m.artist.clear();
+        assert_eq!(current_activity(&st), None, "a site's name and no artist");
+        let mut st = playing(None);
+        st.media.as_mut().unwrap().timeline = Timeline::new(0.5, 3.0, 0.0, true);
+        assert_eq!(current_activity(&st), None, "a 3 s sound");
     }
 
     #[test]

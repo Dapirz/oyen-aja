@@ -45,6 +45,16 @@ impl MediaSession {
     pub fn make_track_key(title: &str, artist: &str, album: &str) -> String {
         format!("{title}\u{1}{artist}\u{1}{album}")
     }
+    /// Not music: a sound a few seconds long, or a page that names only its
+    /// site (WhatsApp Web's notification sound in a browser reports itself
+    /// as "web.whatsapp.com"). The island doesn't show it as music.
+    pub fn is_blip(&self) -> bool {
+        let short = self.timeline.has_duration() && self.timeline.duration_s < 20.0;
+        let t = self.title.trim();
+        let site = !t.is_empty() && t.contains('.') && !t.contains(' ') && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+        short || (site && self.artist.trim().is_empty())
+    }
+
     pub fn is_playing(&self) -> bool {
         self.timeline.playing
     }
