@@ -51,6 +51,7 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - Notice atau countdown sholat yang muncul saat lagu ber-lirik main ditumpuk dengan baris lirik di bawahnya (`activities::stacks`, bukan tema Pill).
 
 ### Today (kalender)
+- Tanggal Hijriah (opsi B): nama bulan Hijriah kecil di tanggal 1 bulan itu, dan tanggal Hijriah lengkap di judul hari dipilih; kalender sama dengan Waktu sholat (Kemenag/KHGT, `hijri::date`).
 - Kalender sebulan (Senin pertama, panah ‹ ›): hari ini diisi, hari dipilih dicincin, tanggal merah libur nasional + Minggu, cuti bersama merah muda, titik untuk hari dengan event/task. Hanya bangun saat tengah malam.
 - Libur: `poni_core::agenda::HOLIDAYS` dari SKB 3 Menteri di setneg.go.id, lengkap 2026–2027; setelah itu hanya tanggal tetap (lihat Nanti). Countdown sampai 3 tanggal merah dalam 60 hari.
 - Event sendiri (sekali atau tiap N hari/minggu/bulan/tahun) di `data.json` (`store.agenda`); task bertanggal (`Task.due`: hari, jam, pengingat) dibuat dari Today lewat tombol jenis Event/Task, tampil juga di Tasks ("Today 09:30", merah kalau lewat).

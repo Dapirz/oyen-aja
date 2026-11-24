@@ -41,6 +41,8 @@ const MAX_TITLE: usize = 80;
 const MONTH_LONG: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_SHORT: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAY_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/// The Hijri months, short enough for a day's cell.
+const HIJRI_SHORT: [&str; 12] = ["Muharram", "Safar", "R. Awal", "R. Akhir", "J. Awal", "J. Akhir", "Rajab", "Syakban", "Ramadan", "Syawal", "Zulkaidah", "Zulhijah"];
 /// Weekday initials from Monday.
 const INITIALS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
 /// A red date's red, and a cuti bersama's.
@@ -112,6 +114,10 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
     let picked_n = days_from_civil(picked.0, picked.1, picked.2);
     let top = r.y + TITLE_H + INITIALS_H;
     let num = TextStyle::footnote().tabular().center();
+    // A Hijri month's first day carries its name, by the calendar Prayer
+    // times follows (Kemenag or KHGT).
+    let cal = st.settings.prayer.follow.calendar();
+    let mark_st = TextStyle::new(9.5).weight(Weight::Semibold).center().color(st.accent);
     let radius = (CELL_H.min(cell_w) / 2.0 - 2.0).clamp(8.0, 11.0);
     for i in 0..42 {
         let day = start + i;
@@ -134,17 +140,26 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             None => Color::white(0.9),
         };
         let ink = if inside { ink } else { ink.mul_alpha(0.35) };
+        let hijri = poni_core::hijri::date(cal, day);
+        let marked = hijri.day == 1;
+        // A marked day's number sits a little higher, its month's name under it.
+        let num_r = if marked { Rect::new(cell.x, cell.y - 4.0, cell.w, cell.h) } else { cell };
         if day == today_n {
             ui.c.fill_circle(c, radius, st.accent);
-            ui.c.text(&dd.to_string(), cell, &num.weight(Weight::Bold).color(palette::ON_ACCENT));
+            ui.c.text(&dd.to_string(), num_r, &num.weight(Weight::Bold).color(palette::ON_ACCENT));
         } else {
             if day == picked_n {
                 ui.c.stroke_circle(c, radius, st.accent, 1.5);
             }
-            ui.c.text(&dd.to_string(), cell, &num.color(ink));
+            ui.c.text(&dd.to_string(), num_r, &num.color(ink));
+        }
+        if marked {
+            let name = HIJRI_SHORT[(hijri.month.clamp(1, 12) - 1) as usize];
+            let color = if day == today_n { palette::ON_ACCENT } else if inside { st.accent } else { st.accent.mul_alpha(0.4) };
+            ui.c.text(name, Rect::new(cell.x - 8.0, cell.bottom() - 11.0, cell.w + 16.0, 10.0), &mark_st.color(color));
         }
         let task_due = st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| (x.year, x.month, x.day) == (dy, dm, dd)));
-        if task_due || !st.store.agenda.on(dy, dm, dd).is_empty() {
+        if (task_due || !st.store.agenda.on(dy, dm, dd).is_empty()) && !marked {
             let dot = if day == today_n { palette::ON_ACCENT } else { st.accent };
             ui.c.fill_circle(Point::new(c.x, cell.bottom() - 3.0), 1.8, dot);
         }
@@ -183,9 +198,14 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     }
     let tw = ui.c.measure(&title, &TextStyle::body().weight(Weight::Semibold), 300.0).0 + 2.0;
     ui.c.text(&title, Rect::new(r.x, y, tw, 20.0), &TextStyle::body().weight(Weight::Semibold));
+    let hijri = poni_core::hijri::date(st.settings.prayer.follow.calendar(), days_from_civil(py, pm, pd));
+    let hl = format!("{} {}", hijri.day, poni_core::hijri::MONTHS[(hijri.month.clamp(1, 12) - 1) as usize]);
+    let hs = TextStyle::caption().color(palette::TEXT_FAINT).right();
+    let hw = ui.c.measure(&hl, &hs, 200.0).0 + 2.0;
+    ui.c.text(&hl, Rect::new(r.right() - hw, y + 2.0, hw, 18.0), &hs);
     if let Some(h) = agenda::holiday(py, pm, pd) {
         let color = if h.leave { LEAVE } else { RED };
-        ui.c.text(h.name, Rect::new(r.x + tw + 8.0, y + 1.0, (r.w - tw - 8.0).max(0.0), 18.0), &TextStyle::footnote().color(color));
+        ui.c.text(h.name, Rect::new(r.x + tw + 8.0, y + 1.0, (r.w - tw - hw - 16.0).max(0.0), 18.0), &TextStyle::footnote().color(color));
     }
     y += 22.0;
     // The day's events (all-day first, then by time) and the tasks due
