@@ -43,7 +43,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 pub struct Services {
     media: Option<media::MediaService>,
     lyrics: Option<lyrics::LyricsService>,
-    _audio: Option<audio::AudioService>,
+    audio: Option<audio::AudioService>,
     _bluetooth: Option<bluetooth::BluetoothService>,
     fullscreen: Option<fullscreen::FullscreenWatcher>,
     pairdrop: Option<pairdrop::PairDropService>,
@@ -79,7 +79,7 @@ impl Services {
             .map(|a| a.id)
             .collect();
         let addons = started("add-ons", addons::AddonService::start(sink.clone(), on));
-        Self { media, lyrics, _audio: audio, _bluetooth: bluetooth, fullscreen, pairdrop, addons }
+        Self { media, lyrics, audio, _bluetooth: bluetooth, fullscreen, pairdrop, addons }
     }
 
     pub fn stop(self, _helper: HWND) {
@@ -113,6 +113,14 @@ impl Services {
     pub fn media_cmd(&self, c: MediaCmd, app_id: Option<String>) {
         if let Some(m) = &self.media {
             m.send(c, app_id);
+        }
+    }
+
+    /// A volume key, taken over: to the audio thread when it runs.
+    pub fn volume_key(&self, vk: u16) {
+        match &self.audio {
+            Some(a) => a.volume_key(vk),
+            None => audio::volume_key(vk),
         }
     }
 

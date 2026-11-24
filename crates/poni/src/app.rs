@@ -4572,7 +4572,10 @@ impl App {
             v if v == VK_NUMLOCK.0 => "Num Lock",
             v if v == VK_SCROLL.0 => "Scroll Lock",
             v => {
-                services::audio::volume_key(v);
+                match self.services.as_ref() {
+                    Some(s) => s.volume_key(v),
+                    None => services::audio::volume_key(v),
+                }
                 return;
             }
         };

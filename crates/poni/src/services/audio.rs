@@ -26,36 +26,41 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
 use windows::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 
-/// A volume key, taken over (`services::keys`): 2 % up or down (up also
-/// unmutes), or mute on and off, on the default playback device. The
-/// watcher above reports the change, and the island shows it. UI thread;
-/// a few Core Audio calls.
+/// A volume key, taken over (`services::keys`), when the audio thread isn't
+/// there to take it (`AudioService::volume_key`): the device is looked up
+/// for this one press. UI thread.
 pub fn volume_key(vk: u16) {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP};
-    const STEP: f32 = 0.02;
     let r = (|| -> Result<()> {
         let devices: IMMDeviceEnumerator = unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)? };
         let device = unsafe { devices.GetDefaultAudioEndpoint(eRender, eConsole)? };
         let v: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
-        unsafe {
-            let muted = v.GetMute()?.as_bool();
-            let level = v.GetMasterVolumeLevelScalar()?;
-            if vk == VK_VOLUME_MUTE.0 {
-                v.SetMute(!muted, std::ptr::null())?;
-            } else {
-                let d = if vk == VK_VOLUME_UP.0 { STEP } else if vk == VK_VOLUME_DOWN.0 { -STEP } else { 0.0 };
-                let to = ((level + d) / STEP).round() * STEP;
-                v.SetMasterVolumeLevelScalar(to.clamp(0.0, 1.0), std::ptr::null())?;
-                if d > 0.0 && muted {
-                    v.SetMute(false, std::ptr::null())?;
-                }
-            }
-        }
-        Ok(())
+        press(&v, vk)
     })();
     if let Err(e) = r {
         crate::pwarn!("audio: the volume key didn't reach the device ({e})");
     }
+}
+
+/// One volume key on `v`: 2 % up or down (up also unmutes), or mute on and
+/// off. The watcher reports the change, and the island shows it.
+fn press(v: &IAudioEndpointVolume, vk: u16) -> Result<()> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP};
+    const STEP: f32 = 0.02;
+    unsafe {
+        let muted = v.GetMute()?.as_bool();
+        let level = v.GetMasterVolumeLevelScalar()?;
+        if vk == VK_VOLUME_MUTE.0 {
+            v.SetMute(!muted, std::ptr::null())?;
+        } else {
+            let d = if vk == VK_VOLUME_UP.0 { STEP } else if vk == VK_VOLUME_DOWN.0 { -STEP } else { 0.0 };
+            let to = ((level + d) / STEP).round() * STEP;
+            v.SetMasterVolumeLevelScalar(to.clamp(0.0, 1.0), std::ptr::null())?;
+            if d > 0.0 && muted {
+                v.SetMute(false, std::ptr::null())?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// How long `Drop` waits for the worker to unregister before detaching it.
@@ -69,6 +74,15 @@ pub struct AudioService {
 }
 
 impl AudioService {
+    /// A volume key, taken over: the audio thread applies it to the device
+    /// it already holds, so the UI thread makes no COM objects per press
+    /// (audit B2).
+    pub fn volume_key(&self, vk: u16) {
+        if self.tx.send(Msg::Key(vk)).is_err() {
+            volume_key(vk);
+        }
+    }
+
     pub fn start(sink: EventSink) -> Result<Self> {
         let (tx, rx) = mpsc::channel();
         let (done_tx, done) = mpsc::channel();
@@ -104,6 +118,8 @@ enum Msg {
     /// The default recording endpoint changed (the microphone's mute is
     /// watched there).
     MicChanged,
+    /// A volume key (`AudioService::volume_key`).
+    Key(u16),
     Shutdown,
 }
 
@@ -309,6 +325,7 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
     while let Ok(msg) = rx.recv() {
         match msg {
             Msg::Shutdown => break,
+            Msg::Key(vk) => key(binding.as_ref(), vk),
             Msg::MicChanged => {
                 if let Some(b) = mic.take() {
                     b.unbind();
@@ -319,7 +336,7 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
                 // One switch fires once per role; handle the burst once. A
                 // microphone change in the burst (a headset brings both)
                 // is kept, not dropped with the rest (audit B1).
-                let (mut shutdown, mut mic_too) = (false, false);
+                let (mut shutdown, mut mic_too, mut keys) = (false, false, Vec::new());
                 while let Ok(m) = rx.try_recv() {
                     match m {
                         Msg::Shutdown => {
@@ -327,7 +344,9 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
                             break;
                         }
                         Msg::MicChanged => mic_too = true,
-                        _ => {}
+                        // Pressed meanwhile: for the new device, below.
+                        Msg::Key(vk) => keys.push(vk),
+                        Msg::DefaultChanged => {}
                     }
                 }
                 if shutdown {
@@ -339,6 +358,9 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
                         b.unbind();
                     }
                     mic = bind_mic(&enumerator, &sink, &mic_last);
+                }
+                for vk in keys {
+                    key(binding.as_ref(), vk);
                 }
             }
         }
@@ -356,6 +378,15 @@ fn worker(sink: EventSink, rx: Receiver<Msg>, client_tx: Sender<Msg>) {
         }
     }
     // `client`, `enumerator`, then `com` drop here, in that order.
+}
+
+/// A volume key on the bound default device; a device that went away
+/// (unplugged before Windows said so) is looked up afresh.
+fn key(binding: Option<&Binding>, vk: u16) {
+    match binding.map(|b| press(&b.volume, vk)) {
+        Some(Ok(())) => {}
+        _ => volume_key(vk),
+    }
 }
 
 /// Bind to the current default endpoint (unless it is the one already bound)
