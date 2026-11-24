@@ -46,6 +46,7 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - SMTC, lirik sinkron (LRCLIB), bacaan latin, lirik Apple Music (token ditempel di Settings → Music and lyrics).
 - Two rows (bawaan nyala) di Classic, Smoke, Glass (`smoke::two_rows`): cover, jam (bisa dimatikan: Clock), equalizer, lalu lirik; progress bar di tepi bawah dengan warna equalizer. Ukuran 300–680 × 60.
 - Lebar ikut baris lirik sekarang: membesar 0,45 dtk sebelum baris yang lebih panjang (`lyric::upcoming`), mengecil bersama baris pendek; maks 680 (`pill::media::MAX_W`), jendela island ikut selebar itu.
+- Lirik salah: hover kolom lirik, klik **Wrong lyrics?** (hanya lirik LRCLIB) untuk salinan LRCLIB lain, terbaik dulu lalu berputar (`lrclib::next_copy`); pilihan dan id yang ditolak disimpan di file cache lagu (`tried`).
 - Halaman Music: scroll di atas lirik sinkron menggeser ke bait lain (1 baris per notch, `lyric_browse`), klik baris untuk loncat ke sana; 3 dtk tanpa scroll kembali ke baris yang dinyanyikan.
 - Lirik sinkron LRCLIB yang baris terakhirnya sebelum 40 % lagu dianggap rusak (`lrclib::spans_song`): dicari salinan lain, atau tampil tanpa sinkron.
 - Setting: Frame rate, ukuran dan bold lirik, After pausing (0/5/10/30 dtk/Keep), Title without lyrics, running text untuk judul panjang.
