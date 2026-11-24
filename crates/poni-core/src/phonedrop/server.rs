@@ -12,7 +12,7 @@
 //! Anything else, including a wrong secret, is a bare 404.
 
 use super::http::{self, Head, HeadError};
-use super::names::{safe_name, unique_path};
+use super::names::{place, safe_name};
 use super::token;
 use serde::Deserialize;
 use serde_json::json;
@@ -625,14 +625,15 @@ fn write_file(shared: &Shared, r: &mut TcpStream, rest: Vec<u8>, path: &Path, le
 fn commit(inbox: &Path, t: &Transfer) -> io::Result<Vec<PathBuf>> {
     let mut placed: Vec<PathBuf> = Vec::with_capacity(t.files.len());
     for (i, f) in t.files.iter().enumerate() {
-        let dest = unique_path(inbox, &f.name, &placed);
-        if let Err(e) = fs::rename(t.staging.join(format!("{i}.part")), &dest) {
-            for p in &placed {
-                let _ = fs::remove_file(p);
+        match place(&t.staging.join(format!("{i}.part")), inbox, &f.name, &placed) {
+            Ok(dest) => placed.push(dest),
+            Err(e) => {
+                for p in &placed {
+                    let _ = fs::remove_file(p);
+                }
+                return Err(e);
             }
-            return Err(e);
         }
-        placed.push(dest);
     }
     Ok(placed)
 }

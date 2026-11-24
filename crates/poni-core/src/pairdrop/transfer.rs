@@ -6,7 +6,7 @@
 //! what was announced. Files are staged and moved into the inbox only when
 //! every byte of every file has arrived, like today's phone drop.
 
-use crate::phonedrop::names::{safe_name, unique_path};
+use crate::phonedrop::names::{place, safe_name};
 use serde::Deserialize;
 use serde_json::json;
 use std::fs::{self, File};
@@ -241,14 +241,15 @@ impl Incoming {
     fn commit(&mut self) -> io::Result<Vec<PathBuf>> {
         let mut placed: Vec<PathBuf> = Vec::with_capacity(self.files.len());
         for (i, (name, _)) in self.files.iter().enumerate() {
-            let dest = unique_path(&self.inbox, name, &placed);
-            if let Err(e) = fs::rename(self.staging.join(format!("{i}.part")), &dest) {
-                for p in &placed {
-                    let _ = fs::remove_file(p);
+            match place(&self.staging.join(format!("{i}.part")), &self.inbox, name, &placed) {
+                Ok(dest) => placed.push(dest),
+                Err(e) => {
+                    for p in &placed {
+                        let _ = fs::remove_file(p);
+                    }
+                    return Err(e);
                 }
-                return Err(e);
             }
-            placed.push(dest);
         }
         let _ = fs::remove_dir_all(&self.staging);
         Ok(placed)

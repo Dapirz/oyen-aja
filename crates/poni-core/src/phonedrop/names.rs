@@ -86,6 +86,34 @@ pub fn unique_path(dir: &Path, name: &str, taken: &[PathBuf]) -> PathBuf {
     dir.join(format!("{stem} ({}){ext}", std::process::id()))
 }
 
+/// Move `src` into `dir` as `name` (numbered when taken, as `unique_path`)
+/// without ever replacing a file: the name is claimed first by creating it
+/// empty (`create_new` fails on a name that appeared meanwhile, where
+/// checking then renaming would overwrite it), then `src` takes its place.
+pub fn place(src: &Path, dir: &Path, name: &str, taken: &[PathBuf]) -> std::io::Result<PathBuf> {
+    let mut taken = taken.to_vec();
+    for _ in 0..100 {
+        let dest = unique_path(dir, name, &taken);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&dest) {
+            Ok(claim) => drop(claim),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                taken.push(dest);
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+        // Over the empty file just made: ours, nobody else's.
+        return match std::fs::rename(src, &dest) {
+            Ok(()) => Ok(dest),
+            Err(e) => {
+                let _ = std::fs::remove_file(&dest);
+                Err(e)
+            }
+        };
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free name"))
+}
+
 /// Windows file names are case-insensitive.
 fn same_name(a: &Path, b: &Path) -> bool {
     a.to_string_lossy().to_lowercase() == b.to_string_lossy().to_lowercase()
@@ -141,6 +169,25 @@ mod tests {
         assert_eq!(split_ext("README"), ("README", ""));
         assert_eq!(split_ext(".env"), (".env", ""));
         assert_eq!(split_ext("dot."), ("dot.", ""));
+    }
+
+    #[test]
+    fn placing_never_replaces_a_file() {
+        let dir = std::env::temp_dir().join(format!("poni-place-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("photo.jpg"), b"old").unwrap();
+        let src = dir.join("0.part");
+        std::fs::write(&src, b"new").unwrap();
+        let p = place(&src, &dir, "photo.jpg", &[]).unwrap();
+        assert_eq!(p, dir.join("photo (1).jpg"));
+        assert_eq!(std::fs::read(dir.join("photo.jpg")).unwrap(), b"old");
+        assert_eq!(std::fs::read(&p).unwrap(), b"new");
+        assert!(!src.exists());
+        // A source that's gone leaves no empty claim behind.
+        assert!(place(&dir.join("missing.part"), &dir, "x.txt", &[]).is_err());
+        assert!(!dir.join("x.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
