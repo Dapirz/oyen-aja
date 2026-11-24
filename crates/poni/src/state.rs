@@ -322,8 +322,8 @@ pub struct PageUiState {
     pub cal_time: Option<u16>,
     /// What the add line makes: an event (false) or a task due that day.
     pub cal_task: bool,
-    /// The Tasks page's due pick for the next task: 0 none, 1 today, 2 tomorrow.
-    pub task_due_pick: u8,
+    /// The Tasks page's due day for the next task, in days from today (None: no date).
+    pub task_due: Option<u16>,
     /// The calendar row being edited in the add line: a task (true) or an
     /// event, and its id.
     pub cal_editing: Option<(bool, u64)>,
@@ -332,6 +332,8 @@ pub struct PageUiState {
     pub cal_scroll_day: Option<(i32, u8, u8)>,
     /// What's typed into the Settings window's search (empty: no search).
     pub settings_search: String,
+    /// The Settings window has the keyboard: typing goes to its search.
+    pub settings_keys: bool,
     /// Import was pressed once (until then, mono seconds): a second press
     /// replaces everything with the backup. And the line beside Backup.
     pub import_armed_until: f64,

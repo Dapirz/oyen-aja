@@ -204,7 +204,7 @@ pub const SCREEN_TIME: Addon = Addon {
 pub const MEETING_NOTES: Addon = Addon {
     id: "notes",
     title: "Meeting notes",
-    blurb: "Records your meeting, then Gemini writes the notes and the transcript.",
+    blurb: "Records a meeting; Gemini writes the notes and transcript.",
     mac_blurb: None,
     tag: "",
     files: &[],
@@ -242,7 +242,7 @@ pub const FOCUS: Addon = Addon {
 pub const NOTIFICATIONS: Addon = Addon {
     id: "notifications",
     title: "Notifications",
-    blurb: "Messages from the apps you pick, on the island (Microsoft Store copy).",
+    blurb: "Messages from the apps you pick, on the island.",
     mac_blurb: Some("Messages from the apps you pick, on the island."),
     tag: "",
     files: &[],

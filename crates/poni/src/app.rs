@@ -1523,6 +1523,12 @@ impl App {
             },
         }
         self.paint_settings(deferred);
+        // The first frame shows the window and takes the keyboard: draw the
+        // search field again now that it has it.
+        if let Some(w) = self.settings_win.as_mut() {
+            w.view.dirty = true;
+        }
+        self.paint_settings(deferred);
     }
 
     /// Close it: the window, its renderer and its pixels go.
@@ -1539,6 +1545,8 @@ impl App {
             self.st.now = self.st.now.max(clock::mono());
             let now = self.st.now;
             let Some(w) = self.settings_win.as_mut() else { return };
+            // Read, not remembered: the first activation comes while the window is still being made.
+            self.st.ui.settings_keys = unsafe { GetForegroundWindow() } == w.hwnd;
             let out = w.paint(&mut self.st, now, None, false);
             if out.close {
                 self.close_settings_window();
@@ -1586,6 +1594,12 @@ impl App {
         let w = self.settings_win.as_mut().filter(|w| w.hwnd == hwnd)?;
         let xy = |lp: LPARAM| ((lp.0 & 0xffff) as u16 as i16 as i32, ((lp.0 >> 16) & 0xffff) as u16 as i16 as i32);
         match msg {
+            // The search field shows whether typing reaches it.
+            WM_ACTIVATE => {
+                w.view.dirty = true;
+                self.paint_settings(deferred);
+                None
+            }
             WM_NCHITTEST => {
                 // Empty parts of the card move the window; the shadow takes nothing.
                 let (x, y) = xy(lp);

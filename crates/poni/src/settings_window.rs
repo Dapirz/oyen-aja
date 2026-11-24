@@ -1432,9 +1432,25 @@ fn draw(ui: &mut Ui, st: &mut AppState, section: Section, frame: Frame, light: b
     // The search field: whatever is typed while the window has the keyboard.
     let field = Rect::new(content.right() - 44.0 - SEARCH_W, card.y + TITLE_Y + (TITLE_H - SEARCH_H) / 2.0, SEARCH_W, SEARCH_H);
     ui.c.fill_rrect(field, SEARCH_H / 2.0, sf.group);
+    let keys = st.ui.settings_keys;
+    if keys {
+        // The window has the keyboard: the field says so, and where the next letter goes.
+        ui.c.stroke_rrect(field.inset(0.5, 0.5), SEARCH_H / 2.0 - 0.5, st.accent.mul_alpha(0.7), 1.0);
+    }
     let typed = !st.ui.settings_search.is_empty();
-    let (shown, color) = if typed { (st.ui.settings_search.as_str(), palette::TEXT) } else { ("Type to search", palette::TEXT_FAINT) };
-    ui.c.text(shown, Rect::new(field.x + 14.0, field.y, field.w - 40.0, field.h), &TextStyle::body().color(color));
+    let text_r = Rect::new(field.x + 14.0, field.y, field.w - 40.0, field.h);
+    let body = TextStyle::body();
+    let caret_x = if typed {
+        ui.c.text(&st.ui.settings_search, text_r, &body.color(palette::TEXT));
+        text_r.x + ui.c.measure(&st.ui.settings_search, &body, text_r.w).0.min(text_r.w) + 1.0
+    } else {
+        let hint = if keys { "Type to search" } else { "Click here to search" };
+        ui.c.text(hint, text_r, &body.color(palette::TEXT_FAINT));
+        text_r.x
+    };
+    if keys {
+        ui.c.fill_rect(Rect::new(caret_x, field.y + 7.0, 1.5, field.h - 14.0), st.accent);
+    }
     if typed {
         let x = Rect::new(field.right() - 28.0, field.y + 3.0, 24.0, 24.0);
         if ui.icon_button(wid("settingswin.search.clear"), x, Icon::Close, palette::TEXT_DIM, 12.0).clicked {
@@ -1615,6 +1631,17 @@ fn row_h(it: &Item) -> f32 {
     }
 }
 
+/// A note's line, and about how many of its letters fit on one (the
+/// content is 564 wide; a footnote's letter about 6.3 on average, so this
+/// leaves room rather than cut a line off).
+const NOTE_LINE_H: f32 = 18.0;
+const NOTE_CHARS: usize = 78;
+
+/// How many lines a note wraps to.
+fn note_lines(t: &str) -> usize {
+    t.chars().count().div_ceil(NOTE_CHARS).max(1)
+}
+
 /// How tall a block is drawn.
 fn block_h(st: &AppState, b: &Block) -> f32 {
     match b {
@@ -1623,7 +1650,7 @@ fn block_h(st: &AppState, b: &Block) -> f32 {
         Block::Themes => GROUP_TITLE_H + theme_cards_h(),
         Block::Addons => crate::pages::addons::height(st),
         Block::TabOrder => tab_order_h(st),
-        Block::Note(_) => 18.0,
+        Block::Note(t) => note_lines(t) as f32 * NOTE_LINE_H,
     }
 }
 
@@ -1669,7 +1696,7 @@ fn draw_block(ui: &mut Ui, st: &mut AppState, b: &Block, bi: usize, at: Rect, vi
         Block::Themes => draw_themes(ui, st, r, view, sf, m),
         Block::Addons => crate::pages::addons::draw(ui, st, r),
         Block::TabOrder => draw_tab_order(ui, st, r, view, sf, m),
-        Block::Note(t) => ui.c.text(t, Rect::new(r.x + 2.0, r.y, r.w, r.h), &TextStyle::footnote().color(palette::TEXT_FAINT)),
+        Block::Note(t) => ui.c.text(t, Rect::new(r.x + 2.0, r.y, r.w - 4.0, r.h), &TextStyle::footnote().color(palette::TEXT_FAINT).wrap().top()),
     }
     next
 }

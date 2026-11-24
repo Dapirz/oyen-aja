@@ -131,13 +131,35 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let full = st.store.tasks.tasks.len() >= MAX_TASKS;
 
     // ---- Input: the list's first row, sharing its checkbox and text columns.
-    // When the next task is due: none, today or tomorrow (a click cycles).
-    let due_word = ["No date", "Today", "Tomorrow"][st.ui.task_due_pick.min(2) as usize];
-    let dw = ui.pill_width(due_word, true, true);
-    let due_r = Rect::new(area.right() - dw - 6.0, area.y + (INPUT_H - PILL_SMALL) / 2.0, dw, PILL_SMALL);
-    let due_style = if st.ui.task_due_pick > 0 { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
-    if ui.pill(wid("tasks.due"), due_r, due_word, Some(Icon::Calendar), due_style).clicked {
-        st.ui.task_due_pick = (st.ui.task_due_pick + 1) % 3;
+    // When the next task is due: a click sets today (or takes the date off),
+    // then - and + or the wheel move it a day at a time.
+    let today = poni_core::datetime::days_from_civil(st.local.year, st.local.month, st.local.day);
+    let due_word = st.ui.task_due.map_or("No date".to_string(), |off| due_pick_label(today, off));
+    let dw = ui.pill_width(&due_word, true, true);
+    let steps_w = if st.ui.task_due.is_some() { 46.0 } else { 0.0 };
+    let pill_y = area.y + (INPUT_H - PILL_SMALL) / 2.0;
+    let due_r = Rect::new(area.right() - dw - steps_w - 6.0, pill_y, dw, PILL_SMALL);
+    let due_style = if st.ui.task_due.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    if ui.pill(wid("tasks.due"), due_r, &due_word, Some(Icon::Calendar), due_style).clicked {
+        st.ui.task_due = if st.ui.task_due.is_some() { None } else { Some(0) };
+    }
+    if let Some(off) = st.ui.task_due {
+        let mut step = 0i32;
+        let minus = Rect::new(due_r.right() + 2.0, pill_y + 3.0, 22.0, 22.0);
+        let plus = Rect::new(minus.right(), pill_y + 3.0, 22.0, 22.0);
+        if ui.icon_button(wid("tasks.due.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
+            step = -1;
+        }
+        if ui.icon_button(wid("tasks.due.plus"), plus, Icon::Plus, palette::TEXT_DIM, 11.0).clicked {
+            step = 1;
+        }
+        let wheel = ui.wheel_in(Rect::new(due_r.x, due_r.y, plus.right() - due_r.x, due_r.h));
+        if wheel != 0.0 {
+            step += wheel.signum() as i32;
+        }
+        if step != 0 {
+            st.ui.task_due = Some((i32::from(off) + step).clamp(0, MAX_DUE_DAYS) as u16);
+        }
     }
     let input_r = Rect::new(area.x, area.y, (due_r.x - 6.0 - area.x).max(0.0), INPUT_H);
     let placeholder = if full { "Task list is full" } else { "Add a task, Enter to save" };
@@ -273,11 +295,11 @@ fn submit(ui: &mut Ui, st: &mut AppState, anim: &mut ListAnim, day_start: i64) {
         ui.input.caret = 0;
         return;
     }
-    let id = match st.ui.task_due_pick {
-        0 => st.store.tasks.add(&st.ui.task_input, st.unix),
-        n => {
+    let id = match st.ui.task_due {
+        None => st.store.tasks.add(&st.ui.task_input, st.unix),
+        Some(n) => {
             let t = st.local;
-            let day = poni_core::datetime::days_from_civil(t.year, t.month, t.day) + i64::from(n - 1);
+            let day = poni_core::datetime::days_from_civil(t.year, t.month, t.day) + i64::from(n);
             let (year, month, d) = poni_core::datetime::civil_from_days(day);
             let due = poni_core::agenda::Due { year, month, day: d, time: None, remind: None };
             st.store.tasks.add_due(&st.ui.task_input, st.unix, due)
@@ -518,9 +540,40 @@ fn draw_footer(ui: &mut Ui, st: &mut AppState, r: Rect, day_start: i64, full: bo
     ui.c.text(&text, text_r, &TextStyle::footnote().color(color));
 }
 
+/// How far ahead the due pick goes: a year.
+const MAX_DUE_DAYS: i32 = 366;
+
+/// The due pick's day, `off` days after `today` (days since 1970):
+/// Today, Tomorrow, a weekday this week, else the date (with its year
+/// when it isn't this one).
+fn due_pick_label(today: i64, off: u16) -> String {
+    use poni_core::datetime::{civil_from_days, weekday_from_days, MONTH_SHORT, WEEKDAY_SHORT};
+    let day = today + i64::from(off);
+    let (y, m, d) = civil_from_days(day);
+    let month = MONTH_SHORT[(m.clamp(1, 12) - 1) as usize];
+    match off {
+        0 => "Today".into(),
+        1 => "Tomorrow".into(),
+        2..=6 => format!("{} {d}", WEEKDAY_SHORT[weekday_from_days(day) as usize]),
+        _ if y == civil_from_days(today).0 => format!("{d} {month}"),
+        _ => format!("{d} {month} {y}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_due_pick_says_its_day_plainly() {
+        // Tuesday 24 November 2026.
+        let today = poni_core::datetime::days_from_civil(2026, 11, 24);
+        assert_eq!(due_pick_label(today, 0), "Today");
+        assert_eq!(due_pick_label(today, 1), "Tomorrow");
+        assert_eq!(due_pick_label(today, 3), "Fri 27");
+        assert_eq!(due_pick_label(today, 10), "4 Dec");
+        assert_eq!(due_pick_label(today, 40), "3 Jan 2027");
+    }
 
     #[test]
     fn rect_intersection() {

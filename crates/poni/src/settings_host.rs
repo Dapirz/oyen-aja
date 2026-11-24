@@ -216,7 +216,7 @@ impl SettingsWindow {
         unsafe {
             if !IsWindowVisible(self.hwnd).as_bool() {
                 let _ = ShowWindow(self.hwnd, SW_SHOW);
-                let _ = SetForegroundWindow(self.hwnd);
+                take_keyboard(self.hwnd);
             }
         }
         out.unwrap_or_default()
@@ -234,8 +234,30 @@ impl SettingsWindow {
             if IsIconic(self.hwnd).as_bool() {
                 let _ = ShowWindow(self.hwnd, SW_RESTORE);
             }
-            let _ = SetForegroundWindow(self.hwnd);
+            take_keyboard(self.hwnd);
         }
+    }
+}
+
+/// Put `hwnd` in front with the keyboard, so typing goes to its search.
+/// The island never takes the foreground (it doesn't activate), so Windows
+/// refuses a plain SetForegroundWindow from this process; joining the
+/// foreground window's input for the call is the usual way past that.
+unsafe fn take_keyboard(hwnd: HWND) {
+    use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+    use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+    if SetForegroundWindow(hwnd).as_bool() {
+        return;
+    }
+    let fg = GetForegroundWindow();
+    let theirs = GetWindowThreadProcessId(fg, None);
+    let ours = GetCurrentThreadId();
+    let joined = theirs != 0 && theirs != ours && AttachThreadInput(ours, theirs, true).as_bool();
+    let _ = BringWindowToTop(hwnd);
+    let _ = SetForegroundWindow(hwnd);
+    let _ = SetFocus(hwnd);
+    if joined {
+        let _ = AttachThreadInput(ours, theirs, false);
     }
 }
 
