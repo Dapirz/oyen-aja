@@ -68,7 +68,7 @@ Identitas sendiri sudah selesai (`1790ee2`): nama app Hihu Island, ikon, folder 
 
 Nanti (belum dikerjakan):
 - Glass saat musik jalan sudah dihemat (`git log -1 --grep Glass`): salinan layar paling banyak 30x/detik, 10x saat tidak berubah. Ukuran 22 Nov 2026 (144 Hz, 60 fps, Mcycles/s): Glass 1137 -> 390, Classic sekitar 330. Sisa biaya per frame (~1,8 juta siklus) adalah Direct2D draw + present, sama di semua tema; yang bisa menekannya hanya setting Frame rate. Ukur dengan `tools\measure_cpu.ps1`.
-- RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ.
+- RAM: ukur private working set (kolom Memory di Task Manager), bukan working set yang ikut menghitung DLL bersama. 23 Nov 2026, Classic, baru dibuka: private working set 23,8 MB (working set 87 MB, private bytes 74 MB). Sudah masuk target 15–30 MB; jaga supaya tetap di situ. 24 Nov 2026 (Smoke, add-on Screen time + Sholat nyala, semua fitur Pop-ups dan Notifications nyala): private working set 24,2–24,3 MB; CPU saat diam 2 Mcycles/s (0,07 % satu core), saat musik 60 fps 391 Mcycles/s (thread `main` ~203 + driver grafis ~190; fitur lain masing-masing < 0,5). Ukur per thread dengan `QueryThreadCycleTime` + `GetThreadDescription`.
 
 Tidak dibuat: radio.
 
