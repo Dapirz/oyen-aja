@@ -144,7 +144,8 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             }
             ui.c.text(&dd.to_string(), cell, &num.color(ink));
         }
-        if !st.store.agenda.on(dy, dm, dd).is_empty() {
+        let task_due = st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| (x.year, x.month, x.day) == (dy, dm, dd)));
+        if task_due || !st.store.agenda.on(dy, dm, dd).is_empty() {
             let dot = if day == today_n { palette::ON_ACCENT } else { st.accent };
             ui.c.fill_circle(Point::new(c.x, cell.bottom() - 3.0), 1.8, dot);
         }
@@ -191,7 +192,37 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     let mut events: Vec<(u64, String, Every, Option<u16>)> = st.store.agenda.on(py, pm, pd).into_iter().map(|e| (e.id, e.title.clone(), e.every, e.time)).collect();
     // All-day ones first, then by time.
     events.sort_by_key(|e| e.3.map_or(-1, i32::from));
+    // The tasks due that day, under them: a click checks one off.
+    let tasks: Vec<(u64, String, bool, Option<u16>)> = st.store.tasks.due_on(py, pm, pd).into_iter().map(|t| (t.id, t.text.clone(), t.done, t.due.and_then(|d| d.time))).collect();
+    let task_rows = EVENTS_SHOWN.saturating_sub(events.len().min(EVENTS_SHOWN));
     let mut gone = None;
+    let mut checked = None;
+    for (i, (id, name, done, time)) in tasks.iter().take(task_rows).enumerate() {
+        let row = Rect::new(r.x, y + (events.len().min(EVENTS_SHOWN) + i) as f32 * EVENT_H, r.w, EVENT_H);
+        let resp = ui.button(wid_n("today.task", i as u64), row);
+        if resp.hovered {
+            ui.c.fill_rrect(row.inset(-4.0, 1.0), 6.0, Color::white(0.05));
+        }
+        let mark = Rect::new(row.x - 2.0, row.center().y - 7.0, 14.0, 14.0);
+        if *done {
+            ui.c.icon(Icon::CheckCircle, mark, palette::GREEN);
+        } else {
+            ui.c.icon(Icon::Circle, mark, palette::TEXT_DIM);
+        }
+        let name = match time {
+            Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
+            None => name.clone(),
+        };
+        let ink = if *done { palette::TEXT_FAINT } else { palette::TEXT };
+        ui.c.text(&name, Rect::new(row.x + 16.0, row.y, row.w - 20.0, row.h), &TextStyle::footnote().color(ink));
+        if resp.clicked {
+            checked = Some(*id);
+        }
+    }
+    if let Some(id) = checked {
+        st.store.tasks.toggle(id, st.unix);
+        st.save();
+    }
     for (i, (id, name, every, time)) in events.iter().take(EVENTS_SHOWN).enumerate() {
         let name = match time {
             Some(t) => format!("{}  {name}", agenda::fmt_time(*t)),
@@ -212,8 +243,11 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         }
         y += EVENT_H;
     }
-    if events.len() > EVENTS_SHOWN {
-        ui.c.text(&format!("+{} more", events.len() - EVENTS_SHOWN), Rect::new(r.x + 14.0, y, r.w, 16.0), &TextStyle::caption().color(palette::TEXT_DIM));
+    let shown = events.len().min(EVENTS_SHOWN) + tasks.len().min(task_rows);
+    let total = events.len() + tasks.len();
+    if total > shown {
+        let y = y + tasks.len().min(task_rows) as f32 * EVENT_H;
+        ui.c.text(&format!("+{} more", total - shown), Rect::new(r.x + 14.0, y, r.w, 16.0), &TextStyle::caption().color(palette::TEXT_DIM));
     }
     if let Some(id) = gone {
         st.store.agenda.remove(id);
@@ -224,7 +258,13 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     // and how often it comes, each where the one before ends.
     let add_y = r.bottom() - PILL_SMALL - 2.0;
     let ctl_y = add_y - PILL_SMALL - 6.0;
-    let x = draw_time_picker(ui, st, r.x - 2.0, ctl_y);
+    let kind = Rect::new(r.x - 2.0, ctl_y, PILL_SMALL + 4.0, PILL_SMALL);
+    // What it makes: an event, or a task due this day.
+    let kind_icon = if st.ui.cal_task { Icon::ListChecks } else { Icon::Calendar };
+    if ui.pill(wid("today.kind"), kind, "", Some(kind_icon), PillStyle::Utility).clicked {
+        st.ui.cal_task = !st.ui.cal_task;
+    }
+    let x = draw_time_picker(ui, st, kind.right() + 6.0, ctl_y);
     // The reminder: off, at its time, or a while before (an all-day
     // event's in the morning).
     let remind = st.ui.cal_remind.unwrap_or(Some(10));
@@ -236,15 +276,16 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         let i = agenda::REMINDERS.iter().position(|r| *r == remind).unwrap_or(0);
         st.ui.cal_remind = Some(agenda::REMINDERS[(i + 1) % agenda::REMINDERS.len()]);
     }
+    // How often (an event's; a task is due once).
     let every = st.ui.cal_every;
     let label = every.short();
     let pw = ui.pill_width(&label, false, true);
     let pill = Rect::new(bell.right() + 6.0, ctl_y, pw, PILL_SMALL);
-    if ui.pill(wid("today.every"), pill, &label, None, PillStyle::Utility).clicked {
+    if !st.ui.cal_task && ui.pill(wid("today.every"), pill, &label, None, PillStyle::Utility).clicked {
         st.ui.cal_every = every.next_kind();
     }
     // Its count, where there's room for it.
-    if every != Every::Once && pill.right() + 2.0 + 44.0 <= r.right() + 4.0 {
+    if !st.ui.cal_task && every != Every::Once && pill.right() + 2.0 + 44.0 <= r.right() + 4.0 {
         let n = every.count();
         let minus = Rect::new(pill.right() + 2.0, ctl_y + 3.0, 22.0, 22.0);
         let plus = Rect::new(minus.right(), ctl_y + 3.0, 22.0, 22.0);
@@ -257,10 +298,21 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
     }
     let input = Rect::new(r.x - 6.0, add_y, (r.right() - r.x + 6.0).max(0.0), PILL_SMALL);
     let accent = st.accent;
-    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, "Add an event", MAX_TITLE, accent, Some(Icon::Plus));
-    if resp.submitted && st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every, remind, st.ui.cal_time).is_some() {
-        st.ui.cal_input.clear();
-        st.save();
+    let placeholder = if st.ui.cal_task { "Add a task due this day" } else { "Add an event" };
+    let resp = ui.text_input_row(wid("today.input"), input, &mut st.ui.cal_input, placeholder, MAX_TITLE, accent, Some(Icon::Plus));
+    if resp.submitted {
+        let added = if st.ui.cal_task {
+            let (typed, title) = agenda::split_time(&st.ui.cal_input);
+            let due = agenda::Due { year: py, month: pm, day: pd, time: typed.or(st.ui.cal_time), remind };
+            let title = title.to_string();
+            st.store.tasks.add_due(&title, st.unix, due).is_some()
+        } else {
+            st.store.agenda.add(&st.ui.cal_input, py, pm, pd, st.ui.cal_every, remind, st.ui.cal_time).is_some()
+        };
+        if added {
+            st.ui.cal_input.clear();
+            st.save();
+        }
     }
 }
 

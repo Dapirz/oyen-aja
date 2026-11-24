@@ -13,6 +13,9 @@ pub struct Task {
     pub created_unix: i64,
     #[serde(default)]
     pub done_unix: Option<i64>,
+    /// When it's due (Today's calendar), if it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub due: Option<crate::agenda::Due>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -38,8 +41,24 @@ impl TaskList {
         let text: String = text.chars().take(MAX_TASK_LEN).collect();
         let id = self.next_id.max(1);
         self.next_id = id + 1;
-        self.tasks.push(Task { id, text, done: false, created_unix: now_unix, done_unix: None });
+        self.tasks.push(Task { id, text, done: false, created_unix: now_unix, done_unix: None, due: None });
         Some(id)
+    }
+
+    /// Add a task due on a day (from Today's calendar).
+    pub fn add_due(&mut self, text: &str, now_unix: i64, due: crate::agenda::Due) -> Option<u64> {
+        let id = self.add(text, now_unix)?;
+        if let Some(t) = self.tasks.iter_mut().find(|t| t.id == id) {
+            t.due = Some(due);
+        }
+        Some(id)
+    }
+
+    /// The tasks due on `y-m-d`, open ones first.
+    pub fn due_on(&self, y: i32, m: u8, d: u8) -> Vec<&Task> {
+        let mut v: Vec<&Task> = self.tasks.iter().filter(|t| t.due.is_some_and(|x| (x.year, x.month, x.day) == (y, m, d))).collect();
+        v.sort_by_key(|t| (t.done, t.due.and_then(|x| x.time).map_or(-1, i32::from)));
+        v
     }
 
     pub fn toggle(&mut self, id: u64, now_unix: i64) -> bool {

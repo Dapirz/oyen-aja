@@ -106,6 +106,62 @@ pub struct Event {
     pub remind: Option<u16>,
 }
 
+/// When a task is due: its day, maybe a time, maybe a reminder (as an
+/// event's).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Due {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+    #[serde(default)]
+    pub time: Option<u16>,
+    #[serde(default)]
+    pub remind: Option<u16>,
+}
+
+impl Due {
+    /// Its reminder's minute (local, from 1970), if it has one.
+    pub fn remind_at(&self) -> Option<i64> {
+        let r = self.remind?;
+        let day = days_from_civil(self.year, self.month, self.day);
+        Some(day * 1440 + i64::from(self.time.unwrap_or(MORNING)) - if self.time.is_some() { i64::from(r) } else { 0 })
+    }
+}
+
+/// A reminder that's due: an event's or a task's title, its time, its lead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reminder {
+    pub title: String,
+    pub time: Option<u16>,
+    pub remind: Option<u16>,
+    pub at: i64,
+    pub task: bool,
+}
+
+/// The events' and the open tasks' reminders after minute `after` up to and
+/// at `upto`, soonest first.
+pub fn reminders(agenda: &Agenda, tasks: &crate::todo::TaskList, after: i64, upto: i64) -> Vec<Reminder> {
+    let mut out: Vec<Reminder> = agenda.due(after, upto).into_iter().map(|(e, at)| Reminder { title: e.title.clone(), time: e.time, remind: e.remind, at, task: false }).collect();
+    for t in tasks.tasks.iter().filter(|t| !t.done) {
+        if let Some(d) = t.due {
+            if let Some(at) = d.remind_at().filter(|at| *at > after && *at <= upto) {
+                out.push(Reminder { title: t.text.clone(), time: d.time, remind: d.remind, at, task: true });
+            }
+        }
+    }
+    out.sort_by_key(|r| r.at);
+    out
+}
+
+/// The next reminder of either after minute `after`, within a year.
+pub fn next_reminder(agenda: &Agenda, tasks: &crate::todo::TaskList, after: i64) -> Option<i64> {
+    let task = tasks.tasks.iter().filter(|t| !t.done).filter_map(|t| t.due?.remind_at()).filter(|at| *at > after).min();
+    match (agenda.next_reminder(after), task) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
 /// When an all-day event's reminder comes: 07:00.
 pub const MORNING: u16 = 7 * 60;
 
@@ -402,6 +458,23 @@ mod tests {
         // After it: the birthday's morning tomorrow, at 07:00 (an all-day event).
         assert_eq!(a.next_reminder(day + 9 * 60), Some(day + 1440 + MORNING as i64));
         assert_eq!(fmt_time(570), "09:30");
+    }
+
+    #[test]
+    fn tasks_due_remind_too_until_done() {
+        let mut tasks = crate::todo::TaskList::default();
+        let id = tasks.add_due("Bayar listrik", 0, Due { year: 2026, month: 11, day: 25, time: Some(600), remind: Some(30) }).unwrap();
+        tasks.add_due("Tanpa pengingat", 0, Due { year: 2026, month: 11, day: 25, time: None, remind: None }).unwrap();
+        let day = days_from_civil(2026, 11, 25) * 1440;
+        let agenda = Agenda::default();
+        assert_eq!(next_reminder(&agenda, &tasks, day), Some(day + 570));
+        let r = reminders(&agenda, &tasks, day, day + 600);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].task && r[0].title == "Bayar listrik");
+        assert_eq!(tasks.due_on(2026, 11, 25).len(), 2);
+        tasks.toggle(id, 1);
+        assert_eq!(next_reminder(&agenda, &tasks, day), None, "done: no reminder");
+        assert_eq!(tasks.due_on(2026, 11, 25)[0].text, "Tanpa pengingat", "open ones first");
     }
 
     #[test]

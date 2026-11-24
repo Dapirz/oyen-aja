@@ -205,7 +205,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
             ui.c.set_alpha(prev_alpha * appear);
             // A row on the move glides between pixels; at rest it sits on whole pixels.
             let snap_was = ui.c.set_text_snap(!(scrolling || m || appear < 1.0));
-            let action = draw_row(ui, row, hit, view, *id, *done, text, pop);
+            let due = due_label(st, *id);
+            let action = draw_row(ui, row, hit, view, *id, *done, text, pop, due);
             ui.c.set_text_snap(snap_was);
             ui.c.set_alpha(prev_alpha);
             match action {
@@ -337,9 +338,31 @@ enum RowAction {
     Delete,
 }
 
+/// When task `id` is due, as its row says it ("Today 09:30", "Tomorrow",
+/// "25 Nov"), and whether that's past.
+fn due_label(st: &AppState, id: u64) -> Option<(String, bool)> {
+    let d = st.store.tasks.tasks.iter().find(|t| t.id == id)?.due?;
+    let t = st.local;
+    let today = poni_core::datetime::days_from_civil(t.year, t.month, t.day);
+    let day = poni_core::datetime::days_from_civil(d.year, d.month, d.day);
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let mut label = match day - today {
+        0 => "Today".to_string(),
+        1 => "Tomorrow".to_string(),
+        -1 => "Yesterday".to_string(),
+        _ => format!("{} {}", d.day, MONTHS[(d.month.clamp(1, 12) - 1) as usize]),
+    };
+    if let Some(time) = d.time {
+        label = format!("{label} {}", poni_core::agenda::fmt_time(time));
+    }
+    let now_min = i64::from(t.hour) * 60 + i64::from(t.minute);
+    let late = day < today || (day == today && d.time.is_some_and(|x| i64::from(x) < now_min));
+    Some((label, late))
+}
+
 /// One task row. `hit` is the part of `row` inside the list viewport `view`.
 #[allow(clippy::too_many_arguments)]
-fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, text: &str, pop: Option<f32>) -> RowAction {
+fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, text: &str, pop: Option<f32>, due: Option<(String, bool)>) -> RowAction {
     let mut action = RowAction::None;
     let resp = ui.button(wid_n("tasks.row", id), hit);
     if resp.pressed {
@@ -366,7 +389,17 @@ fn draw_row(ui: &mut Ui, row: Rect, hit: Rect, view: Rect, id: u64, done: bool, 
 
     // Text, struck through when done (the line sweeps in right after checking).
     let tx = row.x + TEXT_X;
-    let tw = (row.w - TEXT_X - 40.0).max(0.0);
+    // When it's due, on the right (in red once it's past).
+    let due_w = match &due {
+        Some((label, late)) => {
+            let ds = TextStyle::caption().color(if *late && !done { palette::RED } else { palette::TEXT_FAINT }).right();
+            let w = ui.c.measure(label, &ds, 140.0).0 + 4.0;
+            ui.c.text(label, Rect::new(row.right() - 40.0 - w, row.y, w, row.h), &ds);
+            w + 8.0
+        }
+        None => 0.0,
+    };
+    let tw = (row.w - TEXT_X - 40.0 - due_w).max(0.0);
     let style = TextStyle::body().color(if done { palette::TEXT_FAINT } else { palette::TEXT });
     ui.c.text(text, Rect::new(tx, row.y, tw, row.h), &style);
     if done && tw > 0.0 {
@@ -495,7 +528,7 @@ mod tests {
 
     #[test]
     fn undo_snapshots_accumulate() {
-        let task = |id: u64| Task { id, text: format!("t{id}"), done: false, created_unix: 0, done_unix: None };
+        let task = |id: u64| Task { id, text: format!("t{id}"), done: false, created_unix: 0, done_unix: None, due: None };
         let mut anim = ListAnim::default();
         offer_undo(&mut anim, vec![task(1)], 1.0);
         offer_undo(&mut anim, vec![task(2)], 3.0);

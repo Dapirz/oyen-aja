@@ -1465,6 +1465,14 @@ impl App {
             WM_QUERYENDSESSION => Some(LRESULT(1)),
             WM_ENDSESSION => {
                 self.save_now();
+                // Windows shuts down or signs out: what Hihu took from it goes
+                // back now (its banners, its volume and brightness bar), as Quit does.
+                if wp.0 != 0 && self.selftest.is_none() {
+                    self.banners.set(&Default::default());
+                    if self.st.settings.hud_hide_windows_brightness {
+                        services::osd::restore();
+                    }
+                }
                 Some(LRESULT(0))
             }
             WM_DISPLAYCHANGE | WM_SETTINGCHANGE => {
@@ -4215,7 +4223,7 @@ impl App {
         unsafe {
             let _ = KillTimer(self.hwnd, TIMER_AGENDA);
         }
-        let Some(at) = self.st.store.agenda.next_reminder(self.agenda_done) else { return };
+        let Some(at) = poni_core::agenda::next_reminder(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done) else { return };
         let now = self.local_minute();
         let wait_ms = ((at - now) * 60 - i64::from(self.st.local.second)) * 1000 + 500;
         unsafe {
@@ -4227,20 +4235,17 @@ impl App {
     fn agenda_remind(&mut self) {
         self.st.local = clock::local_shown();
         let now = self.local_minute();
-        let due: Vec<(String, String)> = self
-            .st
-            .store
-            .agenda
-            .due(self.agenda_done, now)
+        let due: Vec<(String, String)> = poni_core::agenda::reminders(&self.st.store.agenda, &self.st.store.tasks, self.agenda_done, now)
             .into_iter()
-            .map(|(e, _)| {
+            .map(|e| {
                 let line = match (e.time, e.remind) {
                     (None, _) => "Today".to_string(),
                     (Some(t), Some(0)) | (Some(t), None) => format!("Now \u{b7} {}", poni_core::agenda::fmt_time(t)),
                     (Some(t), Some(m)) if m % 60 == 0 => format!("In {} h \u{b7} {}", m / 60, poni_core::agenda::fmt_time(t)),
                     (Some(t), Some(m)) => format!("In {m} min \u{b7} {}", poni_core::agenda::fmt_time(t)),
                 };
-                (e.title.clone(), line)
+                let line = if e.task { format!("Task \u{b7} {line}") } else { line };
+                (e.title, line)
             })
             .collect();
         self.agenda_done = now;
