@@ -48,6 +48,7 @@ Dipertahankan:
 - Seperti Poni (24 Nov 2026): Smoke lebih kecil (300–520 × 60, baris 16/38), progress bar di tepi bawah dengan warna equalizer; lebar island ikut baris lirik sekarang dan membesar 0,45 dtk sebelum baris yang lebih panjang (`lyric::upcoming`), mengecil bersama baris pendek (bukan lagi "terlebar sejauh ini"); notice dan countdown sholat ditumpuk dengan baris lirik di bawahnya saat lagu ber-lirik main (`activities::stacks`, bukan tema Pill); momen sholat dan awal countdown bercahaya oranye 4 dtk (`draw_glow`); Show over full-screen apps: pop-up tetap muncul saat island sembunyi di layar penuh (`sync_fullscreen_hud`), tombol volume tetap diambil alih.
 - Music → Two rows (bawaan nyala): tata letak dua baris Smoke juga di Classic dan Glass (`smoke::two_rows`); Clock untuk menyembunyikan jam di tengahnya.
 - Pop-up mikrofon (Microphone on and off): mute endpoint rekam bawaan lewat callback `IAudioEndpointVolume` di thread audio yang sudah ada.
+- Tasks bertanggal: dari Today (tombol jenis Event/Task di baris kontrol), `Task.due` (hari, jam, pengingat) di `data.json`; tampil di kalender (titik, centang di daftar hari) dan di Tasks ("Today 09:30", merah kalau lewat); pengingatnya ikut `agenda::reminders`.
 - Notifikasi terakhir: 5 terbaru di memori saja (`st.recent`), lonceng di header island dengan angka baru, angka merah di island diam, halaman Notifications (tanpa tab) dengan Clear dan klik buka app.
 - Jendela Settings: sidebar dikelompokkan ISLAND / FEATURES; ketik apa saja untuk mencari (`settings_window::search`), Esc menghapus pencarian dulu.
 - Pop-up kamera (Camera on and off): thread `poni-camera` menunggu `RegNotifyChangeKeyValue` di `CapabilityAccessManager\ConsentStore\webcam` (LastUsedTimeStop = 0 berarti sedang dipakai), nama app dari FileDescription exe.
@@ -92,6 +93,6 @@ Tidak dibuat: radio.
 - Nama branch `remove-<fitur>` atau `<topik>`. Setelah dites, merge ke `main` dengan `--ff-only` lalu hapus branch-nya. Push ke `origin` hanya setelah ditanyakan ke user.
 - Pesan commit dalam bahasa Inggris, gaya repo: apa yang hilang atau berubah, apa yang tetap jalan untuk file settings atau data lama, lalu baris `Cost:` (ukuran hihu.exe sebelum → sesudah, dan apa yang berubah saat diam).
 - Sebelum commit: `cargo build -p poni --release` tanpa warning baru (sekarang ada 10 warning lama), lalu `cargo test --workspace --release`.
-- `target\release\hihu.exe` tidak bisa ditimpa saat app jalan. Tutup Hihu dulu sebelum build, lalu jalankan lagi.
+- `target\release\hihu.exe` tidak bisa ditimpa saat app jalan. Tutup Hihu dulu sebelum build, lalu jalankan lagi. Tutup dengan `WM_CLOSE` ke jendela kelas `Hihu.Island` (sama dengan Quit), jangan `Stop-Process`: kalau dimatikan paksa, banner notifikasi Windows dan bar volume/brightness tidak dikembalikan, jadi selama Hihu mati notifikasi hanya berbunyi tanpa pop-up.
 - File di repo memakai CRLF. Skrip edit harus mempertahankan CRLF, atau keluarkan file dari working copy lalu `git checkout` lagi setelah commit.
 
