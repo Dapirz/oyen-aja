@@ -4046,11 +4046,17 @@ impl App {
                 consider(t + 0.005);
             }
         }
-        if let Some(t) = next {
-            let ms = (((t - now) * 1000.0).ceil() as u32).clamp(10, 3_600_000);
-            unsafe {
-                SetTimer(self.hwnd, TIMER_WAKE, ms, None);
+        match next {
+            Some(t) => {
+                let ms = (((t - now) * 1000.0).ceil() as u32).clamp(10, 3_600_000);
+                unsafe {
+                    SetTimer(self.hwnd, TIMER_WAKE, ms, None);
+                }
             }
+            // Nothing to wake for: an earlier wake goes too (audit D1).
+            None => unsafe {
+                let _ = KillTimer(self.hwnd, TIMER_WAKE);
+            },
         }
     }
 
