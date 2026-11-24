@@ -131,35 +131,21 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let full = st.store.tasks.tasks.len() >= MAX_TASKS;
 
     // ---- Input: the list's first row, sharing its checkbox and text columns.
-    // When the next task is due: a click sets today (or takes the date off),
-    // then - and + or the wheel move it a day at a time.
+    // When the next task is due: a click opens a month to pick the day from.
     let today = poni_core::datetime::days_from_civil(st.local.year, st.local.month, st.local.day);
     let due_word = st.ui.task_due.map_or("No date".to_string(), |off| due_pick_label(today, off));
     let dw = ui.pill_width(&due_word, true, true);
-    let steps_w = if st.ui.task_due.is_some() { 46.0 } else { 0.0 };
     let pill_y = area.y + (INPUT_H - PILL_SMALL) / 2.0;
-    let due_r = Rect::new(area.right() - dw - steps_w - 6.0, pill_y, dw, PILL_SMALL);
-    let due_style = if st.ui.task_due.is_some() { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+    let due_r = Rect::new(area.right() - dw - 6.0, pill_y, dw, PILL_SMALL);
+    let picking = st.ui.task_pick_month.is_some();
+    let due_style = if st.ui.task_due.is_some() || picking { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
     if ui.pill(wid("tasks.due"), due_r, &due_word, Some(Icon::Calendar), due_style).clicked {
-        st.ui.task_due = if st.ui.task_due.is_some() { None } else { Some(0) };
-    }
-    if let Some(off) = st.ui.task_due {
-        let mut step = 0i32;
-        let minus = Rect::new(due_r.right() + 2.0, pill_y + 3.0, 22.0, 22.0);
-        let plus = Rect::new(minus.right(), pill_y + 3.0, 22.0, 22.0);
-        if ui.icon_button(wid("tasks.due.minus"), minus, Icon::Minus, palette::TEXT_DIM, 11.0).clicked {
-            step = -1;
-        }
-        if ui.icon_button(wid("tasks.due.plus"), plus, Icon::Plus, palette::TEXT_DIM, 11.0).clicked {
-            step = 1;
-        }
-        let wheel = ui.wheel_in(Rect::new(due_r.x, due_r.y, plus.right() - due_r.x, due_r.h));
-        if wheel != 0.0 {
-            step += wheel.signum() as i32;
-        }
-        if step != 0 {
-            st.ui.task_due = Some((i32::from(off) + step).clamp(0, MAX_DUE_DAYS) as u16);
-        }
+        st.ui.task_pick_month = if picking {
+            None
+        } else {
+            let (y, m, _) = poni_core::datetime::civil_from_days(today + i64::from(st.ui.task_due.unwrap_or(0)));
+            Some((y, m))
+        };
     }
     let input_r = Rect::new(area.x, area.y, (due_r.x - 6.0 - area.x).max(0.0), INPUT_H);
     let placeholder = if full { "Task list is full" } else { "Add a task, Enter to save" };
@@ -167,6 +153,14 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
     let resp = ui.text_input_row(wid("tasks.input"), input_r, &mut st.ui.task_input, placeholder, MAX_TASK_LEN, accent, Some(Icon::Plus));
     if resp.submitted {
         submit(ui, st, &mut anim, day_start);
+    }
+
+    // ---- The month to pick the due day from, in the list's place.
+    if let Some(month) = st.ui.task_pick_month {
+        draw_due_picker(ui, st, Rect::new(area.x, area.y + LIST_TOP, area.w, HEIGHT - LIST_TOP), today, month);
+        anim.last_draw = now;
+        ANIM.with(|c| c.set(anim));
+        return;
     }
 
     // ---- List.
@@ -541,7 +535,102 @@ fn draw_footer(ui: &mut Ui, st: &mut AppState, r: Rect, day_start: i64, full: bo
 }
 
 /// How far ahead the due pick goes: a year.
-const MAX_DUE_DAYS: i32 = 366;
+const MAX_DUE_DAYS: i64 = 366;
+const PICK_TITLE_H: f32 = 22.0;
+const PICK_INITIALS_H: f32 = 14.0;
+const PICK_CELL_H: f32 = 20.0;
+const PICK_CELL_W: f32 = 34.0;
+const MONTH_LONG: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/// The due day's month: a click on a day picks it (and closes the month);
+/// quick picks on the right. Days before today can't be picked.
+fn draw_due_picker(ui: &mut Ui, st: &mut AppState, r: Rect, today: i64, (y, m): (i32, u8)) {
+    use crate::gfx::Weight;
+    use poni_core::datetime::{civil_from_days, days_from_civil, weekday_from_days};
+    let grid = Rect::new(r.x + 8.0, r.y, 7.0 * PICK_CELL_W, r.h);
+    // The month's name and its arrows.
+    let title = format!("{} {y}", MONTH_LONG[(m.clamp(1, 12) - 1) as usize]);
+    ui.c.text(&title, Rect::new(grid.x + 4.0, grid.y, grid.w - 56.0, PICK_TITLE_H), &TextStyle::footnote().weight(Weight::Semibold));
+    let (ty, tm, _) = civil_from_days(today);
+    let (ly, lm, _) = civil_from_days(today + MAX_DUE_DAYS);
+    let at = y * 12 + i32::from(m) - 1;
+    let arrow = |i: f32| Rect::new(grid.right() - (2.0 - i) * 24.0, grid.y, 22.0, 22.0);
+    let mut go = 0;
+    if at > ty * 12 + i32::from(tm) - 1 && ui.icon_button(wid("tasks.pick.prev"), arrow(0.0), Icon::ChevronLeft, palette::TEXT_DIM, 14.0).clicked {
+        go = -1;
+    }
+    if at < ly * 12 + i32::from(lm) - 1 && ui.icon_button(wid("tasks.pick.next"), arrow(1.0), Icon::ChevronRight, palette::TEXT_DIM, 14.0).clicked {
+        go = 1;
+    }
+    if go != 0 {
+        let n = at + go;
+        st.ui.task_pick_month = Some((n.div_euclid(12), (n.rem_euclid(12) + 1) as u8));
+    }
+    let initials = TextStyle::caption().weight(Weight::Semibold).center();
+    for (col, s) in ["M", "T", "W", "T", "F", "S", "S"].iter().enumerate() {
+        let color = if col == 6 { palette::RED.with_alpha(0.8) } else { palette::TEXT_FAINT };
+        ui.c.text(s, Rect::new(grid.x + col as f32 * PICK_CELL_W, grid.y + PICK_TITLE_H, PICK_CELL_W, PICK_INITIALS_H), &initials.color(color));
+    }
+    let first = days_from_civil(y, m, 1);
+    let start = first - (i64::from(weekday_from_days(first)) + 6) % 7;
+    let top = grid.y + PICK_TITLE_H + PICK_INITIALS_H;
+    let picked = st.ui.task_due.map(|o| today + i64::from(o));
+    let num = TextStyle::caption().tabular().center();
+    let radius = PICK_CELL_H / 2.0 - 1.0;
+    let mut chose = None;
+    for i in 0..42 {
+        let day = start + i;
+        let (dy, dm, dd) = civil_from_days(day);
+        let (row, col) = ((i / 7) as f32, (i % 7) as usize);
+        let cell = Rect::new(grid.x + col as f32 * PICK_CELL_W, top + row * PICK_CELL_H, PICK_CELL_W, PICK_CELL_H);
+        let open = day >= today && day <= today + MAX_DUE_DAYS;
+        let resp = ui.button(wid_n("tasks.pick.day", i as u64), cell);
+        if open && resp.hovered && Some(day) != picked {
+            ui.c.fill_circle(cell.center(), radius, palette::SURFACE_HOVER);
+        }
+        if open && resp.clicked {
+            chose = Some(day);
+        }
+        let red = poni_core::agenda::holiday(dy, dm, dd).is_some() || col == 6;
+        let mut ink = if red { palette::RED } else { Color::white(0.9) };
+        if dm != m {
+            ink = ink.mul_alpha(0.35);
+        }
+        if !open {
+            ink = ink.mul_alpha(0.35);
+        }
+        if Some(day) == picked {
+            ui.c.fill_circle(cell.center(), radius, st.accent);
+            ui.c.text(&dd.to_string(), cell, &num.weight(Weight::Bold).color(palette::ON_ACCENT));
+        } else {
+            if day == today {
+                ui.c.stroke_circle(cell.center(), radius, st.accent, 1.5);
+            }
+            ui.c.text(&dd.to_string(), cell, &num.color(ink));
+        }
+    }
+    // Quick picks.
+    let qx = grid.right() + 20.0;
+    let next_monday = today + 7 - (i64::from(weekday_from_days(today)) + 6) % 7;
+    let picks: [(&str, Option<i64>); 4] = [("Today", Some(today)), ("Tomorrow", Some(today + 1)), ("Next Monday", Some(next_monday)), ("No date", None)];
+    for (i, (label, day)) in picks.iter().enumerate() {
+        let w = ui.pill_width(label, false, true);
+        let pr = Rect::new(qx, r.y + PICK_TITLE_H + 4.0 + i as f32 * (PILL_SMALL + 6.0), w, PILL_SMALL);
+        if pr.right() > r.right() {
+            break;
+        }
+        let on = day.map(|d| Some(d) == picked).unwrap_or(picked.is_none());
+        let style = if on { PillStyle::UtilityAccent(st.accent) } else { PillStyle::Utility };
+        if ui.pill(wid_n("tasks.pick.quick", i as u64), pr, label, None, style).clicked {
+            st.ui.task_due = day.map(|d| (d - today) as u16);
+            st.ui.task_pick_month = None;
+        }
+    }
+    if let Some(day) = chose {
+        st.ui.task_due = Some((day - today) as u16);
+        st.ui.task_pick_month = None;
+    }
+}
 
 /// The due pick's day, `off` days after `today` (days since 1970):
 /// Today, Tomorrow, a weekday this week, else the date (with its year

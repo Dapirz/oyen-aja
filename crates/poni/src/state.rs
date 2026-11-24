@@ -324,6 +324,9 @@ pub struct PageUiState {
     pub cal_task: bool,
     /// The Tasks page's due day for the next task, in days from today (None: no date).
     pub task_due: Option<u16>,
+    /// The Tasks page shows its month to pick the due day from, at this
+    /// month (None: closed).
+    pub task_pick_month: Option<(i32, u8)>,
     /// The calendar row being edited in the add line: a task (true) or an
     /// event, and its id.
     pub cal_editing: Option<(bool, u64)>,

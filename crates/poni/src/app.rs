@@ -2448,6 +2448,7 @@ impl App {
             // Today's calendar opens on this month and today again.
             self.st.ui.cal_month = None;
             self.st.ui.cal_day = None;
+            self.st.ui.task_pick_month = None;
             if self.text_focus {
                 self.blur_text();
             }
