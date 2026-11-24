@@ -98,6 +98,10 @@ const LYRIC_LEAD_S: f64 = 0.12;
 const INTRO_MIN_S: f64 = 3.0;
 /// Rows drawn on each side of the current one (2 visible + 1 entering).
 const ROWS_ABOVE: usize = 3;
+/// The wheel over synced lyrics moves this many rows a notch, and the view
+/// goes back to the sung line this long after the last one.
+const BROWSE_ROWS: f32 = 1.0;
+const BROWSE_HOLD_S: f64 = 3.0;
 const ROWS_BELOW: usize = 4;
 /// Longer jumps (seeks) land this close to the target instead of scrolling
 /// through every line in between.
@@ -960,7 +964,26 @@ fn draw_synced(
     }
     let t = ctx.pos + LYRIC_LEAD_S;
     let cur = l.line_index_at(t).map_or(0, |i| i + off);
-    let target = cur as f32;
+    // The wheel looks ahead or back (a click on a line then seeks there);
+    // left alone for a few seconds, the view goes back to the sung line.
+    if fresh {
+        pui.lyric_browse = 0.0;
+    }
+    let wheel = ui.wheel_in(vp);
+    if wheel != 0.0 {
+        pui.lyric_browse -= wheel * BROWSE_ROWS;
+        pui.lyric_browse_at = ctx.now;
+    }
+    if pui.lyric_browse != 0.0 && ctx.now - pui.lyric_browse_at > BROWSE_HOLD_S {
+        pui.lyric_browse = 0.0;
+    }
+    let browsed = (cur as f32 + pui.lyric_browse).round().clamp(0.0, (n_rows - 1) as f32);
+    pui.lyric_browse = browsed - cur as f32;
+    if pui.lyric_browse != 0.0 {
+        // Frames until it goes back (only after a scroll).
+        ui.request_anim();
+    }
+    let target = browsed;
 
     // Critically damped follow of the current row.
     let diff = target - pui.lyric_pos;
@@ -1054,6 +1077,7 @@ fn draw_synced(
             }
             if resp.clicked {
                 acts.push(MediaCmd::Seek(lines[row.r - off].time_s));
+                pui.lyric_browse = 0.0;
             }
         }
 

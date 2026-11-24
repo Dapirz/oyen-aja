@@ -376,6 +376,11 @@ pub struct PageUiState {
     /// Smoothly animated lyric scroll position (line index as float).
     pub lyric_pos: f32,
     pub lyric_track: String,
+    /// Rows the wheel moved the synced lyrics from the sung line (to pick a
+    /// verse and click it), and when it last did: back to the song after
+    /// a few seconds.
+    pub lyric_browse: f32,
+    pub lyric_browse_at: f64,
     /// Volume HUD bar position, gliding toward the real level.
     pub hud_level: f32,
     /// Collapsed media pill shows the track title until this mono time.
