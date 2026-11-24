@@ -180,6 +180,12 @@ fn stem(path: &str) -> String {
     c.next().map_or_else(String::new, |first| first.to_uppercase().chain(c).collect())
 }
 
+/// The name the program at `path` gives itself ("Google Chrome"), for the
+/// camera pop-up too.
+pub fn program_name(path: &str) -> Option<String> {
+    description(path).filter(|s| !s.trim().is_empty())
+}
+
 /// The name the program's file gives itself (its version resource's
 /// FileDescription: "Google Chrome").
 fn description(path: &str) -> Option<String> {

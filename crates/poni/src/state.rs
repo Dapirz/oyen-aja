@@ -113,6 +113,8 @@ pub enum HudKind {
     Brightness { percent: u8 },
     /// The microphone muted (true) or back on.
     Mic { muted: bool },
+    /// The camera came on for an app, or went off.
+    Camera { on: bool, app: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

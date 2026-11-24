@@ -115,6 +115,7 @@ fn hud_tag(k: &HudKind) -> HudTag {
         HudKind::Language { .. } => HudTag::Language,
         HudKind::Brightness { .. } => HudTag::Brightness,
         HudKind::Mic { .. } => HudTag::Lock,
+        HudKind::Camera { .. } => HudTag::Language,
     }
 }
 
@@ -767,6 +768,17 @@ fn draw_hud(ui: &mut Ui, st: &mut AppState, body: Rect) {
             };
             let value = if muted { "Muted".to_string() } else { format!("{}", (level * 100.0).round() as i32) };
             level_row(ui, st, body, icon, "Volume", if muted { 0.0 } else { level }, &value);
+        }
+        HudKind::Camera { on, app } => {
+            let color = if on { palette::GREEN } else { palette::TEXT_DIM };
+            ui.c.icon(Icon::Camera, icon_r, color);
+            let label = if on { "Camera on" } else { "Camera off" };
+            let lw = ui.c.measure(label, &label_st, 200.0).0;
+            ui.c.text(label, Rect::new(body.x + 46.0, body.y, lw + 2.0, body.h), &label_st.color(if on { palette::GREEN } else { palette::TEXT }));
+            if !app.is_empty() {
+                let x = body.x + 46.0 + lw + 10.0;
+                ui.c.text(&app, Rect::new(x, body.y, (body.right() - HUD_PAD - x).max(0.0), body.h), &TextStyle::body().color(palette::TEXT_DIM).right());
+            }
         }
         HudKind::Mic { muted } => {
             let color = if muted { palette::RED } else { palette::TEXT };

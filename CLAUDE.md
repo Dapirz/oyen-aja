@@ -50,6 +50,8 @@ Dipertahankan:
 - Pop-up mikrofon (Microphone on and off): mute endpoint rekam bawaan lewat callback `IAudioEndpointVolume` di thread audio yang sudah ada.
 - Notifikasi terakhir: 5 terbaru di memori saja (`st.recent`), lonceng di header island dengan angka baru, angka merah di island diam, halaman Notifications (tanpa tab) dengan Clear dan klik buka app.
 - Jendela Settings: sidebar dikelompokkan ISLAND / FEATURES; ketik apa saja untuk mencari (`settings_window::search`), Esc menghapus pencarian dulu.
+- Pop-up kamera (Camera on and off): thread `poni-camera` menunggu `RegNotifyChangeKeyValue` di `CapabilityAccessManager\ConsentStore\webcam` (LastUsedTimeStop = 0 berarti sedang dipakai), nama app dari FileDescription exe.
+- Island → Opens on: Hover (bawaan) atau Click seperti Poni (`open_on_click`; hover tidak lagi membuka).
 - General: Show in screenshots (mati = island tidak ikut screenshot, rekaman, screen share).
 - Music: setting Frame rate, ukuran dan bold lirik, progress bar (Smoke), After pausing (0/5/10/30 dtk/Keep), Title without lyrics (Stays/A moment; Smoke jadi satu baris), running text untuk judul panjang.
 - Notifications: jalan di build non-Store lewat paket identitas sparse (selesai 23 Nov 2026): `tools\identity.ps1 register` (butuh Developer Mode, tanpa sertifikat/admin), manifest di `installer\identity`, elemen `<msix>` di `res/poni.manifest`. `autostart::packaged()` = punya identitas (Notifications); `store_packaged()` = copy Store (startup task, tanpa Downloader). Build ulang tetap terdaftar.

@@ -489,6 +489,8 @@ pub struct App {
     brightness: Option<u8>,
     /// The microphone's mute as last reported (None: not yet).
     mic_muted: Option<bool>,
+    /// Who uses the camera, watched while its pop-up is on.
+    camera: Option<services::camera::Camera>,
     /// Looks left for a language switch after its keys.
     language_looks: u8,
     /// Looks left to put Windows' brightness pop-up away.
@@ -680,6 +682,7 @@ impl App {
             keyboard_layout: None,
             brightness: None,
             mic_muted: None,
+            camera: None,
             language_looks: 0,
             osd_looks: 0,
         })
@@ -751,6 +754,7 @@ impl App {
         // With Hihu closed, Windows shows its own pop-ups again.
         self.banners.set(&Default::default());
         services::keys::set(self.helper, false, false, false);
+        self.camera = None;
         if self.st.settings.hud_hide_windows_brightness && self.selftest.is_none() {
             services::osd::restore();
         }
@@ -1998,7 +2002,7 @@ impl App {
         }
         // The keys the pop-ups answer.
         let s = &self.st.settings;
-        if (before.hud_volume_keys, before.hud_locks, before.hud_language) != (s.hud_volume_keys, s.hud_locks, s.hud_language) && self.selftest.is_none() {
+        if (before.hud_volume_keys, before.hud_locks, before.hud_language, before.hud_camera) != (s.hud_volume_keys, s.hud_locks, s.hud_language, s.hud_camera) && self.selftest.is_none() {
             self.sync_keys();
         }
         // Which apps show (Every app, a switch), or Hide Windows' pop-ups.
@@ -2065,6 +2069,13 @@ impl App {
         }
         match ev {
             AppEvent::FrontWindow(h) => self.screen_front(HWND(h as *mut _)),
+            AppEvent::Camera { on, app } => {
+                if self.st.settings.hud_camera {
+                    self.st.show_hud(HudKind::Camera { on, app }, 2.0);
+                    self.sync_fullscreen_hud();
+                    self.request_frame();
+                }
+            }
             AppEvent::MicMute(muted) => {
                 if self.mic_muted.replace(muted).is_some_and(|was| was != muted) && self.st.settings.hud_mic {
                     self.st.show_hud(HudKind::Mic { muted }, 1.6);
@@ -2372,6 +2383,10 @@ impl App {
 
     /// (Re)start the hover dwell from `p`.
     fn arm_hover(&mut self, p: Point) {
+        // Set to open on a click: resting on it does nothing.
+        if self.st.settings.open_on_click {
+            return;
+        }
         self.hover_arm = Some(p);
         unsafe {
             SetTimer(self.hwnd, TIMER_HOVER, self.st.settings.hover_delay_ms.max(1), None);
@@ -4183,8 +4198,12 @@ impl App {
         }
     }
 
-    /// The keyboard hook for the pop-ups' keys: there while one of them is on.
+    /// The keyboard hook for the pop-ups' keys: there while one of them is
+    /// on; and the camera's watcher, while its pop-up is.
     fn sync_keys(&mut self) {
+        if self.st.settings.hud_camera != self.camera.is_some() {
+            self.camera = if self.st.settings.hud_camera { services::camera::Camera::start(self.sink.clone()) } else { None };
+        }
         let s = &self.st.settings;
         services::keys::set(self.helper, s.hud_volume_keys, s.hud_locks, s.hud_language);
         if s.hud_language && self.keyboard_layout.is_none() {

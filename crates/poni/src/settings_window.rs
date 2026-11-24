@@ -334,6 +334,8 @@ pub enum Key {
     HudLanguage,
     HudBrightness,
     HudMic,
+    HudCamera,
+    OpenOn,
     HudOverFullscreen,
     HudHideBrightness,
     RememberPage,
@@ -419,6 +421,8 @@ const HOVER: [(u32, &str); 3] = [(120, "Quick"), (220, "Normal"), (450, "Slow")]
 const CLOSE: [(u32, &str); 3] = [(0, "At once"), (400, "Short"), (1000, "Long")];
 const DISPLAYS: [(MonitorChoice, &str); 2] = [(MonitorChoice::Primary, "Main display"), (MonitorChoice::Cursor, "Under the pointer")];
 const FULLSCREEN: [(bool, &str); 2] = [(true, "Hide"), (false, "Stay on top")];
+/// How the closed island opens: when the pointer rests on it, or a click.
+const OPEN_ON: [(bool, &str); 2] = [(false, "Hover"), (true, "Click")];
 /// Frames a second for the playing island; 0 = the display's own rate.
 /// The Clipboard add-on: how many entries it keeps, and for how long (s;
 /// None: until removed or pushed out).
@@ -544,13 +548,14 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
             vec![
                 Block::Group(
                     Some("Opening and closing"),
-                    vec![
-                        item(Key::HoverDelay, "Opens after", Some("How long the pointer rests on the island first"), Ctl::Choice(names(&HOVER), nearest(&HOVER, s.hover_delay_ms))),
+                    [item(Key::OpenOn, "Opens on", Some("The pointer resting on it, or a click"), Ctl::Choice(names(&OPEN_ON), chosen(&OPEN_ON, s.open_on_click)))]
+                        .into_iter()
+                        .chain((!s.open_on_click).then(|| item(Key::HoverDelay, "Opens after", Some("How long the pointer rests on the island first"), Ctl::Choice(names(&HOVER), nearest(&HOVER, s.hover_delay_ms)))))
+                        .chain([
                         switch(Key::MakeWay, "Make way for the pointer", Some("Steps aside when the pointer comes; push to the top to open"), s.make_way),
                         item(Key::CloseDelay, "Closes", Some("Once the pointer leaves the open island"), Ctl::Choice(names(&CLOSE), nearest(&CLOSE, s.collapse_delay_ms))),
                         item(Key::ClosedSize, "Size when closed", Some("The closed island and what's on it"), Ctl::Choice(names(&CLOSED_SIZE), chosen(&CLOSED_SIZE, s.island_scale_pct))),
-                    ]
-                    .into_iter()
+                    ])
                     .chain(smoke)
                     .chain([item(Key::Width, "Width when open", Some("Wider gives the pages more room"), Ctl::Stepper(format!("{:.0}", s.expanded_width)))])
                     .collect(),
@@ -602,6 +607,7 @@ pub fn blocks(section: Section, st: &AppState) -> Vec<Block> {
                 switch(Key::HudLocks, "Caps Lock, Num Lock and Scroll Lock", Some("On or Off for a moment when you press one"), s.hud_locks),
                 switch(Key::HudLanguage, "Keyboard language", Some("The new language when you switch (Windows + Space)"), s.hud_language),
                 switch(Key::HudBrightness, "Brightness", Some("When the screen's brightness changes"), s.hud_brightness),
+                switch(Key::HudCamera, "Camera on and off", Some("When an app turns the camera on, and when it goes off"), s.hud_camera),
                 switch(Key::HudMic, "Microphone on and off", Some("When the microphone is muted or back on (a mic key, an app)"), s.hud_mic),
             ],
         ),
@@ -916,6 +922,11 @@ pub fn apply(st: &mut AppState, key: Key, act: Act) {
         Key::HudLanguage => s.hud_language = !s.hud_language,
         Key::HudBrightness => s.hud_brightness = !s.hud_brightness,
         Key::HudMic => s.hud_mic = !s.hud_mic,
+        Key::HudCamera => s.hud_camera = !s.hud_camera,
+        Key::OpenOn => match act {
+            Act::Pick(i) if i < OPEN_ON.len() => s.open_on_click = OPEN_ON[i].0,
+            _ => return,
+        },
         Key::HudOverFullscreen => s.hud_over_fullscreen = !s.hud_over_fullscreen,
         Key::HudHideBrightness => s.hud_hide_windows_brightness = !s.hud_hide_windows_brightness,
         Key::RememberPage => s.remember_page = !s.remember_page,

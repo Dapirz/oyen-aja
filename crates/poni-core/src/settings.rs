@@ -160,6 +160,11 @@ pub struct Settings {
     pub hud_brightness: bool,
     /// A pop-up when the microphone is muted or back on.
     pub hud_mic: bool,
+    /// A pop-up when an app turns the camera on, and when it goes off.
+    pub hud_camera: bool,
+    /// The closed island opens only when clicked, not when the pointer
+    /// rests on it (as Poni does).
+    pub open_on_click: bool,
     /// While the island hides for a full-screen game or video, its pop-ups
     /// still show for their moment (and the volume keys stay taken over).
     pub hud_over_fullscreen: bool,
@@ -304,6 +309,8 @@ impl Default for Settings {
             hud_language: true,
             hud_brightness: true,
             hud_mic: true,
+            hud_camera: true,
+            open_on_click: false,
             hud_over_fullscreen: true,
             hud_hide_windows_brightness: true,
             sounds: true,
