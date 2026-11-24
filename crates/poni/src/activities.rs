@@ -967,8 +967,10 @@ fn draw_card_notice(ui: &mut Ui, st: &mut AppState, n: &Notice, body: Rect) {
     }
     let card = Rect::new(body.x + CARD_INSET, body.y + top_h, body.w - 2.0 * CARD_INSET, CARD_H);
     // Nearly opaque, whatever the island's own black (Smoke's lets the
-    // screen through): the message reads over anything behind it.
-    ui.c.fill_rrect(card, CARD_R, Color::rgba(0.12, 0.12, 0.13, 0.95));
+    // screen through): the message reads over anything behind it. A grey,
+    // so the look repaints it with the text: light glass gets a light card
+    // under its dark ink, not a dark one.
+    ui.c.fill_rrect(card, CARD_R, Color::rgba(0.12, 0.12, 0.12, 0.95));
     // Who wrote, as their own picture when the toast has one (a round
     // photo, the app's logo then small by its name); else the app's logo,
     // or the notice's own icon on a soft disc until it comes.
