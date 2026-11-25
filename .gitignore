@@ -8,3 +8,5 @@
 /after
 /ci-artifacts
 /_site
+# DeepSeek's audit worksheet: kept on this PC only
+/AUDIT.md
