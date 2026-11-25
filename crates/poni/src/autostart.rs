@@ -79,14 +79,39 @@ pub fn is_enabled() -> bool {
     ok && size > 0
 }
 
-/// Start with Windows on: point its Run value at this exe again (once, at
-/// start), so it keeps working when the exe moved or was renamed (poni.exe
-/// became hihu.exe).
+/// Start with Windows on, and the exe its Run value names is gone (it was
+/// moved, or renamed: poni.exe became hihu.exe): point it at this exe (once,
+/// at start). One that's still there stays, so a test build run from
+/// target\release doesn't take Start with Windows from the copy in daily use.
 pub fn refresh_path() {
-    if !store_packaged() && is_enabled() {
+    if !store_packaged() && is_enabled() && !run_value().is_some_and(|v| std::path::Path::new(named_exe(&v)).exists()) {
         if let Err(e) = set_enabled(true) {
             crate::pwarn!("autostart: couldn't point it at this exe ({e})");
         }
+    }
+}
+
+/// The Run value's text, ""C:\...\hihu.exe"" (None when there's none).
+fn run_value() -> Option<String> {
+    let key = open_run_key(KEY_READ).ok()?;
+    let mut size = 0u32;
+    let mut buf: Vec<u16> = Vec::new();
+    let got = unsafe { RegQueryValueExW(key, VALUE, None, None, None, Some(&mut size)) }.is_ok() && size > 0 && {
+        buf = vec![0u16; (size as usize).div_ceil(2)];
+        unsafe { RegQueryValueExW(key, VALUE, None, None, Some(buf.as_mut_ptr().cast()), Some(&mut size)) }.is_ok()
+    };
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
+    got.then(|| String::from_utf16_lossy(&buf).trim_end_matches('\0').to_string())
+}
+
+/// The exe a Run value starts: its quoted path, or all of it unquoted.
+fn named_exe(value: &str) -> &str {
+    let v = value.trim();
+    match v.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => v,
     }
 }
 
@@ -185,5 +210,17 @@ fn wait<T: RuntimeType + 'static>(op: IAsyncOperation<T>) -> Result<T> {
             let _ = op.Cancel();
             Err(Error::new(ERROR_TIMEOUT.to_hresult(), "no answer from the startup task"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::named_exe;
+
+    #[test]
+    fn the_run_value_names_its_exe() {
+        assert_eq!(named_exe("\"C:\\Users\\a\\AppData\\Local\\Programs\\Hihu\\hihu.exe\""), "C:\\Users\\a\\AppData\\Local\\Programs\\Hihu\\hihu.exe");
+        assert_eq!(named_exe("\"D:\\Data Z\\hihu.exe\" --tray"), "D:\\Data Z\\hihu.exe");
+        assert_eq!(named_exe("C:\\hihu.exe"), "C:\\hihu.exe");
     }
 }
