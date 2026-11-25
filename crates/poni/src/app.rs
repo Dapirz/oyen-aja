@@ -93,6 +93,9 @@ const MAKE_WAY_EDGE: f32 = 5.0;
 /// Make way: the island comes back once the pointer is this far (DIPs)
 /// beyond where it rests.
 const MAKE_WAY_MARGIN: f32 = 12.0;
+/// How far under the closed island the Glass theme's screen copy reaches
+/// (DIPs): the glass bends and frosts a little of what's beside it.
+const GLASS_COPY_MARGIN: f32 = 40.0;
 /// Alt+Shift+S pauses and resumes the Script page's reading from any app.
 const HOTKEY_SCRIPT: i32 = 2;
 /// Raises that follow a new foreground window, and their spacing.
@@ -3753,7 +3756,19 @@ impl App {
             && !self.display_off
             && !self.fullscreen_on
             && matches!(self.gfx.renderer(), crate::gfx::Renderer::Gpu { .. });
-        self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, window_px, &mut self.gfx);
+        // Closed and still, the glass bends only what's near the island: the
+        // copy is the window's top band down to a little under it, not the
+        // whole window (the open panel's room), so each copy reads a few times
+        // fewer pixels. Rounded up to 64 px, so a lyric line that changes the
+        // island's size doesn't start the copy over; full again as it opens.
+        let copy_px = if !self.expanded && self.island.settled() {
+            let margin = (GLASS_COPY_MARGIN * scale).ceil() as i32;
+            let bottom = ((canvas_r.bottom() * scale).ceil() as i32 + margin + 63) / 64 * 64;
+            RECT { bottom: self.surface.y + bottom.min(sh), ..window_px }
+        } else {
+            window_px
+        };
+        self.glass.sync(copy_on, self.hwnd, &self.sink, self.monitor.handle, copy_px, &mut self.gfx);
         self.sync_script_capture(self.st.page == PageKind::Script && (self.expanded || !self.island.settled()));
         self.sync_capture_setting();
         self.save_clipboard_if_changed();
