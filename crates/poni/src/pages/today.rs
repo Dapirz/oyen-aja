@@ -140,12 +140,13 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             None => Color::white(0.9),
         };
         let ink = if inside { ink } else { ink.mul_alpha(0.35) };
-        let hijri = poni_core::hijri::date(cal, day);
+        // Worked out only while Hijri dates or Ramadan mode is on (audit F2).
+        let hijri = (st.settings.cal_hijri || st.settings.ramadan_mode).then(|| poni_core::hijri::date(cal, day));
         // Ramadan mode: each fasting day carries its number, the 1st its month.
-        let fasting = st.settings.ramadan_mode && hijri.month == 9;
-        let marked = (st.settings.cal_hijri || fasting) && (hijri.day == 1 || fasting);
+        let fasting = st.settings.ramadan_mode && hijri.is_some_and(|h| h.month == 9);
+        let marked = hijri.filter(|h| (st.settings.cal_hijri || fasting) && (h.day == 1 || fasting));
         // A marked day's number sits a little higher, its month's name under it.
-        let num_r = if marked { Rect::new(cell.x, cell.y - 4.0, cell.w, cell.h) } else { cell };
+        let num_r = if marked.is_some() { Rect::new(cell.x, cell.y - 4.0, cell.w, cell.h) } else { cell };
         if day == today_n {
             ui.c.fill_circle(c, radius, st.accent);
             ui.c.text(&dd.to_string(), num_r, &num.weight(Weight::Bold).color(palette::ON_ACCENT));
@@ -155,14 +156,14 @@ fn draw_month(ui: &mut Ui, st: &mut AppState, r: Rect, cell_w: f32, (y, m): (i32
             }
             ui.c.text(&dd.to_string(), num_r, &num.color(ink));
         }
-        if marked {
+        if let Some(hijri) = marked {
             let day_no = hijri.day.to_string();
             let name = if hijri.day == 1 { HIJRI_SHORT[(hijri.month.clamp(1, 12) - 1) as usize] } else { day_no.as_str() };
             let color = if day == today_n { palette::ON_ACCENT } else if inside { st.accent } else { st.accent.mul_alpha(0.4) };
             ui.c.text(name, Rect::new(cell.x - 8.0, cell.bottom() - 11.0, cell.w + 16.0, 10.0), &mark_st.color(color));
         }
         let task_due = st.calendar_tasks() && st.store.tasks.tasks.iter().any(|t| !t.done && t.due.is_some_and(|x| x.falls_on(dy, dm, dd)));
-        if (task_due || !st.store.agenda.on(dy, dm, dd).is_empty()) && !marked {
+        if (task_due || !st.store.agenda.on(dy, dm, dd).is_empty()) && marked.is_none() {
             let dot = if day == today_n { palette::ON_ACCENT } else { st.accent };
             ui.c.fill_circle(Point::new(c.x, cell.bottom() - 3.0), 1.8, dot);
         }
