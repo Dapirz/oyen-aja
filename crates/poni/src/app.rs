@@ -2840,9 +2840,20 @@ impl App {
         let dir = paths::backups_dir();
         let t = self.st.local;
         let path = dir.join(poni_core::backup::file_name(t.year, t.month, t.day));
-        let text = poni_core::backup::make(&self.st.settings, &self.st.store, self.st.unix);
-        let note = match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, text)) {
-            Ok(()) => {
+        // Never over an earlier backup (one from this morning): written
+        // aside, then moved in under the first free name, "… (1).json" on
+        // (audit H1).
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let tmp = dir.join(format!("{name}.tmp"));
+        let saved = poni_core::backup::make(&self.st.settings, &self.st.store, self.st.unix)
+            .map_err(std::io::Error::other)
+            .and_then(|text| std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&tmp, text)))
+            .and_then(|_| poni_core::phonedrop::names::place(&tmp, &dir, &name, &[]));
+        if saved.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        let note = match saved {
+            Ok(path) => {
                 pinfo!("backup: written");
                 format!("Saved as {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
             }

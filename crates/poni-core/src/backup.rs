@@ -21,9 +21,11 @@ pub struct Backup {
     pub store: Store,
 }
 
-pub fn make(settings: &Settings, store: &Store, now: i64) -> String {
+/// The backup's text; Err rather than an empty file when it can't be
+/// written out (audit H3).
+pub fn make(settings: &Settings, store: &Store, now: i64) -> Result<String, String> {
     let b = Backup { kind: KIND.into(), version: 1, made: now, settings: settings.clone(), store: store.clone() };
-    serde_json::to_string_pretty(&b).unwrap_or_default()
+    serde_json::to_string_pretty(&b).map_err(|e| e.to_string())
 }
 
 /// A backup read back, or why not (in plain words).
@@ -51,7 +53,7 @@ mod tests {
         let mut st = Store::default();
         st.tasks.add("Bayar listrik", 1);
         st.agenda.add("Rapat", 2026, 11, 24, crate::agenda::Every::Weeks(1), Some(10), None);
-        let text = make(&s, &st, 99);
+        let text = make(&s, &st, 99).unwrap();
         let b = read(&text).unwrap();
         assert_eq!(b.settings.notes_lang, "en");
         assert_eq!(b.store.tasks.tasks[0].text, "Bayar listrik");
