@@ -177,6 +177,20 @@ impl Island {
 
     /// The corner radius the springs aim at for `g`: floating, never rounder
     /// than a capsule.
+    /// Jump straight to `g` without animating (the render tests).
+    #[cfg(test)]
+    pub fn snap(&mut self, g: Geom) {
+        self.target = g;
+        self.w.snap(g.w);
+        self.h.snap(g.h);
+        self.r.snap(self.radius_for(g));
+        self.top.snap(self.top_target());
+        self.floor_w = None;
+        self.floor_h = None;
+        self.content.snap(1.0);
+        self.fade_in_at = None;
+    }
+
     fn radius_for(&self, g: Geom) -> f32 {
         if self.gap.is_some() {
             g.r.min(g.h / 2.0)
@@ -194,19 +208,6 @@ impl Island {
     pub fn resume_content(&mut self, alpha: f32) {
         self.content.snap(alpha.clamp(0.0, 1.0));
         self.content.set_target(1.0);
-        self.fade_in_at = None;
-    }
-
-    /// Jump straight to `g` without animating.
-    pub fn snap(&mut self, g: Geom) {
-        self.target = g;
-        self.w.snap(g.w);
-        self.h.snap(g.h);
-        self.r.snap(self.radius_for(g));
-        self.top.snap(self.top_target());
-        self.floor_w = None;
-        self.floor_h = None;
-        self.content.snap(1.0);
         self.fade_in_at = None;
     }
 

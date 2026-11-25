@@ -18,8 +18,6 @@ pub enum MediaCmd {
 pub enum Sound {
     /// Gentle chime (timer finished, reminder).
     Chime,
-    /// Short tick (button feedback) — currently unused.
-    Tick,
 }
 
 /// Phone drop (the Shelf's phone panel).
@@ -74,8 +72,6 @@ pub enum Command {
     DragOut(Vec<String>),
     /// Request a thumbnail for a shelf item (async; arrives as `AppEvent::ShelfThumb`).
     LoadThumb(String),
-    /// Give the island keyboard focus for a text field.
-    FocusText,
     /// The Script page's Paste: the clipboard's text, line breaks kept,
     /// becomes the script.
     ScriptPaste,

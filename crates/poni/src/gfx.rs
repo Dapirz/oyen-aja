@@ -2093,7 +2093,8 @@ impl<'a> Canvas<'a> {
         unsafe { self.g.rt.PopAxisAlignedClip() };
     }
 
-    /// Translate subsequent drawing by (dx, dy) until [`Canvas::reset_transform`].
+    /// Translate subsequent drawing by (dx, dy) (undo with
+    /// [`Canvas::restore_transform`]).
     pub fn translate(&mut self, dx: f32, dy: f32) {
         unsafe {
             let mut prev = Matrix3x2::identity();
@@ -2102,12 +2103,8 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    pub fn reset_transform(&mut self) {
-        unsafe { self.g.rt.SetTransform(&Matrix3x2::identity()) };
-    }
-
-    /// The current transform (pair with [`Canvas::restore_transform`]
-    /// instead of `reset_transform`, which would also drop outer transforms).
+    /// The current transform (pair with [`Canvas::restore_transform`], which
+    /// keeps outer transforms where resetting to identity would drop them).
     pub fn save_transform(&self) -> Matrix3x2 {
         let mut m = Matrix3x2::identity();
         unsafe { self.g.rt.GetTransform(&mut m) };

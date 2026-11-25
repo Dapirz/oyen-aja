@@ -2394,7 +2394,6 @@ impl App {
             AppEvent::Cities { file, got } => pages::prayer::cities_came(&mut self.st, file, got),
             AppEvent::Notify(ev) => self.on_notify(ev),
             AppEvent::AdzanEnded => self.adzan_ended(),
-            AppEvent::Log(s) => pinfo!("{s}"),
         }
         if let Some(before) = media_before {
             self.after_media_change(before, now);
@@ -4420,7 +4419,6 @@ impl App {
                         services::imaging::load_thumb_async(p, self.sink.clone());
                     }
                 }
-                Command::FocusText => self.focus_text(),
                 Command::BlurText => self.blur_text(),
                 Command::ScriptPaste => {
                     // Read here, not through the text field path: that one drops line breaks.

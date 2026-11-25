@@ -50,10 +50,6 @@ impl EventSink {
             }
         }
     }
-
-    pub fn hwnd(&self) -> SendHwnd {
-        self.hwnd
-    }
 }
 
 /// What Apple Music said about the user's token.
@@ -150,8 +146,6 @@ pub enum AppEvent {
     AdzanEnded,
     /// Start with Windows is on (true) or off, read for the Settings page.
     Autostart(bool),
-    /// Free-form log line from a service thread.
-    Log(String),
     /// The Glass theme's screen copy has new pixels (or stopped).
     Backdrop,
 }

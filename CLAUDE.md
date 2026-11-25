@@ -116,7 +116,7 @@ Tidak dibuat: radio.
 
 - Nama branch `remove-<fitur>` atau `<topik>`. Setelah dites, merge ke `main` dengan `--ff-only` lalu hapus branch-nya. Push ke `origin` hanya setelah ditanyakan ke user.
 - Pesan commit dalam bahasa Inggris, gaya repo: apa yang hilang atau berubah, apa yang tetap jalan untuk file settings atau data lama, lalu baris `Cost:` (ukuran hihu.exe sebelum → sesudah, dan apa yang berubah saat diam).
-- Sebelum commit: `cargo build -p poni --release` tanpa warning baru (sekarang ada 10 warning lama), lalu `cargo test --workspace --release`.
+- Sebelum commit: `cargo build -p poni --release` tanpa warning (sejak 25 Nov 2026 build bersih, 0 warning), lalu `cargo test --workspace --release`.
 - `target\release\hihu.exe` tidak bisa ditimpa saat app jalan. Tutup Hihu dulu sebelum build, lalu jalankan lagi. Tutup dengan `WM_CLOSE` ke jendela kelas `Hihu.Island` (sama dengan Quit), jangan `Stop-Process`: kalau dimatikan paksa, banner notifikasi Windows dan bar volume/brightness tidak dikembalikan, jadi selama Hihu mati notifikasi hanya berbunyi tanpa pop-up.
 - File di repo memakai CRLF. Skrip edit harus mempertahankan CRLF, atau keluarkan file dari working copy lalu `git checkout` lagi setelah commit.
 

@@ -5,7 +5,7 @@
 //! resolved against the previous frame's hits, so a click shows up as
 //! `clicked == true` on the next frame (the app always repaints after input).
 
-use crate::gfx::{Align, Canvas, TextStyle, Weight};
+use crate::gfx::{Canvas, TextStyle, Weight};
 use crate::icons::Icon;
 use poni_core::geom::{palette, Color, Point, Rect};
 
@@ -45,8 +45,6 @@ pub enum KeyInput {
     Down,
     Home,
     End,
-    /// Ctrl+V (paste from clipboard; the app supplies the text as chars).
-    SelectAll,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,7 +131,6 @@ pub struct TextInputResp {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum InputLook {
-    Box,
     Row { accent: Color, icon: Option<Icon> },
 }
 
@@ -254,33 +251,6 @@ impl<'a, 'g> Ui<'a, 'g> {
         resp
     }
 
-    /// Filled capsule button with an optional leading icon.
-    pub fn pill_button(&mut self, id: WidgetId, r: Rect, label: &str, icon: Option<Icon>, fill: Color, text: Color) -> Resp {
-        let resp = self.button(id, r);
-        let f = if resp.pressed {
-            Color::lerp(fill, Color::white(1.0), 0.18)
-        } else if resp.hovered {
-            Color::lerp(fill, Color::white(1.0), 0.1)
-        } else {
-            fill
-        };
-        self.c.fill_rrect(r, r.h / 2.0, f);
-        let st = TextStyle::new(12.5).weight(Weight::Semibold).color(text).center();
-        match icon {
-            Some(i) => {
-                let (tw, _) = self.c.measure(label, &st, r.w);
-                let total = 14.0 + if label.is_empty() { 0.0 } else { 5.0 + tw };
-                let x = r.x + (r.w - total) / 2.0;
-                self.c.icon(i, Rect::new(x, r.center().y - 7.0, 14.0, 14.0), text);
-                if !label.is_empty() {
-                    self.c.text(label, Rect::new(x + 19.0, r.y, tw + 2.0, r.h), &st.align(Align::Left));
-                }
-            }
-            None => self.c.text(label, r, &st),
-        }
-        resp
-    }
-
     /// Width a [`Ui::pill`] needs for `label` (and an optional icon).
     pub fn pill_width(&mut self, label: &str, icon: bool, small: bool) -> f32 {
         let (size, isz, pad) = if small { (crate::gfx::ts::FOOTNOTE, 13.0, 12.0) } else { (crate::gfx::ts::BODY, 14.0, 16.0) };
@@ -362,11 +332,6 @@ impl<'a, 'g> Ui<'a, 'g> {
         }
     }
 
-    /// Single-line text field. Click to focus, Enter submits, Esc cancels.
-    pub fn text_input(&mut self, id: WidgetId, r: Rect, buf: &mut String, placeholder: &str, max_chars: usize) -> TextInputResp {
-        self.text_input_styled(id, r, buf, placeholder, max_chars, InputLook::Box)
-    }
-
     /// A list-row style field: no box until hovered/focused, a leading icon in
     /// the same column as list checkboxes (centred at x+18, text at x+36), and
     /// an accent focus ring.
@@ -409,7 +374,7 @@ impl<'a, 'g> Ui<'a, 'g> {
                     KeyInput::Left => caret = caret.saturating_sub(1),
                     KeyInput::Right => caret = (caret + 1).min(chars.len()),
                     KeyInput::Home => caret = 0,
-                    KeyInput::End | KeyInput::SelectAll => caret = chars.len(),
+                    KeyInput::End => caret = chars.len(),
                     KeyInput::Enter => out.submitted = true,
                     KeyInput::Escape => {
                         out.cancelled = true;
@@ -429,14 +394,6 @@ impl<'a, 'g> Ui<'a, 'g> {
         }
         // Draw.
         let inner = match look {
-            InputLook::Box => {
-                let bg = if focused { Color::white(0.13) } else if resp.hovered { Color::white(0.1) } else { palette::SURFACE };
-                self.c.fill_rrect(r, 9.0, bg);
-                if focused {
-                    self.c.stroke_rrect(r, 9.0, Color::white(0.28), 1.0);
-                }
-                r.inset(10.0, 0.0)
-            }
             InputLook::Row { accent, icon } => {
                 if focused || resp.hovered {
                     self.c.fill_rrect(r, 9.0, if focused { Color::white(0.10) } else { palette::SURFACE });
@@ -489,17 +446,4 @@ impl<'a, 'g> Ui<'a, 'g> {
         }
         Scrub { held, released, began }
     }
-
-    /// Release keyboard focus (e.g. after submitting).
-    /// Gives the text field `id` the keyboard, its caret after `len`
-    /// characters: a field that opens on a click elsewhere
-    /// is ready to type in.
-    pub fn focus_text(&mut self, id: WidgetId, len: usize) {
-        if self.input.focused != Some(id) {
-            self.input.focused = Some(id);
-            self.input.caret = len;
-            self.wants_focus = Some(true);
-        }
-    }
-
 }

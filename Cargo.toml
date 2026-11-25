@@ -8,7 +8,6 @@ edition = "2021"
 publish = false
 license = "MIT"
 repository = "https://github.com/lucacadalora/oyenza-studio"
-homepage = "https://github.com/lucacadalora/oyenza-studio"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
