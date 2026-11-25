@@ -2869,29 +2869,45 @@ impl App {
     }
 
     /// Settings > About > Import (pressed twice): the newest backup in the
-    /// folder takes the place of the settings and the data.
+    /// folder takes the place of the settings and the data. Newest by when
+    /// it was written, not by name, and a JSON file that isn't a backup (or
+    /// can't be read) is passed over for the next one (audit H2).
     fn backup_import(&mut self) {
-        let newest = std::fs::read_dir(paths::backups_dir())
-            .map(|r| r.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).max())
-            .ok()
-            .flatten();
-        let note = match newest.as_ref().map(|p| (p, std::fs::read_to_string(p))) {
-            None => "No backup in the folder yet".to_string(),
-            Some((_, Err(_))) => "Couldn't read the backup".to_string(),
-            Some((p, Ok(text))) => match poni_core::backup::read(&text) {
-                Err(why) => why.to_string(),
-                Ok(b) => {
-                    let before = self.st.settings.clone();
-                    self.st.settings = b.settings;
-                    self.st.store = b.store;
-                    self.settings_changed(&before);
-                    self.save_settings();
-                    self.save_now();
-                    self.agenda_schedule();
-                    pinfo!("backup: put back");
-                    format!("Put back from {}", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+        let mut files: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(paths::backups_dir())
+            .map(|r| {
+                r.flatten()
+                    .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("json")))
+                    .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        files.sort_by(|a, b| b.0.cmp(&a.0));
+        // Why the newest one was passed over, said when none will do.
+        let mut why = None;
+        let found = files.iter().find_map(|(_, p)| {
+            let read = std::fs::read_to_string(p).map_err(|_| "Couldn't read the backup").and_then(|t| poni_core::backup::read(&t));
+            match read {
+                Ok(b) => Some((p, b)),
+                Err(w) => {
+                    why.get_or_insert(w);
+                    None
                 }
-            },
+            }
+        });
+        let note = match found {
+            None if files.is_empty() => "No backup in the folder yet".to_string(),
+            None => why.unwrap_or("That file isn't a Hihu backup").to_string(),
+            Some((p, b)) => {
+                let before = self.st.settings.clone();
+                self.st.settings = b.settings;
+                self.st.store = b.store;
+                self.settings_changed(&before);
+                self.save_settings();
+                self.save_now();
+                self.agenda_schedule();
+                pinfo!("backup: put back");
+                format!("Put back from {}", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+            }
         };
         self.st.ui.backup_note = Some(note);
         self.request_frame();
