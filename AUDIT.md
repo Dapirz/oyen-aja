@@ -331,6 +331,25 @@ Kondisi verifikasi sebelum menulis: `cargo test --workspace --release` → **253
 Keyakinan tiap temuan: **terbukti** = ada tes/langkah yang bisa dijalankan dan hasilnya jelas;
 **baca kode** = alurnya ditelusuri di kode, belum dijalankan.
 
+### Status perbaikan putaran 2 (25 Nov 2026)
+
+| # | Status | Commit | Catatan |
+|---|---|---|---|
+| F1 | selesai | `e0a42ac` | Menutup island dan pindah tab mengakhiri edit; Enter pada target yang sudah dihapus menambah baru |
+| F2 | selesai | `3c7b5fd` | Tanggal Hijriah dihitung hanya bila Hijri dates atau Ramadan mode nyala |
+| F3 | tidak benar | — | Jendela pemilih dihitung dari hari ini (`today + MAX_DUE_DAYS`, 366 hari), jadi Tomorrow/Next Mon tidak pernah melewatinya |
+| G1 | sebagian sudah | — | `ranked()` memberi bonus sinkron hanya lewat `has_full_synced` (yang memakai `spans_song`), jadi salinan jejal baru ditawarkan setelah salinan utuh habis |
+| G2, G3 | dilewati | — | Dibatasi klik pengguna / tidak terjadi pada data LRCLIB |
+| H1 | selesai | `43b40ee` | Ditulis ke berkas sementara lalu `names::place`: "… (1).json" dan seterusnya |
+| H2 | selesai | `bfb5173` | Urut `modified` terbaru, lewati berkas yang tak terbaca/bukan backup, ekstensi tanpa peduli huruf besar |
+| H3 | selesai | `43b40ee` | `backup::make` mengembalikan `Result` |
+| H4 | dilewati | — | Pulih sendiri saat island ditutup |
+| I1 | selesai, klaim dikoreksi | `bece922` | `prayer_now()` dalam detik bulat, jadi pengecekan jalan sekali per **detik**, bukan per frame (± 35 µs/detik, bukan 2,1 ms). Sekarang sekali per menit; tes memastikan semua waktu sholat jatuh di menit bulat |
+| I2 | dilewati (pilihan) | — | Setelah restart sholat yang lewat tidak ditampilkan; dibiarkan |
+| I3 | selesai | `bece922` | Jadwal tiap hari dihitung sekali |
+| I4 | selesai | `e0a42ac` | Menutup island menutup pemilih tempat |
+| J1, J2 | dilewati | — | Lonjakan memori sesaat dari input luar yang sangat besar; belum pernah terjadi |
+
 ## F — Kalender, task, pengingat, Hijriah
 
 Berkas: `pages/today.rs` (519), `pages/tasks.rs` (823), `pages/mod.rs` (847),
