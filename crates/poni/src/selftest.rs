@@ -63,6 +63,7 @@ use crate::state::{
 use crate::ui::wid;
 use poni_core::addons::{Status as AddonStatus, JAPANESE_READINGS, PRAYER_TIMES, SCRIPT_READER};
 use poni_core::notifications::NotificationSettings;
+use poni_core::agenda::{Due, Every};
 use poni_core::datetime::{days_from_civil, LocalDateTime};
 use poni_core::geom::{palette, Color, Point, Rect};
 use poni_core::lrc::{parse_lrc, Lyrics};
@@ -506,7 +507,20 @@ enum Scene {
     /// The open island where it was dragged to the screen's right edge: it
     /// grows away from the edge, whole on the screen.
     IslandOpenAtEdge,
+    /// Music: the pointer over the lyrics, "Wrong lyrics?" by the credit.
+    LyricsOther,
+    /// ...while another copy is looked for: "Looking…", no button.
+    LyricsOtherLooking,
+    /// Music: the lyrics scrolled three lines ahead of the sung one.
+    LyricsBrowse,
+    /// Tasks: a task's date picker open, a time, a reminder and a weekly repeat chosen.
+    TaskDuePicker,
+    /// Today with Tasks on the calendar: a weekly task marks every week.
+    TodayRepeat,
 }
+
+/// The weekly task the Today scene puts on the calendar.
+const WEEKLY_TASK: &str = "Gym";
 
 /// How far the self-test drags the island to the right (DIPs).
 const DRAG_DX: f32 = 560.0;
@@ -568,7 +582,7 @@ const SAMPLE_SCRIPT: &str = "Hi everyone, this one takes two minutes. Today I'll
 Drop any file on the island and it waits on the Shelf. Press the phone button, scan the code, and the file is on your phone. \
 No cable, no account, nothing to install on the phone.\n\nThat's it. Thanks for watching.";
 
-const SCENES: [Scene; 62] = [
+const SCENES: [Scene; 67] = [
     Scene::IdleClock,
     Scene::IdleEyes,
     Scene::Media,
@@ -654,6 +668,13 @@ const SCENES: [Scene; 62] = [
     // the place picker before anything is typed: the Kemenag / Muhammadiyah row.
     Scene::PrayerMuhammadiyah,
     Scene::PrayerPickerFollow,
+    // Music's Wrong lyrics? (its button, then while it looks) and the lyrics
+    // scrolled; the Tasks date picker; a weekly task across Today's month.
+    Scene::LyricsOther,
+    Scene::LyricsOtherLooking,
+    Scene::LyricsBrowse,
+    Scene::TaskDuePicker,
+    Scene::TodayRepeat,
 ];
 
 impl Scene {
@@ -715,6 +736,11 @@ impl Scene {
             Scene::PrayerPickerFollow => "page-prayer-picker-follow".into(),
             Scene::IslandDrag => "island-dragged".into(),
             Scene::IslandOpenAtEdge => "island-open-at-edge".into(),
+            Scene::LyricsOther => "page-media-wrong-lyrics".into(),
+            Scene::LyricsOtherLooking => "page-media-wrong-lyrics-looking".into(),
+            Scene::LyricsBrowse => "page-media-lyrics-scrolled".into(),
+            Scene::TaskDuePicker => "page-tasks-due-picker".into(),
+            Scene::TodayRepeat => "page-today-weekly-task".into(),
         }
     }
 
@@ -734,7 +760,9 @@ impl Scene {
             Scene::PrayerPicker | Scene::PrayerPickerWorld | Scene::PrayerWorld | Scene::PrayerMuhammadiyah | Scene::PrayerPickerFollow => Some(PageKind::Prayer),
             Scene::ScriptReading => Some(PageKind::Script),
             Scene::NotifyAsk | Scene::NotifyNoPackage => Some(PageKind::Notifications),
-            Scene::IslandOpenAtEdge => Some(PageKind::Media),
+            Scene::IslandOpenAtEdge | Scene::LyricsOther | Scene::LyricsOtherLooking | Scene::LyricsBrowse => Some(PageKind::Media),
+            Scene::TaskDuePicker => Some(PageKind::Tasks),
+            Scene::TodayRepeat => Some(PageKind::Today),
             _ => None,
         }
     }
@@ -2104,6 +2132,26 @@ impl SelfTest {
         };
         // A new song's title shows for its few seconds (held here).
         st.ui.peek_until = if scene == Scene::AsidePeek { now + 30.0 } else { 0.0 };
+        // The lyrics held three lines ahead (the hold runs from now on each step).
+        st.ui.lyric_browse = if scene == Scene::LyricsBrowse { 3.0 } else { 0.0 };
+        st.ui.lyric_browse_at = now;
+        // The Tasks date picker, open on this month with a choice made in each row.
+        let (ly, lm) = (st.local.year, st.local.month);
+        let picking = scene == Scene::TaskDuePicker;
+        st.ui.task_pick_month = picking.then_some((ly, lm));
+        st.ui.task_due = picking.then_some(3);
+        st.ui.task_time = picking.then_some(9 * 60 + 30);
+        st.ui.task_remind = picking.then_some(10);
+        st.ui.task_every = if picking { Every::Weeks(1) } else { Every::Once };
+        // A weekly task on Today's calendar, there only in its scene.
+        let weekly = scene == Scene::TodayRepeat;
+        st.settings.cal_tasks = weekly;
+        st.store.tasks.tasks.retain(|t| t.text != WEEKLY_TASK || weekly);
+        if weekly && !st.store.tasks.tasks.iter().any(|t| t.text == WEEKLY_TASK) {
+            let d = st.local;
+            let due = Due { time: Some(7 * 60), every: Every::Weeks(1), ..Due::on(d.year, d.month, d.day) };
+            st.store.tasks.add_due(WEEKLY_TASK, st.unix, due);
+        }
         st.phone = fake_phone(scene, now);
         st.paired = fake_paired(scene, st.unix);
         st.pair_server = (!st.paired.is_empty() || scene == Scene::ShelfPairing).then_some(true);
@@ -2218,6 +2266,19 @@ impl SelfTest {
         app.selftest_window_under(scene.window_under());
         app.selftest_hover(None);
         app.selftest_set_expanded(scene.expanded());
+        if matches!(scene, Scene::LyricsOther | Scene::LyricsOtherLooking) {
+            app.st.lyrics.other_note = if scene == Scene::LyricsOtherLooking { crate::pages::media::OTHER_LOOKING.into() } else { String::new() };
+            // Offered for LRCLIB's lyrics only (Apple Music has one copy).
+            app.st.lyrics.source = "LRCLIB".into();
+            // On the lyrics column (the page's right part), where the credit shows.
+            let b = app.island_body();
+            app.selftest_hover(Some(Point::new(b.right() - b.w * 0.22, b.y + b.h * 0.6)));
+        } else {
+            app.st.lyrics.other_note.clear();
+            if app.st.lyrics.source == "LRCLIB" {
+                app.st.lyrics.source = self.lyrics.source.clone();
+            }
+        }
     }
 
     /// Put the app into the Diorama picture `r`: the resting pill with
@@ -2675,6 +2736,25 @@ impl SelfTest {
         }
         if scene == Scene::MediaLyric {
             checks.push(lyric_line_check(&app.st));
+        }
+        if matches!(scene, Scene::LyricsOther | Scene::LyricsOtherLooking) {
+            // Its button by the credit; none while it looks.
+            let at = app.selftest_hit_center(wid("media_lyrics_other"));
+            let want = scene == Scene::LyricsOther;
+            checks.push(check("wrong-lyrics", at.is_some() == want, format!("the button {}, want it {}", if at.is_some() { "there" } else { "not there" }, if want { "there" } else { "away" })));
+        }
+        if scene == Scene::TaskDuePicker {
+            let at = app.selftest_hit_center(crate::ui::wid_n("tasks.pick.quick", 1));
+            checks.push(check("due-picker", at.is_some(), format!("Tomorrow {}", if at.is_some() { "there" } else { "missing" })));
+        }
+        if scene == Scene::TodayRepeat {
+            // Today and every 7th day after it in this month, as the calendar marks it.
+            let d = app.st.local;
+            let dim = poni_core::datetime::days_in_month(d.year, d.month);
+            let task = app.st.store.tasks.tasks.iter().find(|t| t.text == WEEKLY_TASK).and_then(|t| t.due);
+            let days = (1..=dim).filter(|&n| task.is_some_and(|t| t.falls_on(d.year, d.month, n))).count();
+            let want = usize::from((dim - d.day) / 7) + 1;
+            checks.push(check("weekly-task", days == want, format!("{days} days this month, want {want}")));
         }
         if scene.moved() {
             checks.push(on_screen_check(app, scene));
