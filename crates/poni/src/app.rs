@@ -2511,10 +2511,13 @@ impl App {
     fn collapse(&mut self) {
         if self.expanded {
             self.expanded = false;
-            // Today's calendar opens on this month and today again.
+            // Today's calendar opens on this month and today again, with
+            // no edit left half done; Prayer on its times, not its place list.
             self.st.ui.cal_month = None;
             self.st.ui.cal_day = None;
             self.st.ui.task_pick_month = None;
+            self.leave_today_edit();
+            self.st.prayer.picking = false;
             if self.text_focus {
                 self.blur_text();
             }
@@ -4316,8 +4319,17 @@ impl App {
         }
     }
 
+    /// An edit started with Today's pencil ends unsaved: otherwise the next
+    /// title typed there would overwrite that event or task (audit F1).
+    fn leave_today_edit(&mut self) {
+        if self.st.ui.cal_editing.take().is_some() {
+            self.st.ui.cal_input.clear();
+        }
+    }
+
     fn set_page(&mut self, p: PageKind) {
         if p != self.st.page {
+            self.leave_today_edit();
             self.st.page = p;
             // Settings is never where the island opens next time.
             if p != PageKind::Settings {

@@ -420,7 +420,16 @@ fn draw_panel(ui: &mut Ui, st: &mut AppState, r: Rect, today: (i32, u8, u8), pic
         st.ui.cal_input.clear();
     }
     if resp.submitted {
-        if let Some((task, id)) = st.ui.cal_editing.take() {
+        // Editing one that's gone meanwhile (deleted): the title is added
+        // as a new one below, not dropped.
+        let editing = st.ui.cal_editing.take().filter(|&(task, id)| {
+            if task {
+                st.store.tasks.tasks.iter().any(|x| x.id == id)
+            } else {
+                st.store.agenda.events.iter().any(|x| x.id == id)
+            }
+        });
+        if let Some((task, id)) = editing {
             let (typed, title) = agenda::split_time(&st.ui.cal_input);
             let title: String = title.split_whitespace().collect::<Vec<_>>().join(" ");
             let time = typed.or(st.ui.cal_time);
