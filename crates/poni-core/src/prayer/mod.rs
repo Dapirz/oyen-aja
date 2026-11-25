@@ -693,9 +693,13 @@ pub fn prayers_between(site: &Site, from: i64, to: i64) -> Vec<PrayerMoment> {
     }
     let last = site.local_day(to) + 1;
     let mut day = site.local_day(from) - 1;
+    // Each day's schedule is worked out once: today's "next" is the
+    // following day's own (audit I3).
+    let mut times = day_times(site, day);
     while day <= last {
-        if let (Some(t), Some(next)) = (day_times(site, day), day_times(site, day + 1)) {
-            let ends = [t.terbit, t.ashar, t.maghrib, t.isya, next.subuh];
+        let next = day_times(site, day + 1);
+        if let (Some(t), Some(n)) = (&times, &next) {
+            let ends = [t.terbit, t.ashar, t.maghrib, t.isya, n.subuh];
             for (i, p) in Prayer::ALL.into_iter().enumerate() {
                 let at = t.prayer(p);
                 if at > from && at <= to {
@@ -703,6 +707,7 @@ pub fn prayers_between(site: &Site, from: i64, to: i64) -> Vec<PrayerMoment> {
                 }
             }
         }
+        times = next;
         day += 1;
     }
     out

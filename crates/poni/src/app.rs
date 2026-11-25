@@ -4263,7 +4263,10 @@ impl App {
             self.st.prayer.handled_until = Some(now);
             return;
         };
-        if now <= from {
+        // Prayer times fall on whole minutes, so nothing can come between two
+        // moments in the same minute: the schedule is looked at once a
+        // minute, not every second the frame clock runs (audit I1).
+        if now.div_euclid(60) <= from.div_euclid(60) {
             return;
         }
         self.st.prayer.handled_until = Some(now);

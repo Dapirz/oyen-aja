@@ -250,6 +250,11 @@ fn prayers_between_lists_each_once_in_order() {
     assert!(prayers_between(&s, ashar, ashar + 60).is_empty());
     assert_eq!(prayers_between(&s, ashar - 60, ashar).len(), 1);
     assert!(prayers_between(&s, ashar, ashar).is_empty());
+    // Every time is a whole minute: the app looks at the schedule once a
+    // minute and would miss one that fell between.
+    for m in prayers_between(&s, from, from + 40 * 86_400) {
+        assert_eq!(m.at % 60, 0, "{:?} at {}", m.prayer, m.at);
+    }
 }
 
 #[test]
