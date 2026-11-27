@@ -120,6 +120,8 @@ pub enum Command {
 pub enum NotesCmd {
     /// Take notes: the recording starts.
     Start,
+    /// Upload: a video or audio file picked is taken as the meeting (whisper branch).
+    Upload,
     /// Stop: the meeting is over, its notes get written.
     Stop,
     /// Try again: hand the kept recording over again.

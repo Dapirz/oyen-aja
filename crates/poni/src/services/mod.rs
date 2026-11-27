@@ -32,6 +32,7 @@ pub mod secret;
 pub mod sound;
 pub mod wpndb;
 pub mod notifications;
+pub mod whisper;
 
 use crate::commands::MediaCmd;
 use crate::events::EventSink;

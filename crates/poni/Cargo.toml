@@ -34,6 +34,9 @@ features = [
     "Devices_Bluetooth_GenericAttributeProfile",
     "Media_Core",
     "Media_Playback",
+    # whisper branch: Meeting notes' Upload turns a video or audio file into 16 kHz WAV parts (services/whisper.rs).
+    "Media_MediaProperties",
+    "Media_Transcoding",
     "Devices_Geolocation",
     "Storage_FileProperties",
     "System",

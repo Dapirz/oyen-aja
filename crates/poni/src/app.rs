@@ -2172,6 +2172,7 @@ impl App {
                 pwarn!("notes: the recording stopped by itself ({issue:?})");
                 self.notes_stop();
             }
+            AppEvent::NotesImported(got) => self.notes_imported(*got),
             AppEvent::ScreenIcon(key, img) => {
                 self.st.screen_icons.insert(key, img);
                 self.request_frame();
@@ -2697,6 +2698,7 @@ impl App {
         let now = self.st.now;
         match c {
             NotesCmd::Start => self.notes_start(),
+            NotesCmd::Upload => self.notes_upload(),
             NotesCmd::Stop => self.notes_stop(),
             NotesCmd::Retry => self.notes_send(),
             NotesCmd::Discard => {
@@ -2978,14 +2980,60 @@ impl App {
     fn notes_send(&mut self) {
         let Some(take) = self.notes_take.clone() else { return };
         self.st.notes.stopped(take.parts.len() as u32, take.secs);
+        let whisper = self.whisper_ready();
+        if whisper {
+            self.st.notes.reply(poni_core::notes::Reply::Transcribing(0.0), self.st.now);
+        }
         let job = services::notes::Job {
             take,
             started: self.notes_started,
             lang: poni_core::notes::Lang::from_key(&self.st.settings.notes_lang),
             model: self.st.settings.notes_model.clone(),
             out: paths::notes_dir(),
+            whisper,
         };
         services::notes::send(job, &self.sink);
+    }
+
+    /// Local Whisper on, and every file of it in place (whisper branch).
+    fn whisper_ready(&self) -> bool {
+        let id = poni_core::addons::LOCAL_WHISPER.id;
+        self.st.settings.addon_on(id) && self.st.addons.get(id) == Some(&AddonStatus::Ready)
+    }
+
+    /// Upload: a file picked is read in as the meeting, then waits for
+    /// Write notes like a recording does (whisper branch).
+    fn notes_upload(&mut self) {
+        if self.notes_rec.is_some() || self.st.notes.live() || self.notes_take.is_some() {
+            return;
+        }
+        services::notes::clear_audio(None);
+        self.notes_started = self.st.local;
+        self.st.notes.importing();
+        services::notes::import(self.notes_started, &self.sink);
+    }
+
+    /// Upload's file read in (or not): it waits for Write notes.
+    fn notes_imported(&mut self, got: std::result::Result<services::notes::Take, Option<poni_core::notes::Problem>>) {
+        if !self.st.notes_on() || self.st.notes.phase != poni_core::notes::Phase::Importing {
+            if let Ok(take) = got {
+                let _ = std::fs::remove_dir_all(&take.dir);
+            }
+            return;
+        }
+        match got {
+            Ok(take) => {
+                self.st.notes.recorded(take.secs);
+                self.notes_take = Some(take);
+                self.st.ui.notes_kept = true;
+            }
+            Err(None) => self.st.notes.reset(),
+            Err(Some(p)) => {
+                self.st.ui.notes_kept = false;
+                self.st.notes.failed(p);
+            }
+        }
+        self.request_frame();
     }
 
     /// The meeting on its way: how far, the notes saved, or what went wrong.

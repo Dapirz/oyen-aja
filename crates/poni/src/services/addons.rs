@@ -46,6 +46,14 @@ const FIRST_RETRY: Duration = Duration::from_secs(5);
 const LAST_RETRY: Duration = Duration::from_secs(600);
 /// Progress reaches the island at most this often.
 const PROGRESS_EVERY: Duration = Duration::from_millis(120);
+/// A file bigger than this (Local Whisper's model, 3.1 GB, and its tools,
+/// 736 MB) is never held in memory: Windows' own curl.exe writes it to disk
+/// as it comes, and a download cut off picks up where it stopped
+/// ([`fetch_big`]).
+const BIG_FILE: u64 = 64 * 1024 * 1024;
+/// A big download that brings nothing for this long is stopped, and tried
+/// again later from where it got to.
+const STALL: Duration = Duration::from_secs(120);
 
 pub struct AddonService {
     shared: Arc<Shared>,
@@ -290,6 +298,25 @@ fn ensure(shared: &Shared, client: &Client, sink: &EventSink, dir: &Path, addon:
         let mut last = Instant::now();
         let id = addon.id;
         let started = Instant::now();
+        #[cfg(windows)]
+        if file.size > BIG_FILE {
+            match fetch_big(shared, sink, addon, file, &url, &folder, base, total) {
+                Big::Saved(m) => {
+                    // Read in full on its way in: stamped without a second read.
+                    lines.extend(stamp_line(file, &m));
+                    done += file.size;
+                    crate::pinfo!("add-ons: {}: {} downloaded ({} bytes, {} s)", addon.id, file.name, file.size, started.elapsed().as_secs());
+                    sink.send(AppEvent::Addon { id: addon.id, status: Status::Downloading { done, total } });
+                    continue;
+                }
+                Big::Off => return Have::Unknown,
+                Big::Wrong => {
+                    sink.send(AppEvent::Addon { id: addon.id, status: Status::Failed });
+                    return Have::Failed;
+                }
+                Big::Retry(why) => return wait_retry(sink, addon, backoff, &why),
+            }
+        }
         let got = client.get_bytes(&url, file_timeout(file.size), file.size + 64 * 1024, move |n| {
             if last.elapsed() >= PROGRESS_EVERY {
                 last = Instant::now();
@@ -349,6 +376,116 @@ fn wait_retry(sink: &EventSink, addon: &Addon, backoff: Duration, why: &str) -> 
     crate::pinfo!("add-ons: {}: waiting ({why}); trying again in {} s", addon.id, backoff.as_secs());
     sink.send(AppEvent::Addon { id: addon.id, status: Status::Waiting });
     Have::RetryAt(Instant::now() + backoff, (backoff * 2).min(LAST_RETRY))
+}
+
+/// How a big file's download ended ([`fetch_big`]).
+#[cfg(windows)]
+enum Big {
+    /// In place and checked: its metadata, for the stamp.
+    Saved(fs::Metadata),
+    /// Switched off (or the app quits) meanwhile.
+    Off,
+    /// Came in whole but isn't the file: thrown away.
+    Wrong,
+    /// Cut off or stalled: what's in is kept for the next try.
+    Retry(String),
+}
+
+/// A tool of Windows' own (`curl.exe`, `tar.exe`, both there since Windows
+/// 10 1803), by its full path so nothing else by that name runs instead.
+#[cfg(windows)]
+pub fn system_tool(name: &str) -> PathBuf {
+    std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows")).join("System32").join(name)
+}
+
+/// Download a big file to `<name>.part` with Windows' curl.exe, resuming
+/// what an earlier try left, then check it a piece at a time and move it in.
+/// Asks every quarter second whether it's still wanted (curl is stopped if
+/// not) and reports the bytes on disk as progress. Memory stays flat
+/// however big the file: nothing of it passes through the app until the
+/// check, which reads 64 KB at a time.
+#[cfg(windows)]
+#[allow(clippy::too_many_arguments)]
+fn fetch_big(shared: &Shared, sink: &EventSink, addon: &'static Addon, file: &AddonFile, url: &str, folder: &Path, base: u64, total: u64) -> Big {
+    use std::io::Read;
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let part = folder.join(format!("{}.part", file.name));
+    let on_disk = || fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    if on_disk() > file.size {
+        let _ = fs::remove_file(&part);
+    }
+    if on_disk() < file.size {
+        if on_disk() > 0 {
+            crate::pinfo!("add-ons: {}: {} picks up at {} of {} bytes", addon.id, file.name, on_disk(), file.size);
+        }
+        let spawned = Command::new(system_tool("curl.exe"))
+            .args(["-sS", "-L", "-f", "-C", "-", "--connect-timeout", "30", "-A", USER_AGENT, "-o"])
+            .arg(&part)
+            .arg(url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        let mut child = match spawned {
+            Ok(c) => c,
+            Err(e) => return Big::Retry(format!("curl.exe didn't start ({e})")),
+        };
+        let (mut seen, mut grew, mut told) = (on_disk(), Instant::now(), Instant::now());
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break,
+                Ok(Some(status)) => {
+                    let mut said = String::new();
+                    if let Some(mut e) = child.stderr.take() {
+                        let _ = e.read_to_string(&mut said);
+                    }
+                    return Big::Retry(format!("curl.exe ended with {} ({})", status.code().unwrap_or(-1), said.trim()));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    let _ = child.kill();
+                    return Big::Retry(format!("curl.exe: {e}"));
+                }
+            }
+            let wanted = {
+                let q = shared.lock();
+                !q.shutdown && q.want.get(addon.id).copied().unwrap_or(false)
+            };
+            let n = on_disk();
+            let stalled = if n != seen {
+                (seen, grew) = (n, Instant::now());
+                false
+            } else {
+                grew.elapsed() > STALL
+            };
+            if !wanted || stalled {
+                let _ = child.kill();
+                let _ = child.wait();
+                return if wanted { Big::Retry(format!("nothing came for {} s", STALL.as_secs())) } else { Big::Off };
+            }
+            if told.elapsed() >= PROGRESS_EVERY {
+                told = Instant::now();
+                sink.send(AppEvent::Addon { id: addon.id, status: Status::Downloading { done: base + n.min(file.size), total } });
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+    if !fs::File::open(&part).is_ok_and(|f| file.matches_read(f)) {
+        crate::pwarn!("add-ons: {}: {} came in different ({} bytes, expected {}); thrown away", addon.id, file.name, on_disk(), file.size);
+        let _ = fs::remove_file(&part);
+        return Big::Wrong;
+    }
+    let path = folder.join(file.name);
+    match fs::rename(&part, &path).and_then(|_| fs::metadata(&path)) {
+        Ok(m) => Big::Saved(m),
+        Err(e) => {
+            crate::pwarn!("add-ons: {}: could not move {} in ({e})", addon.id, file.name);
+            Big::Wrong
+        }
+    }
 }
 
 /// Delete every version but this one (a newer release replaced them).

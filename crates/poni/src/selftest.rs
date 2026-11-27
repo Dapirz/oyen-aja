@@ -1518,6 +1518,11 @@ impl SelfTest {
                         said.push(format!("{}: not pinned yet", a.id));
                         continue;
                     }
+                    // Local Whisper's 3.8 GB is no CI download (whisper branch only).
+                    if a.id == poni_core::addons::LOCAL_WHISPER.id {
+                        said.push(format!("{}: too big to fetch here", a.id));
+                        continue;
+                    }
                     let (fine, detail) = crate::services::addons::fetch_for_selftest(a, &dir);
                     ok &= fine;
                     said.push(format!("{}: {detail}", a.id));

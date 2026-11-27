@@ -451,6 +451,46 @@ pub struct Job {
     pub model: String,
     /// Where the notes go.
     pub out: PathBuf,
+    /// Local Whisper is on and in place: the transcript is made on this PC
+    /// and Gemini gets only its text (whisper branch).
+    pub whisper: bool,
+}
+
+/// Upload (whisper branch): ask for a video or audio file, then read it in
+/// as a meeting, its parts in a folder of their own under the notes' audio
+/// as a recording leaves them (with its start, `started`, beside them for
+/// [`kept`]). On a thread of its own, `poni-notes-import`, there only while
+/// it does this; it ends with `AppEvent::NotesImported`: the meeting,
+/// nothing (the dialog cancelled), or the file had no sound to read.
+pub fn import(started: LocalDateTime, sink: &EventSink) {
+    let sink = sink.clone();
+    let spawned = std::thread::Builder::new().name("poni-notes-import".into()).spawn(move || {
+        let Some(src) = crate::services::whisper::pick_file() else {
+            sink.send(AppEvent::NotesImported(Box::new(Err(None))));
+            return;
+        };
+        let _com = MtaGuard::new();
+        let dir = crate::paths::notes_audio_dir().join(format!("meeting-{}", crate::clock::unix_now()));
+        let out = std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(dir.join(STARTED), fmt_started(&started)))
+            .map_err(|e| format!("no folder for it ({e})"))
+            .and_then(|()| crate::services::whisper::import(&src, &dir));
+        let reply = match out {
+            Ok((parts, secs)) => {
+                crate::pinfo!("notes: a file of {secs:.0} s read in as {} parts", parts.len());
+                Ok(Take { dir, parts, secs })
+            }
+            Err(e) => {
+                crate::pwarn!("notes: the file picked didn't read ({e})");
+                let _ = std::fs::remove_dir_all(&dir);
+                Err(Some(Problem::Unreadable))
+            }
+        };
+        sink.send(AppEvent::NotesImported(Box::new(reply)));
+    });
+    if spawned.is_err() {
+        crate::pwarn!("notes: no thread to read the file in");
+    }
 }
 
 /// Hand `job` over on its own thread; it reports with `AppEvent::Notes`
@@ -500,6 +540,7 @@ impl Sender<'_> {
         // meanwhile (audit N2).
         let key = key();
         let out = match key.as_deref() {
+            _ if self.job.whisper => self.hand_over_text(key.as_deref()),
             Some(k) => self.hand_over(k, &mut uploaded),
             None => Err(Problem::NoKey),
         };
@@ -535,15 +576,83 @@ impl Sender<'_> {
         }
         self.sink.send(AppEvent::Notes(Box::new(Reply::Writing)));
         let body = notes::generate_body(uploaded, self.job.lang);
+        self.save(self.write(key, &body)?)
+    }
+
+    /// Local Whisper: the transcript made on this PC (or the one an earlier
+    /// try left beside the parts), saved at once as a `.txt` with an ask for
+    /// any AI on top, then its text to Gemini for the notes. No audio leaves
+    /// the PC. Without a key the `.txt` is still there.
+    fn hand_over_text(&self, key: Option<&str>) -> Result<Saved, Problem> {
+        let take = &self.job.take;
+        let cached = take.dir.join("transcript.json");
+        let lines = match std::fs::read_to_string(&cached).ok().and_then(|s| notes::lines_from_json(&s)) {
+            Some(lines) => {
+                crate::pinfo!("notes: the transcript from the last try ({} lines)", lines.len());
+                lines
+            }
+            None => {
+                self.sink.send(AppEvent::Notes(Box::new(Reply::Transcribing(0.0))));
+                let begun = Instant::now();
+                let tools = crate::services::whisper::tools().map_err(|e| {
+                    crate::pwarn!("notes: Local Whisper isn't ready ({e})");
+                    Problem::Whisper
+                })?;
+                let mut told = -1i32;
+                let lines = crate::services::whisper::transcribe(&tools, &take.parts, &take.dir, |done| {
+                    // A step a percent: the page moves, the queue stays short.
+                    let pct = (done * 100.0) as i32;
+                    if pct != told {
+                        told = pct;
+                        self.sink.send(AppEvent::Notes(Box::new(Reply::Transcribing(done))));
+                    }
+                })
+                .map_err(|e| {
+                    crate::pwarn!("notes: Whisper failed ({e})");
+                    Problem::Whisper
+                })?;
+                crate::pinfo!("notes: Whisper wrote {} lines of {:.0} s in {:.0} s", lines.len(), take.secs, begun.elapsed().as_secs_f64());
+                let _ = std::fs::write(&cached, notes::lines_to_json(&lines));
+                lines
+            }
+        };
+        if lines.is_empty() {
+            return Err(Problem::NothingHeard);
+        }
+        // The transcript with its ask, under the meeting's time until the
+        // notes give it a title.
+        let dir = &self.job.out;
+        std::fs::create_dir_all(dir).map_err(|_| Problem::Server)?;
+        let first = dir.join(notes::handoff_name(&notes::file_name(&self.job.started, "Meeting")));
+        let name = first.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Err(e) = std::fs::write(&first, format!("\u{feff}{}", notes::handoff_text(&lines, &name, take.secs))) {
+            crate::pwarn!("notes: can't save the transcript ({e})");
+        }
+        let key = key.ok_or(Problem::NoKey)?;
+        self.sink.send(AppEvent::Notes(Box::new(Reply::Writing)));
+        let body = notes::generate_text_body(&lines, self.job.lang, take.secs);
+        let mut n = self.write(key, &body)?;
+        (n.transcript, n.local) = (lines, true);
+        let saved = self.save(n)?;
+        // Now the transcript goes by the notes' name, beside them.
+        if let Some(md) = std::path::Path::new(&saved.file).file_name().map(|s| s.to_string_lossy().into_owned()) {
+            let _ = std::fs::rename(&first, dir.join(notes::handoff_name(&md)));
+        }
+        Ok(saved)
+    }
+
+    /// Ask Gemini for the notes (`body`): the chosen model, then Flash-Lite
+    /// when it's busy or not there for the key.
+    fn write(&self, key: &str, body: &str) -> Result<notes::Notes, Problem> {
         let headers = [("x-goog-api-key", key)];
         // The chosen model busy (or not there for this key): Flash-Lite next.
         let mut last = Problem::Busy;
         for model in notes::models_to_try(&self.job.model) {
             let url = notes::generate_url(model);
-            match self.call(|| self.client.send_full(Method::Post, &url, &headers, Body::Json(&body), None, WRITE_TIMEOUT)) {
+            match self.call(|| self.client.send_full(Method::Post, &url, &headers, Body::Json(body), None, WRITE_TIMEOUT)) {
                 Ok((answer, _)) => {
                     crate::pinfo!("notes: written by {model}");
-                    return self.save(notes::parse_notes(&answer)?);
+                    return notes::parse_notes(&answer);
                 }
                 Err(p @ (Problem::Busy | Problem::NoModel)) => {
                     crate::pwarn!("notes: {model} couldn't take it ({p:?})");

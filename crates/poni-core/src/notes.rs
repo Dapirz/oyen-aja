@@ -237,6 +237,112 @@ pub fn generate_body(files: &[File], lang: Lang) -> String {
     .to_string()
 }
 
+// ---------------------------------------------------------------- Local Whisper (whisper branch)
+
+/// "[12:34]" or "[1:02:03]": a transcript line's time, as the text Gemini
+/// reads and the handoff file holds.
+fn bracket(t: f64) -> String {
+    format!("[{}]", fmt_length(t))
+}
+
+/// The transcript as plain lines, "[12:34] what was said".
+pub fn transcript_text(lines: &[Line]) -> String {
+    lines.iter().map(|l| format!("{} {}\n", bracket(l.t), l.text)).collect()
+}
+
+/// What Gemini is asked when Whisper on this PC already wrote the
+/// transcript: the notes only, from the text.
+fn text_prompt(lang: Lang, secs: f64) -> String {
+    let rule = match lang {
+        Lang::Id => "Write every field in Indonesian (Bahasa Indonesia), whatever language is spoken.",
+        Lang::En => "Write every field in English, whatever language is spoken.",
+    };
+    format!(
+        "Below is an automatic transcript (Whisper, run on the person's own PC) of a meeting, a call or a lecture, {} long. \
+         Each line is \"[MM:SS] text\" (or \"[H:MM:SS]\" past an hour), counted from the start; there are no speaker names, \
+         and a sentence often runs over several lines. Being automatic, it can mishear names, technical terms and foreign words: \
+         use the right word from the context in your notes.\n\
+         Write the notes as JSON.\n\
+         - title: a short title (a few words, no date).\n\
+         - summary: 3 to 6 short bullet points: what it was about and its main points.\n\
+         - decisions: what was decided, if anything.\n\
+         - actions: tasks, assignments and deadlines someone gave or agreed to: who (a name, if said), what, and when (if said).\n\
+         - topics: the main topics in the order they came, each titled with its start time (\"[12:34] Topic\") and its key points: \
+         definitions, terms, formulas and examples given, and anything the speaker stressed as important (\"this will be in the quiz\", \"read this\").\n\
+         {rule}\n\
+         Leave a list empty rather than inventing anything.",
+        fmt_length(secs)
+    )
+}
+
+/// The notes' shape when the transcript is already written: [`schema`]
+/// without it, so the whole answer goes to the notes.
+fn text_schema() -> Value {
+    let mut s = schema();
+    if let Some(p) = s["properties"].as_object_mut() {
+        p.remove("transcript");
+    }
+    let keep = |v: &Value| Value::Array(v.as_array().map(|a| a.iter().filter(|x| x.as_str() != Some("transcript")).cloned().collect()).unwrap_or_default());
+    s["required"] = keep(&s["required"]);
+    s["propertyOrdering"] = keep(&s["propertyOrdering"]);
+    s
+}
+
+/// `generateContent`'s body for a transcript Whisper wrote on this PC: the
+/// ask and the transcript as text (no audio goes to Google).
+pub fn generate_text_body(lines: &[Line], lang: Lang, secs: f64) -> String {
+    let text = format!("{}\n\n=== TRANSCRIPT ===\n{}", text_prompt(lang, secs), transcript_text(lines));
+    json!({
+        "contents": [{ "role": "user", "parts": [{ "text": text }] }],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": text_schema(),
+            "temperature": 0.2,
+            "maxOutputTokens": 65536
+        }
+    })
+    .to_string()
+}
+
+/// The transcript with an ask for any AI on top, ready to paste into
+/// ChatGPT, Claude or Gemini's own page: saved beside the notes as a `.txt`.
+pub fn handoff_text(lines: &[Line], name: &str, secs: f64) -> String {
+    format!(
+        "=== PROMPT UNTUK AI ===\n\
+         Kamu adalah asisten yang merangkum transkrip rekaman. Di bawah ini ada transkrip otomatis (Whisper) dari rekaman \"{name}\" berdurasi {}.\n\n\
+         Catatan tentang transkrip ini:\n\
+         - Dibuat otomatis, jadi bisa ada salah dengar, terutama nama orang, istilah teknis, dan istilah asing. Perbaiki berdasarkan konteks, dan tandai koreksi yang kamu tidak yakin.\n\
+         - Format tiap baris: [menit:detik] teks. Satu kalimat sering terpotong ke beberapa baris.\n\
+         - Tidak ada label pembicara.\n\n\
+         Buat rangkuman dalam bahasa Indonesia dengan struktur:\n\
+         1. Ringkasan singkat (2-3 kalimat): topik dan konteks rekaman.\n\
+         2. Poin-poin utama per topik, urut sesuai alur pembahasan, dengan timestamp awal tiap topik.\n\
+         3. Definisi, istilah, rumus, atau contoh penting yang disebutkan.\n\
+         4. Keputusan, tugas, tenggat, atau hal yang harus ditindaklanjuti (jika ada).\n\
+         5. Hal yang ditekankan pembicara sebagai penting (mis. \"akan keluar di kuis\", \"wajib dibaca\").\n\
+         Pakai heading dan tabel kalau membantu. Jangan menambahkan informasi yang tidak ada di transkrip.\n\n\
+         === TRANSKRIP ===\n{}",
+        fmt_length(secs),
+        transcript_text(lines)
+    )
+}
+
+/// The handoff file's name beside the notes': "… Title.md" → "… Title (transcript).txt".
+pub fn handoff_name(md_name: &str) -> String {
+    format!("{} (transcript).txt", md_name.strip_suffix(".md").unwrap_or(md_name))
+}
+
+/// A cached transcript (`transcript.json` beside a meeting's parts), so
+/// Try again after Gemini failed doesn't run Whisper again.
+pub fn lines_to_json(lines: &[Line]) -> String {
+    Value::Array(lines.iter().map(|l| json!({ "t": l.t, "text": l.text })).collect()).to_string()
+}
+
+pub fn lines_from_json(s: &str) -> Option<Vec<Line>> {
+    let v: Value = serde_json::from_str(s).ok()?;
+    Some(v.as_array()?.iter().map(|l| Line { t: l["t"].as_f64().unwrap_or(0.0).max(0.0), who: String::new(), text: text(&l["text"]) }).filter(|l| !l.text.is_empty()).collect())
+}
+
 fn obj(body: &str) -> Option<Value> {
     serde_json::from_str::<Value>(body).ok().filter(Value::is_object)
 }
@@ -296,6 +402,8 @@ pub struct Notes {
     pub transcript: Vec<Line>,
     /// The meeting's length, in seconds.
     pub secs: u32,
+    /// The transcript is Whisper's, made on this PC (Local Whisper).
+    pub local: bool,
 }
 
 /// The notes in `generateContent`'s answer, or why there are none.
@@ -330,6 +438,7 @@ pub fn parse_notes(body: &str) -> Result<Notes, Problem> {
             .map(|a| a.iter().map(|l| Line { t: stamp(&l["t"]), who: text(&l["who"]), text: text(&l["text"]) }).filter(|l| !l.text.is_empty()).collect())
             .unwrap_or_default(),
         secs: 0,
+        local: false,
     };
     if notes.transcript.is_empty() && notes.summary.is_empty() {
         return Err(Problem::NothingHeard);
@@ -380,6 +489,11 @@ pub enum Problem {
     /// file couldn't be written.
     Server,
     Capture(CaptureIssue),
+    /// Local Whisper couldn't transcribe it (its tools wouldn't run, or ran
+    /// and failed). The recording is kept.
+    Whisper,
+    /// Upload: the file picked has no sound Windows can read.
+    Unreadable,
 }
 
 /// The problem a failed call's status and body (Google's
@@ -423,6 +537,8 @@ impl Problem {
             Problem::Capture(CaptureIssue::MicDenied) => "The microphone is blocked",
             Problem::Capture(CaptureIssue::NoSound) => "No sound to record",
             Problem::Capture(CaptureIssue::Failed) => "Recording stopped",
+            Problem::Whisper => "Whisper couldn't transcribe it",
+            Problem::Unreadable => "That file has no sound to read",
         }
     }
 
@@ -445,12 +561,14 @@ impl Problem {
             Problem::Capture(CaptureIssue::MicDenied) => "Turn on microphone access for desktop apps in Windows Settings.".into(),
             Problem::Capture(CaptureIssue::NoSound) => "Plug in a microphone or speakers, then try again.".into(),
             Problem::Capture(CaptureIssue::Failed) => "A sound device went away. What was heard is kept.".into(),
+            Problem::Whisper => "Your recording is kept. Check Add-ons \u{203a} Local Whisper, then try again.".into(),
+            Problem::Unreadable => "Pick a video or audio file Windows can play (MP4, M4A, MP3, WAV).".into(),
         }
     }
 
     /// Try again can help (and the recording is there for it).
     pub fn retryable(self) -> bool {
-        !matches!(self, Problem::NothingHeard | Problem::Capture(CaptureIssue::MicDenied) | Problem::Capture(CaptureIssue::NoSound))
+        !matches!(self, Problem::NothingHeard | Problem::Capture(CaptureIssue::MicDenied) | Problem::Capture(CaptureIssue::NoSound) | Problem::Unreadable)
     }
 
     /// The problem is the key or the model: Settings is where to fix it.
@@ -472,6 +590,10 @@ pub enum Phase {
     /// Stopped: the recording waits for Write notes (or Throw away), so
     /// nothing goes to Gemini by a slip.
     Recorded,
+    /// Upload: the file picked is turned into the meeting's parts.
+    Importing,
+    /// Local Whisper transcribes it on this PC: 0..1 done.
+    Transcribing { done: f32 },
     /// The meeting is over and its audio goes up: `sent` of `parts`.
     Sending { sent: u32, parts: u32 },
     /// Gemini hears it and writes, since `since`.
@@ -495,6 +617,8 @@ pub struct Saved {
 /// What the worker reports while it hands a meeting over.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Reply {
+    /// Local Whisper: 0..1 of the meeting transcribed.
+    Transcribing(f32),
     Sent { sent: u32, parts: u32 },
     Writing,
     Saved(Box<Saved>),
@@ -522,7 +646,7 @@ impl Taker {
 
     /// Something to show on the closed island: listening, or the notes on their way.
     pub fn live(&self) -> bool {
-        matches!(self.phase, Phase::Listening { .. } | Phase::Sending { .. } | Phase::Writing { .. })
+        matches!(self.phase, Phase::Listening { .. } | Phase::Importing | Phase::Transcribing { .. } | Phase::Sending { .. } | Phase::Writing { .. })
     }
 
     /// The recording's time now.
@@ -550,6 +674,12 @@ impl Taker {
         (self.mic, self.pc) = (0.0, 0.0);
     }
 
+    /// Upload: a file is being read in as the meeting.
+    pub fn importing(&mut self) {
+        self.phase = Phase::Importing;
+        (self.mic, self.pc, self.secs) = (0.0, 0.0, 0.0);
+    }
+
     /// Stopped with `parts` parts of `secs` seconds: on their way up.
     pub fn stopped(&mut self, parts: u32, secs: f64) {
         self.secs = secs;
@@ -559,6 +689,7 @@ impl Taker {
 
     pub fn reply(&mut self, r: Reply, now: f64) {
         self.phase = match r {
+            Reply::Transcribing(done) => Phase::Transcribing { done: done.clamp(0.0, 1.0) },
             Reply::Sent { sent, parts } => Phase::Sending { sent, parts },
             Reply::Writing => match self.phase {
                 Phase::Writing { since } => Phase::Writing { since },
@@ -670,11 +801,86 @@ pub fn markdown(n: &Notes, started: &LocalDateTime, with_transcript: bool, lang:
     if with_transcript && !n.transcript.is_empty() {
         md += &format!("\n## {}\n\n", h("Transcript", "Transkrip"));
         for l in &n.transcript {
-            md += &format!("**[{}] {}:** {}\n\n", fmt_length(l.t), l.who, l.text);
+            md += &if l.who.is_empty() { format!("**[{}]** {}\n\n", fmt_length(l.t), l.text) } else { format!("**[{}] {}:** {}\n\n", fmt_length(l.t), l.who, l.text) };
         }
     }
-    md += h("\n---\nNotes by Gemini, in Hihu Island\n", "\n---\nCatatan oleh Gemini, di Hihu Island\n");
+    md += match (n.local, id) {
+        (false, _) => h("\n---\nNotes by Gemini, in Hihu Island\n", "\n---\nCatatan oleh Gemini, di Hihu Island\n"),
+        (true, false) => "\n---\nTranscript by Whisper on this PC, notes by Gemini, in Hihu Island\n",
+        (true, true) => "\n---\nTranskrip oleh Whisper di PC ini, catatan oleh Gemini, di Hihu Island\n",
+    };
     md
+}
+
+#[cfg(test)]
+mod whisper_tests {
+    use super::*;
+
+    fn lines() -> Vec<Line> {
+        vec![
+            Line { t: 0.0, who: String::new(), text: "Oke kita mulai".into() },
+            Line { t: 75.4, who: String::new(), text: "Ini akan keluar di kuis".into() },
+            Line { t: 3725.0, who: String::new(), text: "Sampai jumpa".into() },
+        ]
+    }
+
+    #[test]
+    fn the_transcript_reads_as_timed_lines() {
+        assert_eq!(transcript_text(&lines()), "[0:00] Oke kita mulai\n[1:15] Ini akan keluar di kuis\n[1:02:05] Sampai jumpa\n");
+    }
+
+    #[test]
+    fn gemini_gets_the_text_and_is_asked_for_notes_only() {
+        let body: Value = serde_json::from_str(&generate_text_body(&lines(), Lang::Id, 3730.0)).unwrap();
+        let text = body["contents"][0]["parts"][0]["text"].as_str().unwrap();
+        assert!(text.contains("=== TRANSCRIPT ===\n[0:00] Oke kita mulai"), "{text}");
+        assert!(text.contains("1:02:10 long") && text.contains("Indonesian"), "{text}");
+        assert!(body["contents"][0]["parts"].as_array().unwrap().iter().all(|p| p.get("file_data").is_none()), "no audio");
+        let schema = &body["generationConfig"]["responseSchema"];
+        assert!(schema["properties"].get("transcript").is_none());
+        assert!(schema["properties"]["topics"].is_object());
+        for k in ["required", "propertyOrdering"] {
+            let names: Vec<&str> = schema[k].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+            assert_eq!(names, ["title", "summary", "decisions", "actions", "topics"], "{k}");
+        }
+    }
+
+    #[test]
+    fn the_handoff_file_carries_its_ask_and_the_transcript() {
+        let t = handoff_text(&lines(), "2026-11-27 14.05 Meeting (transcript)", 3730.0);
+        assert!(t.starts_with("=== PROMPT UNTUK AI ===\n"));
+        assert!(t.contains("berdurasi 1:02:10") && t.ends_with("=== TRANSKRIP ===\n[0:00] Oke kita mulai\n[1:15] Ini akan keluar di kuis\n[1:02:05] Sampai jumpa\n"), "{t}");
+        assert_eq!(handoff_name("2026-11-27 14.05 Sistem rekomendasi.md"), "2026-11-27 14.05 Sistem rekomendasi (transcript).txt");
+    }
+
+    #[test]
+    fn a_cached_transcript_comes_back_the_same() {
+        let back = lines_from_json(&lines_to_json(&lines())).unwrap();
+        assert_eq!(back, lines());
+        assert_eq!(lines_from_json("not json"), None);
+        assert_eq!(lines_from_json(r#"[{"t": 1, "text": "  "}]"#), Some(vec![]), "an empty line goes");
+    }
+
+    #[test]
+    fn whispers_notes_say_where_the_transcript_came_from() {
+        let n = Notes { title: "Kuliah".into(), summary: vec!["CRS".into()], transcript: lines(), secs: 3730, local: true, ..Default::default() };
+        let at = LocalDateTime { year: 2026, month: 11, day: 27, hour: 14, minute: 5, second: 0 };
+        let md = markdown(&n, &at, true, Lang::Id);
+        assert!(md.contains("**[1:15]** Ini akan keluar di kuis\n"), "no empty speaker: {md}");
+        assert!(md.ends_with("Transkrip oleh Whisper di PC ini, catatan oleh Gemini, di Hihu Island\n"));
+        assert!(markdown(&Notes { local: false, ..n }, &at, false, Lang::En).ends_with("Notes by Gemini, in Hihu Island\n"));
+    }
+
+    #[test]
+    fn whisper_at_work_counts_as_under_way() {
+        let mut t = Taker::default();
+        t.importing();
+        assert!(t.live() && t.phase == Phase::Importing);
+        t.reply(Reply::Transcribing(1.7), 0.0);
+        assert_eq!(t.phase, Phase::Transcribing { done: 1.0 });
+        assert!(t.live());
+        assert!(Problem::Whisper.retryable() && !Problem::Unreadable.retryable());
+    }
 }
 
 #[cfg(test)]

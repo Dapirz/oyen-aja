@@ -211,6 +211,49 @@ pub const MEETING_NOTES: Addon = Addon {
     on_by_default: false,
 };
 
+/// whisper.cpp's own Windows build with CUDA 12.4 (its `whisper-cli.exe`,
+/// the ggml DLLs and NVIDIA's cuBLAS and runtime), unzipped next to it on
+/// first use (`services::whisper`).
+pub const WHISPER_ZIP: &str = "whisper-bin-win-cuda-12.4.0-x64.zip";
+/// OpenAI's Whisper large-v3 in ggml's format.
+pub const WHISPER_MODEL: &str = "ggml-large-v3.bin";
+/// Silero's voice activity model, so silence isn't transcribed (whisper.cpp's `--vad`).
+pub const WHISPER_VAD: &str = "ggml-silero-v6.2.0.bin";
+
+/// Local Whisper (the `whisper` branch only; never on `main`, see
+/// CLAUDE.md): Meeting notes' transcript is written on this PC by Whisper
+/// large-v3 on an NVIDIA GPU, and Gemini only gets the text to write the
+/// notes from. About 3.8 GB, from whisper.cpp's release and Hugging Face,
+/// unchanged; nothing of it runs except while a meeting is transcribed.
+pub const LOCAL_WHISPER: Addon = Addon {
+    id: "whisper",
+    title: "Local Whisper (experimental)",
+    blurb: "Experimental: Meeting notes' transcript made on this PC's NVIDIA GPU; Gemini only gets the text.",
+    mac_blurb: None,
+    tag: "whisper-b5907",
+    on_by_default: false,
+    files: &[
+        AddonFile {
+            name: WHISPER_ZIP,
+            size: 735_571_214,
+            sha256: "34f872ce724ca1ff0a4afca481853e5ee74250f8cb22153e499f953562846039",
+            url: Some("https://github.com/ggml-org/whisper.cpp/releases/download/b5907/whisper-bin-win-cuda-12.4.0-x64.zip"),
+        },
+        AddonFile {
+            name: WHISPER_VAD,
+            size: 885_098,
+            sha256: "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+            url: Some("https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"),
+        },
+        AddonFile {
+            name: WHISPER_MODEL,
+            size: 3_095_033_483,
+            sha256: "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+            url: Some("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"),
+        },
+    ],
+};
+
 /// Tasks: the Tasks page, a short to-do list. Built in and on until
 /// switched off; off, it has no tab (the list stays saved).
 pub const TASKS: Addon = Addon {
@@ -251,7 +294,7 @@ pub const NOTIFICATIONS: Addon = Addon {
 
 /// Every add-on, in the order the Add-ons page lists them: the built-in
 /// pages first, then the ones that download.
-pub const ALL: [&Addon; 9] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCREEN_TIME, &MEETING_NOTES, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS];
+pub const ALL: [&Addon; 10] = [&TASKS, &FOCUS, &NOTIFICATIONS, &CLIPBOARD, &SCREEN_TIME, &MEETING_NOTES, &SCRIPT_READER, &PRAYER_TIMES, &JAPANESE_READINGS, &LOCAL_WHISPER];
 
 /// Whether Japanese readings switch themselves on for a song whose kanji went
 /// unread for want of them (`wants`): only while the person reads
@@ -455,7 +498,7 @@ mod tests {
     fn add_ons_are_listed_in_order_each_with_its_own_id() {
         // The Add-ons page's order: the built-in pages, then the downloads.
         let ids: Vec<&str> = ALL.iter().map(|a| a.id).collect();
-        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "screentime", "notes", "script", "sholat", "ja"]);
+        assert_eq!(ids, ["tasks", "focus", "notifications", "clipboard", "screentime", "notes", "script", "sholat", "ja", "whisper"]);
         // The Downloader left the app: a file that switched it on reads as off.
         assert_eq!(Addon::find("downloader"), None);
         for (i, a) in ALL.iter().enumerate() {

@@ -92,6 +92,10 @@ pub enum AppEvent {
     /// The meeting's recording stopped by itself: the longest meeting taken,
     /// or the disk wouldn't take more (`services::notes`).
     NotesStopped(poni_core::notes::CaptureIssue),
+    /// Upload's file read in as a meeting, or Err: the dialog cancelled
+    /// (None) or the file had no sound to read (whisper branch).
+    #[cfg(windows)]
+    NotesImported(Box<Result<crate::services::notes::Take, Option<poni_core::notes::Problem>>>),
     /// Another window came to the front (Screen time, from the full-screen
     /// watcher's hook).
     FrontWindow(isize),

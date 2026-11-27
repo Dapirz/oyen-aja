@@ -60,6 +60,8 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
         Phase::Idle => draw_idle(ui, st, right),
         Phase::Listening { .. } => draw_listening(ui, st, right),
         Phase::Recorded => draw_recorded(ui, st, right),
+        Phase::Importing => draw_importing(ui, right),
+        Phase::Transcribing { done } => draw_transcribing(ui, st, right, done),
         Phase::Sending { sent, parts } => draw_sending(ui, right, sent, parts),
         Phase::Writing { since } => draw_writing(ui, st, right, since),
         Phase::Ready => draw_ready(ui, st, right),
@@ -72,7 +74,7 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect) {
 fn draw_button(ui: &mut Ui, st: &mut AppState, phase: &Phase, c: Point) {
     let listening = matches!(phase, Phase::Listening { .. });
     // A kept recording waits for Try again or Throw away before a new one.
-    let busy = matches!(phase, Phase::Sending { .. } | Phase::Writing { .. } | Phase::Recorded) || (matches!(phase, Phase::Failed(_)) && st.ui.notes_kept);
+    let busy = matches!(phase, Phase::Importing | Phase::Transcribing { .. } | Phase::Sending { .. } | Phase::Writing { .. } | Phase::Recorded) || (matches!(phase, Phase::Failed(_)) && st.ui.notes_kept);
     let r = Rect::from_center(c, 2.0 * BUTTON_R, 2.0 * BUTTON_R);
     let resp = if busy { Default::default() } else { ui.button(wid("notes.button"), r) };
     let lift = |col: Color| if resp.pressed { Color::lerp(col, Color::white(1.0), 0.2) } else if resp.hovered { Color::lerp(col, Color::white(1.0), 0.1) } else { col };
@@ -93,7 +95,8 @@ fn draw_button(ui: &mut Ui, st: &mut AppState, phase: &Phase, c: Point) {
     ui.c.fill_circle(c, BUTTON_R, lift(fill));
     ui.c.fill_circle(c, 9.0, if busy { palette::TEXT_FAINT } else { palette::ON_ACCENT });
     let line = match phase {
-        Phase::Sending { .. } | Phase::Writing { .. } => "Taking notes\u{2026}",
+        Phase::Importing => "Reading the file\u{2026}",
+        Phase::Transcribing { .. } | Phase::Sending { .. } | Phase::Writing { .. } => "Taking notes\u{2026}",
         _ if busy => "Recording kept",
         _ => "Take notes",
     };
@@ -158,9 +161,29 @@ fn note(ui: &mut Ui, st: &AppState, r: Rect) {
     }
 }
 
+/// Local Whisper is on and in place: the transcript is made on this PC
+/// (whisper branch).
+fn local(st: &AppState) -> bool {
+    let id = poni_core::addons::LOCAL_WHISPER.id;
+    st.settings.addon_on(id) && st.addons.get(id) == Some(&poni_core::addons::Status::Ready)
+}
+
+/// Upload, at the top right: a video or audio file taken as the meeting.
+fn upload_button(ui: &mut Ui, st: &mut AppState, r: Rect) {
+    let label = "Upload";
+    let w = ui.pill_width(label, true, true);
+    if ui.pill(wid("notes.upload"), Rect::new(r.right() - w, r.y - 3.0, w, PILL_SMALL), label, Some(Icon::File), PillStyle::Utility).clicked {
+        st.cmd(Command::Notes(NotesCmd::Upload));
+    }
+}
+
 fn draw_idle(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let r = Rect::new(r.x, r.y + 4.0, r.w.min(TEXT_W), r.h);
     let foot = Rect::new(r.x, r.bottom() - PILL_SMALL - 6.0, r.w, PILL_SMALL);
+    if st.ui.notes_key.is_some() {
+        upload_button(ui, st, r);
+    }
+    let local = local(st);
     if st.ui.notes_key.is_none() {
         let y = headline(ui, r, "Meeting notes, written by Gemini");
         let body = "Paste your Gemini API key to start: make one free at Google AI Studio and copy it. It's sealed on this PC for your Windows account and only goes to Google.";
@@ -171,13 +194,18 @@ fn draw_idle(ui: &mut Ui, st: &mut AppState, r: Rect) {
     }
     let y = headline(ui, r, "Take notes of a meeting");
     if st.notes_saved.is_empty() {
-        let body = "Records your microphone and your PC's sound, so a call in Meet, Zoom or Teams is heard with no bot joining. Stop when it's over: Gemini writes the notes and the transcript, saved to Documents \u{203a} Hihu Island \u{203a} Notes.";
+        let body = if local {
+            "Records your microphone and your PC's sound, or Upload a recording. Whisper transcribes it on this PC, then Gemini writes the notes from the text, saved to Documents \u{203a} Hihu Island \u{203a} Notes."
+        } else {
+            "Records your microphone and your PC's sound, so a call in Meet, Zoom or Teams is heard with no bot joining. Stop when it's over: Gemini writes the notes and the transcript, saved to Documents \u{203a} Hihu Island \u{203a} Notes."
+        };
         let y = para(ui, Rect::new(r.x, y + 6.0, r.w, 80.0), body, palette::TEXT_DIM);
         para(ui, Rect::new(r.x, (y + 10.0).max(foot.y + 6.0), r.w, 30.0), "Let people know you're taking notes.", palette::TEXT_FAINT);
         return;
     }
     // The notes saved lately: open one, or send it to the Recycle Bin.
-    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Your microphone and your PC's sound; Gemini writes the notes.", palette::TEXT_DIM) + 8.0;
+    let how = if local { "Your microphone and PC's sound, or a file; Whisper here, notes by Gemini." } else { "Your microphone and your PC's sound; Gemini writes the notes." };
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), how, palette::TEXT_DIM) + 8.0;
     let row_h = 26.0;
     let room = ((r.bottom() - y - 18.0) / row_h).floor().max(1.0) as usize;
     let rows: Vec<(String, String)> = st.notes_saved.iter().take(room).map(|(_, w, t)| (w.clone(), t.clone())).collect();
@@ -243,7 +271,12 @@ fn draw_listening(ui: &mut Ui, st: &mut AppState, r: Rect) {
 fn draw_recorded(ui: &mut Ui, st: &mut AppState, r: Rect) {
     let r = Rect::new(r.x, r.y + 14.0, r.w.min(TEXT_W), r.h);
     let y = headline(ui, r, &format!("Recorded {}", fmt_length(st.notes.secs)));
-    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Send it to Gemini for the notes and the transcript, or throw it away.", palette::TEXT_DIM) + 14.0;
+    let ask = if local(st) {
+        "Whisper transcribes it on this PC, then Gemini writes the notes from the text. Or throw it away."
+    } else {
+        "Send it to Gemini for the notes and the transcript, or throw it away."
+    };
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), ask, palette::TEXT_DIM) + 14.0;
     let accent = st.accent;
     let clicks = buttons(ui, r.x, y, &[("notes.write", "Write notes", None, PillStyle::Primary(accent)), ("notes.discard", "Throw away", Some(Icon::Trash), PillStyle::Utility)]);
     if clicks[0] {
@@ -252,6 +285,26 @@ fn draw_recorded(ui: &mut Ui, st: &mut AppState, r: Rect) {
     if clicks[1] {
         st.cmd(Command::Notes(NotesCmd::Discard));
     }
+}
+
+fn draw_importing(ui: &mut Ui, r: Rect) {
+    let r = Rect::new(r.x, r.y + 14.0, r.w.min(TEXT_W), r.h);
+    let y = headline(ui, r, "Reading the file\u{2026}");
+    para(ui, Rect::new(r.x, y + 4.0, r.w, 40.0), "Pick a video or audio file in the window that opened. A long one takes a minute to read.", palette::TEXT_DIM);
+}
+
+/// Local Whisper at work: how far, and about how long it takes.
+fn draw_transcribing(ui: &mut Ui, st: &AppState, r: Rect, done: f32) {
+    let r = Rect::new(r.x, r.y + 4.0, r.w.min(TEXT_W), r.h);
+    let y = headline(ui, r, "Whisper is transcribing on this PC");
+    // About 8x as fast as the meeting on an RTX 3050 (large-v3).
+    let mins = (st.notes.secs / 60.0 / 8.0).ceil().max(1.0) as u32;
+    let line = format!("{:.0}% of {} \u{b7} about {mins} min for a meeting this long", done * 100.0, fmt_length(st.notes.secs));
+    let y = para(ui, Rect::new(r.x, y + 4.0, r.w, 20.0), &line, palette::TEXT_DIM) + 12.0;
+    let bar = Rect::new(r.x, y, r.w, BAR_H);
+    ui.c.fill_rrect(bar, BAR_H / 2.0, palette::SURFACE);
+    ui.c.fill_rrect(Rect::new(bar.x, bar.y, (bar.w * done.clamp(0.0, 1.0)).max(BAR_H), bar.h), BAR_H / 2.0, st.accent);
+    para(ui, Rect::new(r.x, y + 20.0, r.w, 40.0), "No audio leaves this PC; Gemini gets only the text. You can close the island.", palette::TEXT_FAINT);
 }
 
 fn draw_sending(ui: &mut Ui, r: Rect, sent: u32, parts: u32) {
