@@ -18,6 +18,12 @@ Repo ini fork pribadi dari `lucacadalora/oyenza-studio` (remote `upstream`). Tuj
 - `main` = versi fork ini. `upstream/main` = acuan Oyenza, hanya dibaca.
 - Satu fitur per branch dari `main`, merge kembali ke `main` setelah dites.
 - Ambil update Oyenza: `git fetch upstream`, lalu `git cherry-pick` commit yang dibutuhkan (merge penuh akan sering konflik karena banyak fitur dihapus).
+- Branch jangka panjang `whisper` (rencana, dibuat 27 Nov 2026 dari `main`): Meeting notes dengan transkripsi Whisper lokal, model sekitar 3 GB. Hanya untuk user sendiri dan yang mau mencoba; teman yang ingin memakai Hihu diarahkan ke `main`. Aturannya:
+  - `whisper` **tidak pernah di-merge ke `main`**. `main` tetap ringan: tanpa model, tanpa dependency Whisper (whisper.cpp, ONNX Runtime, dsb.), tanpa perubahan ukuran exe dari fitur ini.
+  - `main` di-merge ke `whisper` secara berkala (`git merge main` dari `whisper`, bukan rebase, karena branch ini di-push) supaya perbaikan dan fitur lain ikut.
+  - Perbaikan yang tidak khusus Whisper (bug Meeting notes, UI umum) dibuat di branch dari `main`, merge ke `main`, lalu ikut ke `whisper` lewat merge di atas; jangan dibuat langsung di `whisper`.
+  - Model tidak masuk repo dan tidak masuk `hihu.exe`: diunduh saat pertama dipakai (pola add-on, AGENTS.md "Big data is an add-on"), disimpan di `%LOCALAPPDATA%\Hihu\`. RAM/CPU besar hanya boleh selama transkripsi jalan; saat diam tetap 15–30 MB.
+  - Copy harian user dari `whisper` dipasang dengan `tools\install.ps1` seperti biasa (exe yang terakhir di-build yang terpasang).
 
 ## Yang tidak berlaku dari AGENTS.md
 
@@ -75,20 +81,21 @@ Per area. Semua add-on punya switch di halaman Add-ons; yang mati tidak jalan sa
 - Tasks, Focus (bawaan nyala), Script reader, Bacaan Jepang, Waktu sholat (lokasi otomatis atau pilih manual; countdown "Dzuhur in 1:59" digambar ulang tiap detik hanya selama tampil; momen sholat dan awal countdown bercahaya oranye 4 dtk, `draw_glow`).
 - Clipboard history (mati sejak awal): pengawas `WM_CLIPBOARDUPDATE` di thread sendiri, menghormati format "jangan rekam" password manager; 10/25/50/100 item, 1 jam/1 hari/7 hari/Forever; DPAPI di `%LOCALAPPDATA%\Hihu\clipboard.bin`, dihapus saat dimatikan. Kode dasar dari Oyenza sebelum `a30fcc4`.
 - Screen time (mati sejak awal): menumpang hook `EVENT_SYSTEM_FOREGROUND` milik `services/fullscreen.rs`; nama app dari FileDescription exe, app Store lewat anak jendela ApplicationFrameHost; berhenti saat terkunci/layar mati/idle 5 menit; cek tiap 60 dtk hanya saat nyala; 7 hari di `%APPDATA%\Hihu\screentime.json`, dihapus saat dimatikan.
-- Meeting notes (mati sejak awal): rekam mic (Windows' default atau dipilih lewat menu di Settings → Meeting notes) + suara PC (WASAPI loopback, kode lama Oyenza dari `e031e17^` dan mic IELTS dari `382c41a^`), bagian WAV 5 menit di `%LOCALAPPDATA%\Hihu\notes`. Setelah Stop ditanya dulu (Write notes / Throw away). Gemini dengan kunci user sendiri (Files API resumable upload + `generateContent` dengan JSON schema; Flash/Flash-Lite/Pro, Flash-Lite saat model sibuk; catatan Indonesia/Inggris), kunci DPAPI di `%LOCALAPPDATA%\Hihu\gemini.key`; upload dihapus setelah selesai; catatan Markdown di `Documents\Hihu Island\Notes`, daftar catatan terakhir di halaman Notes (buka, atau ke Recycle Bin). Maks 2 jam.
+- Meeting notes (mati sejak awal; kode `services/notes.rs` untuk rekam dan Gemini, `pages/notes.rs`, `poni_core::notes`, sisi app `notes_*` di `app.rs`; di `main` transkripsi dan catatan dibuat Gemini, versi Whisper lokal hanya di branch `whisper`): rekam mic (Windows' default atau dipilih lewat menu di Settings → Meeting notes) + suara PC (WASAPI loopback, kode lama Oyenza dari `e031e17^` dan mic IELTS dari `382c41a^`), bagian WAV 5 menit di `%LOCALAPPDATA%\Hihu\notes`. Setelah Stop ditanya dulu (Write notes / Throw away). Gemini dengan kunci user sendiri (Files API resumable upload + `generateContent` dengan JSON schema; Flash/Flash-Lite/Pro, Flash-Lite saat model sibuk; catatan Indonesia/Inggris), kunci DPAPI di `%LOCALAPPDATA%\Hihu\gemini.key`; upload dihapus setelah selesai; catatan Markdown di `Documents\Hihu Island\Notes`, daftar catatan terakhir di halaman Notes (buka, atau ke Recycle Bin). Maks 2 jam.
 
 ### Settings, data, backup
 - Jendela Settings: sidebar ISLAND / FEATURES, ketik apa saja untuk mencari (`settings_window::search`: baris yang cocok saja, seluruh section kalau hanya namanya yang cocok; Esc menghapus pencarian dulu; jendela mengambil keyboard saat dibuka lewat `AttachThreadInput`, karena island tidak pernah aktif), dropdown (`Ctl::Menu`, menu Win32 `tray::pick`) untuk pilihan panjang seperti mic.
 - Backup (Settings → About): Export ke `Documents\Hihu Island\Backups\Hihu backup YYYY-MM-DD.json` (settings + data.json, `poni_core::backup`); Import memakai backup terbaru di folder itu, ditekan dua kali. Kunci DPAPI (Gemini, Apple Music) dan pasangan HP tidak ikut.
 
 Sudah dihapus (selesai 22 Nov 2026, satu commit per fitur di `main`, `git log 1790ee2..ba747ac`):
-- Stocks, Caffeine, Health, Meeting notes, IELTS, AI usage (termasuk crate `studio-usage`), Screen recorder (Record), System.
+- Stocks, Caffeine, Health, IELTS, AI usage (termasuk crate `studio-usage`), Screen recorder (Record), System.
+- Meeting notes versi Oyenza (dikirim ke server Oyenza) juga dihapus 22 Nov, lalu dibuat ulang 23–24 Nov dengan Gemini dan kunci user sendiri (`cea8782`..`01b42ec`); itu yang ada sekarang (lihat Add-on lain).
 - Show over games, beserta pembaca CPU/GPU (`sysmon`, `psu`) dan penghitung frame.
 - Tab Oyenza, login dan sign-in, notifikasi uang dan tagihan, Studio Pro (`Addon::pro`), dan bagian Today yang butuh login.
 - Updater ke studio.oyenza.com. Update Hihu cukup dengan build ulang.
 - Downloader (yt-dlp) beserta halaman Downloads dan pill download (dihapus 23 Nov 2026; user sudah punya app downloader sendiri). Tool lama di `%LOCALAPPDATA%\Hihu\addons\downloader` dihapus sekali saat start.
 - Ukuran poni.exe: 9,55 MB (sebelum Stocks) → 6,61 MB.
-- Kalau butuh kode yang sudah dihapus (misalnya perekaman Meeting notes untuk versi sendiri), ambil dari commit sebelum penghapusannya, contoh `git show 0800e50:crates/poni/src/services/notes.rs`.
+- Kalau butuh kode yang sudah dihapus, ambil dari commit sebelum penghapusannya, contoh `git show 0800e50^:crates/poni/src/pages/health.rs` (Health dihapus di `0800e50`).
 
 Sisa brand Oyenza/Oyen di app sudah dibersihkan (`2e062b5`): tema Oyen, `oyen::app_icon` diganti ikon Hihu (`logo.rs`), `docs/brand`, `res/poni.ico`, User-Agent, README dan PRIVACY. Tools rilis, website, CI, installer dan aset brand Oyenza juga sudah dihapus (23 Nov 2026); yang tersisa: `site/places` (data kota dunia, dipakai tes sholat), `server/` (kode drop.oyenza.com), komentar kode yang menyebut asal kode, dan ARCHITECTURE.md.
 

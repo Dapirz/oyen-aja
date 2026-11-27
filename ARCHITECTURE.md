@@ -277,23 +277,33 @@ pub fn draw(ui: &mut Ui, st: &mut AppState, area: Rect);  // draw + handle input
   127.0.0.1 (`ielts-turn`). On the Mac the page says it's coming (its audio is
   `mac/services/{mic,voice}.rs`, wired in next).
 * Notes (`pages/notes.rs`) is a tab only while the Meeting notes add-on is
-  on (`AppState::notes_on`; Windows and the Mac; built in, nothing to download): one
-  click and Oyen listens to a meeting, then the Oyenza account writes its
-  notes (catat-server's `/island/notes/*`). `poni_core::notes` holds the
-  page's moments (`Taker` in `AppState::notes`), the mix, the calls'
-  answers and the Markdown. `services::notes` records on a `poni-notes`
-  thread that exists only while recording: the default microphone and the
-  default playback device's own sound (WASAPI loopback, opened by
-  `services::mic::open_endpoint`), mixed onto one 16 kHz mono track by the
-  clock (`notes::Mixer`: loopback sends nothing while nothing plays) and
-  written as five-minute WAV parts in `%LOCALAPPDATA%\Poni\notes\`; a new
-  default device (a headset plugged in) is followed. After Stop, a
-  `poni-notes-send` thread, only while a meeting is handed over, sends the
-  parts (`Client::post_bytes`), asks every 4 s until the notes are
-  written, saves them as Markdown in `Documents\Oyenza Studio\Notes` and
-  deletes the audio, which is kept for Try again until then. The closed
-  island shows Oyen listening (`Activity::Notes`, ambient frames while it
-  shows). The Mac runs the same `services::notes` with its own two sources
+  on (`AppState::notes_on`; off until switched on; built in, nothing to
+  download). Hihu's own version (Oyenza's, which sent the meeting to
+  Oyenza's server, was removed): one click records a meeting, and after
+  Stop the person is asked first (Write notes / Throw away), then Gemini,
+  with the person's own key, writes the notes. `poni_core::notes` holds the
+  page's moments (`Taker` in `AppState::notes`), the mix, Gemini's request
+  and answer (a JSON schema) and the Markdown. `services::notes` records on
+  a `poni-notes` thread that exists only while recording: the microphone
+  (Windows' default, or one picked in Settings > Meeting notes) and the
+  default playback device's own sound (WASAPI loopback), mixed onto one
+  16 kHz mono track by the clock (`notes::Mixer`: loopback sends nothing
+  while nothing plays) and written as five-minute WAV parts in
+  `%LOCALAPPDATA%\Hihu\notes\<meeting>\`, two hours at most; a new default
+  device (a headset plugged in) is followed. After Stop, a
+  `poni-notes-send` thread, only while a meeting is handed over, uploads
+  the parts to Gemini's Files API (resumable upload), asks `generateContent`
+  for the notes and the transcript (Flash, Flash-Lite or Pro; Flash-Lite
+  when the model is busy; Indonesian or English notes), deletes the
+  uploads, saves the notes as Markdown in `Documents\Hihu Island\Notes` and
+  deletes the audio, which is kept for Try again until then. The key is
+  sealed with DPAPI in `%LOCALAPPDATA%\Hihu\gemini.key` and read on that
+  thread only. The page lists the notes saved lately (open, or to the
+  Recycle Bin). The app's side is the `notes_*` methods in `app.rs`. A
+  local Whisper transcription lives only on the `whisper` branch (a model
+  of about 3 GB, never on `main`; see CLAUDE.md). The closed island shows
+  it recording (`Activity::Notes`, ambient frames while it shows). The Mac
+  code below is Oyenza's and isn't kept up: the Mac runs the same `services::notes` with its own two sources
   (`mac/services/capture.rs`): the default input device, and the Mac's
   own sound through a Core Audio process tap (macOS 14.2 and later; the
   tap's functions looked up at run time) in a private aggregate device,
